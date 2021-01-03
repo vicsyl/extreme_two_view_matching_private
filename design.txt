@@ -1,0 +1,9 @@
+
+- SIFT - poc DONE (sift.py)
+    - other detectors/descriptors: todo
+
+- MonoDepth
+   - now!!
+
+- Megadepth:
+   https://github.com/zhengqili/MegaDepth
