@@ -27,7 +27,7 @@ def normal_from_reprojected(reprojected_data, coord):
 
     xs = reprojected_data[0, u-2:u+3, v-2:v+3].reshape(25)
     ys = reprojected_data[1, u-2:u+3, v-2:v+3].reshape(25)
-    zs = reprojected_data[2, u-2:u+3, v-2:v+3].reshape(25) * 1000
+    zs = reprojected_data[2, u-2:u+3, v-2:v+3].reshape(25)
 
     #(xs, ys, zs) = reprojected_data
     # xs = xs[u-2:u+3, v-2:v+3]
@@ -67,8 +67,8 @@ def test_reproject_project(depth_data_map, cameras, images, reprojected_data):
         xs = reprojected_data[dict_idx, 0] / reprojected_data[dict_idx, 2]
         ys = reprojected_data[dict_idx, 1] / reprojected_data[dict_idx, 2]
 
-        width_linspace = torch.linspace(0 - principal_point_x, width - 1 - principal_point_x, steps=width)
-        height_linspace = torch.linspace(0 - principal_point_y, height - 1 - principal_point_y, steps=height)
+        width_linspace = torch.linspace(0 - principal_point_x, width - 1 - principal_point_x, steps=width) / focal_point_length
+        height_linspace = torch.linspace(0 - principal_point_y, height - 1 - principal_point_y, steps=height) / focal_point_length
 
         grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
 
@@ -124,9 +124,9 @@ def reproject(depth_data_map, cameras, images):
         grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
 
         projection_distances_from_origin = torch.sqrt(1 + torch.sqrt((grid_x / focal_point_length) ** 2 + (grid_y / focal_point_length) ** 2))
-        zs = projection_distances_from_origin / depth_data
-        xs = grid_x * zs
-        ys = grid_y * zs
+        zs = depth_data / projection_distances_from_origin
+        xs = grid_x * zs / focal_point_length
+        ys = grid_y * zs / focal_point_length
 
         ret[dict_idx, 0] = xs
         ret[dict_idx, 1] = ys
@@ -149,42 +149,43 @@ if __name__ == "__main__":
     camera_id = images[single_file]["camera_id"]
     camera = cameras[camera_id]
     focal_length = camera['focal_length']
+    principal_point_x = camera["principal_point_x"]
+    principal_point_y = camera["principal_point_y"]
 
     #image = cv.line(img, (0, 0), (1080, 1920), (255, 255, 255), thickness=5)
 
-
     normals = set()
-    for y in range(5, 1915, 10):
-        for x in range(5, 1075, 10):
+    for y in range(5, 1915, 50):
+        for x in range(5, 1075, 50):
 
             # TODO you have a problem with x<->y mixup
             normal = normal_from_reprojected(reprojected_data[0], (y, x))
 
             X = reprojected_data[0, :, y, x]
             # TODO 100 *
-            to_project = X + 100 * normal
+            to_project = X + normal / focal_length * 10
 
-            u = (to_project[0] / to_project[2]).item() / focal_length
-            v = (to_project[1] / to_project[2]).item() / focal_length
+            u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
+            v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
 
-            start = (x + 540, y + 960)
+            start = (x, y)
             end = (round(u), round(v))
             rgb = normal.tolist()
             print("Drawing {}, {}".format(y, x))
-            #image = cv.line(img, start, end, (255, 255, 255), thickness=2)
+            image = cv.line(img, start, end, (255, 255, 255), thickness=1)
 
-            point = (x + 540, y + 960)
-            norm = torch.norm(normal)
-            rgb_from_normal = [
-                int(255 * (normal[0] / norm).item()),
-                int(255 * (normal[1] / norm).item()),
-                int(255 * (normal[2] / norm).item()),
-            ]
-            #img[y, x] = rgb_from_normal
+            # point = (x, y)
+            # norm = torch.norm(normal)
+            # rgb_from_normal = [
+            #     int(255 * (normal[0] / norm).item()),
+            #     int(255 * (normal[1] / norm).item()),
+            #     int(255 * (normal[2] / norm).item()),
+            # ]
+            # img[y, x] = rgb_from_normal
+            #
+            # normals.add(tuple(rgb_from_normal))
 
-            normals.add(tuple(rgb_from_normal))
 
-
-    #cv.imwrite('work/normals.jpg', img)
+    cv.imwrite('work/normals_saved.jpg', img)
 
     print("done")
