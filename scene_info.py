@@ -22,7 +22,7 @@ def read_images(scene):
             ty = float(bits[6])
             tz = float(bits[7])
             camera_id = int(bits[8])
-            name = bits[9].strip()
+            name = bits[9].strip()[:-4]
 
             image_map[name] = {
                 "image_id": image_id,

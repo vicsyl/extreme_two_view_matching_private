@@ -7,3 +7,8 @@
 
 - Megadepth:
    https://github.com/zhengqili/MegaDepth
+
+
+- fitting a plane:
+
+    https://math.stackexchange.com/questions/3501135/fitting-a-plane-to-points-using-svd
