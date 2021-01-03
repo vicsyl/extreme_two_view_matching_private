@@ -3,6 +3,7 @@ import numpy as np
 import os
 import torch
 import cv2 as cv
+import time
 from scene_info import read_cameras, read_images
 
 def read_depth_data(directory, limit=None):
@@ -21,21 +22,22 @@ def read_depth_data(directory, limit=None):
     return data_map
 
 
-def normal_from_reprojected(reprojected_data, coord):
+def normal_from_reprojected(reprojected_data, coord, window_size=5):
 
     (u, v) = coord
 
-    xs = reprojected_data[0, u-2:u+3, v-2:v+3].reshape(25)
-    ys = reprojected_data[1, u-2:u+3, v-2:v+3].reshape(25)
-    zs = reprojected_data[2, u-2:u+3, v-2:v+3].reshape(25)
+    assert window_size % 2 == 1
 
-    #(xs, ys, zs) = reprojected_data
-    # xs = xs[u-2:u+3, v-2:v+3]
-    # ys = ys[u-2:u+3, v-2:v+3]
-    # zs = zs[u-2:u+3, v-2:v+3]
-    centered_xs = xs - torch.sum(xs) / 25.0
-    centered_ys = ys - torch.sum(ys) / 25.0
-    centered_zs = zs - torch.sum(zs) / 25.0
+    pixel_count = window_size ** 2
+    from_minus = int((window_size - 1) / 2)
+    to_plus = int((window_size - 1) / 2 + 1)
+    xs = reprojected_data[0, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
+    ys = reprojected_data[1, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
+    zs = reprojected_data[2, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
+
+    centered_xs = xs - torch.sum(xs) / float(pixel_count)
+    centered_ys = ys - torch.sum(ys) / float(pixel_count)
+    centered_zs = zs - torch.sum(zs) / float(pixel_count)
     to_decompose = torch.stack((centered_xs, centered_ys, centered_zs), dim=1)
     U, S, V = torch.svd(to_decompose)
     normal = V[:, 2]
@@ -145,7 +147,6 @@ if __name__ == "__main__":
     test_reproject_project(depth_data_map, cameras, images, reprojected_data)
 
     single_file = next(iter(depth_data_map))
-    img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(single_file))
     camera_id = images[single_file]["camera_id"]
     camera = cameras[camera_id]
     focal_length = camera['focal_length']
@@ -154,38 +155,49 @@ if __name__ == "__main__":
 
     #image = cv.line(img, (0, 0), (1080, 1920), (255, 255, 255), thickness=5)
 
+    start_time = time.time()
+    print("clock started")
+
+    counter = 0
     normals = set()
-    for y in range(5, 1915, 50):
-        for x in range(5, 1075, 50):
 
-            # TODO you have a problem with x<->y mixup
-            normal = normal_from_reprojected(reprojected_data[0], (y, x))
+    window_sizes = [5, 7, 9, 11, 13]
 
-            X = reprojected_data[0, :, y, x]
-            # TODO 100 *
-            to_project = X + normal / focal_length * 10
+    for window_size in window_sizes:
+        img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(single_file))
+        for y in range(window_size, 1920 - window_size, 1):
+            for x in range(window_size, 1080 - window_size, 1):
 
-            u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
-            v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
+                counter = counter + 1
 
-            start = (x, y)
-            end = (round(u), round(v))
-            rgb = normal.tolist()
-            print("Drawing {}, {}".format(y, x))
-            image = cv.line(img, start, end, (255, 255, 255), thickness=1)
+                normal = normal_from_reprojected(reprojected_data[0], (y, x), window_size=window_size)
 
-            # point = (x, y)
-            # norm = torch.norm(normal)
-            # rgb_from_normal = [
-            #     int(255 * (normal[0] / norm).item()),
-            #     int(255 * (normal[1] / norm).item()),
-            #     int(255 * (normal[2] / norm).item()),
-            # ]
-            # img[y, x] = rgb_from_normal
-            #
-            # normals.add(tuple(rgb_from_normal))
+                X = reprojected_data[0, :, y, x]
+                to_project = X + normal / focal_length * 10
+
+                u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
+                v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
+
+                start = (x, y)
+                end = (round(u), round(v))
+                rgb = normal.tolist()
+                if counter % 1000 == 0:
+                    print("Drawing {}, {} for window size: {}".format(y, x, window_size))
+                #image = cv.line(img, start, end, (255, 255, 255), thickness=1)
+
+                point = (x, y)
+                norm = torch.norm(normal)
+                rgb_from_normal = [
+                    int(255 * (normal[0] / norm).item()),
+                    int(255 * (normal[1] / norm).item()),
+                    int(255 * (normal[2] / norm).item()),
+                ]
+                img[y, x] = rgb_from_normal
+
+                normals.add(tuple(rgb_from_normal))
 
 
-    cv.imwrite('work/normals_saved.jpg', img)
+        cv.imwrite('work/normals_window_size_{}.jpg'.format(window_size), img)
 
-    print("done")
+    end_time = time.time()
+    print("done. Elapsed time: {}".format(end_time - start_time))
