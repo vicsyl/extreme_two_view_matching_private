@@ -5,6 +5,7 @@ import torch
 import cv2 as cv
 import time
 from scene_info import read_cameras, read_images
+from image_processing import spatial_gradient_first_order
 
 def read_depth_data(directory, limit=None):
 
@@ -21,8 +22,7 @@ def read_depth_data(directory, limit=None):
 
     return data_map
 
-
-def normal_from_reprojected(reprojected_data, coord, window_size=5):
+def svd_normal_from_reprojected(reprojected_data, coord, window_size=5):
 
     (u, v) = coord
 
@@ -137,13 +137,12 @@ def reproject(depth_data_map, cameras, images):
     return ret
 
 
-if __name__ == "__main__":
+def save_svd_normals():
 
     depth_data_map = read_depth_data("depth_data/mega_depth/scene1", limit=1)
     cameras = read_cameras("scene1")
     images = read_images("scene1")
     reprojected_data = reproject(depth_data_map, cameras, images)
-
     test_reproject_project(depth_data_map, cameras, images, reprojected_data)
 
     single_file = next(iter(depth_data_map))
@@ -153,15 +152,8 @@ if __name__ == "__main__":
     principal_point_x = camera["principal_point_x"]
     principal_point_y = camera["principal_point_y"]
 
-    #image = cv.line(img, (0, 0), (1080, 1920), (255, 255, 255), thickness=5)
-
-    start_time = time.time()
-    print("clock started")
-
-    counter = 0
-    normals = set()
-
     window_sizes = [5, 7, 9, 11, 13]
+    counter = 0
 
     for window_size in window_sizes:
         img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(single_file))
@@ -169,23 +161,16 @@ if __name__ == "__main__":
             for x in range(window_size, 1080 - window_size, 1):
 
                 counter = counter + 1
+                normal = svd_normal_from_reprojected(reprojected_data[0], (y, x), window_size=window_size)
 
-                normal = normal_from_reprojected(reprojected_data[0], (y, x), window_size=window_size)
+                # X = reprojected_data[0, :, y, x]
+                # to_project = X + normal / focal_length * 10
+                # u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
+                # v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
 
-                X = reprojected_data[0, :, y, x]
-                to_project = X + normal / focal_length * 10
-
-                u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
-                v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
-
-                start = (x, y)
-                end = (round(u), round(v))
-                rgb = normal.tolist()
                 if counter % 1000 == 0:
                     print("Drawing {}, {} for window size: {}".format(y, x, window_size))
-                #image = cv.line(img, start, end, (255, 255, 255), thickness=1)
 
-                point = (x, y)
                 norm = torch.norm(normal)
                 rgb_from_normal = [
                     int(255 * (normal[0] / norm).item()),
@@ -194,10 +179,55 @@ if __name__ == "__main__":
                 ]
                 img[y, x] = rgb_from_normal
 
-                normals.add(tuple(rgb_from_normal))
-
-
         cv.imwrite('work/normals_window_size_{}.jpg'.format(window_size), img)
+
+
+def diff_normal_from_reprojected(reprojected_data):
+
+    # I don't even need to reproject the data!!!
+    to_grad = reprojected_data[:, 2].unsqueeze(dim=1)
+    gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(to_grad)
+    gradient_dzdx = gradient_dzdx.unsqueeze(dim=4)
+    gradient_dzdy = gradient_dzdy.unsqueeze(dim=4)
+    z_ones = torch.ones(gradient_dzdy.shape)
+    #normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
+    normals = torch.cat((-gradient_dzdx, -gradient_dzdy, z_ones * 0.0), dim=4)
+    normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
+    #normals_norms = torch.cat(3 * [normals_norms])
+    normals = normals / normals_norms
+
+    normals[:, :, :, :, 2] = 1.0
+    # normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
+    # normals = normals / normals_norms
+
+
+    return normals
+
+
+if __name__ == "__main__":
+
+
+    depth_data_map = read_depth_data("depth_data/mega_depth/scene1", limit=1)
+    cameras = read_cameras("scene1")
+    images = read_images("scene1")
+    reprojected_data = reproject(depth_data_map, cameras, images)
+    test_reproject_project(depth_data_map, cameras, images, reprojected_data)
+
+    single_file = next(iter(depth_data_map))
+    camera_id = images[single_file]["camera_id"]
+    camera = cameras[camera_id]
+    focal_length = camera['focal_length']
+    principal_point_x = camera["principal_point_x"]
+    principal_point_y = camera["principal_point_y"]
+
+    start_time = time.time()
+    print("clock started")
+
+    normals = diff_normal_from_reprojected(reprojected_data)
+
+    img = normals[0, 0].numpy() * 255
+    #img[:, :, 2] = -img[:, :, 2]
+    cv.imwrite('work/normals_diff.png', img)
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
