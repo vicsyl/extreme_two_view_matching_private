@@ -84,6 +84,15 @@ def test_reproject_project(depth_data_map, cameras, images, reprojected_data):
 
     print("test_reproject_project ok")
 
+def upsample_depth_data(depth_data, shape_h_w):
+
+    (height, width) = shape_h_w
+    depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
+    upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
+    depth_data = upsampling(depth_data)
+    return depth_data
+
+
 def reproject(depth_data_map, cameras, images):
     """
     :param depth_data_map:
@@ -116,9 +125,10 @@ def reproject(depth_data_map, cameras, images):
             ret = torch.zeros(len(depth_data_map), 3, height, width)
 
         depth_data = depth_data_map[depth_data_file]
-        depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
-        upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
-        depth_data = upsampling(depth_data)
+        depth_data = upsample_depth_data(depth_data, (height, width))
+        # depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
+        # upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
+        # depth_data = upsampling(depth_data)
 
         width_linspace = torch.linspace(0 - principal_point_x, width - 1 - principal_point_x, steps=width)
         height_linspace = torch.linspace(0 - principal_point_y, height - 1 - principal_point_y, steps=height)
@@ -182,21 +192,23 @@ def save_svd_normals():
         cv.imwrite('work/normals_window_size_{}.jpg'.format(window_size), img)
 
 
-def diff_normal_from_reprojected(reprojected_data):
+def diff_normal_from_reprojected(reprojected_data, focal_length, depth_data_map):
 
     # I don't even need to reproject the data!!!
-    to_grad = reprojected_data[:, 2].unsqueeze(dim=1)
+    # to_grad = reprojected_data[:, 2].unsqueeze(dim=1)
+    #to_grad = depth_data_map.unsqueeze(dim=0).unsqueeze(dim=0)
+    to_grad = depth_data_map
     gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(to_grad)
-    gradient_dzdx = gradient_dzdx.unsqueeze(dim=4)
-    gradient_dzdy = gradient_dzdy.unsqueeze(dim=4)
+    gradient_dzdx = (gradient_dzdx / to_grad * focal_length).unsqueeze(dim=4)
+    gradient_dzdy = (gradient_dzdy / to_grad * focal_length).unsqueeze(dim=4)
     z_ones = torch.ones(gradient_dzdy.shape)
     #normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
-    normals = torch.cat((-gradient_dzdx, -gradient_dzdy, z_ones * 0.0), dim=4)
+    normals = torch.cat((-gradient_dzdx, -gradient_dzdy, z_ones), dim=4)
     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
     #normals_norms = torch.cat(3 * [normals_norms])
     normals = normals / normals_norms
 
-    normals[:, :, :, :, 2] = 1.0
+    #normals[:, :, :, :, 2] = 1.0
     # normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
     # normals = normals / normals_norms
 
@@ -219,15 +231,21 @@ if __name__ == "__main__":
     focal_length = camera['focal_length']
     principal_point_x = camera["principal_point_x"]
     principal_point_y = camera["principal_point_y"]
+    width = camera["width"]
+    height = camera["height"]
 
     start_time = time.time()
     print("clock started")
 
-    normals = diff_normal_from_reprojected(reprojected_data)
+    depth_data_single_file = depth_data_map[single_file]
+    depth_data_single_file = upsample_depth_data(depth_data_single_file, (height, width))
 
-    img = normals[0, 0].numpy() * 255
-    #img[:, :, 2] = -img[:, :, 2]
-    cv.imwrite('work/normals_diff.png', img)
+    normals = diff_normal_from_reprojected(reprojected_data, focal_length, depth_data_single_file)
+
+    img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(single_file))
+    #img = normals[0, 0].numpy() * 255
+
+    cv.imwrite('work/normals_diff_real_normals.png', img)
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
