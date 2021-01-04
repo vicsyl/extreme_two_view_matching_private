@@ -12,3 +12,10 @@
 - fitting a plane:
 
     https://math.stackexchange.com/questions/3501135/fitting-a-plane-to-points-using-svd
+
+
+- matching
+
+https://docs.opencv.org/master/dc/dc3/tutorial_py_matcher.html
+
+let's do a very basic version and come to that later

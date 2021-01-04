@@ -1,5 +1,33 @@
 import numpy as np
 
+class ImagePairEntry:
+
+    def __init__(self, img1, img2, difficulty):
+        self.img1 = img1
+        self.img2 = img2
+        self.difficulty = difficulty
+
+
+def read_image_pairs(scene):
+
+    file_name = "original_dataset/{}/{}_image_pairs.txt".format(scene, scene)
+    f = open(file_name, "r")
+
+    ret = [None] * 18
+    for i in range(18):
+        ret[i] = []
+
+    for line in f:
+        bits = line.split(" ")
+        img1 = bits[0].strip()[:-4]
+        img2 = bits[1].strip()[:-4]
+        diff = int(bits[2])
+        img_pair = ImagePairEntry(img1, img2, diff)
+        ret[img_pair.difficulty].append(img_pair)
+
+    return ret
+
+
 def read_images(scene):
 
     file_name = "original_dataset/{}/0/images.txt".format(scene)
@@ -76,4 +104,5 @@ if __name__ == "__main__":
 
     cameras = read_cameras("scene1")
     images = read_images("scene1")
+    img_pairs = read_image_pairs("scene1")
     print("cameras and images read")
