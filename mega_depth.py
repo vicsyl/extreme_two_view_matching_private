@@ -216,28 +216,53 @@ def save_svd_normals():
         cv.imwrite('work/normals_window_size_{}.jpg'.format(window_size), img)
 
 
-def diff_normal_from_reprojected(reprojected_data, focal_length, depth_data_map):
+def diff_normal_from_depth_data(focal_length, depth_data_map, smoothed: bool=False, sigma: float=1.0):
 
-    # I don't even need to reproject the data!!!
-    # to_grad = reprojected_data[:, 2].unsqueeze(dim=1)
-    #to_grad = depth_data_map.unsqueeze(dim=0).unsqueeze(dim=0)
+    # Could be also done from reprojected data, but this seems to be correct and more straghtforward
     to_grad = depth_data_map
-    gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(to_grad)
+    gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(to_grad, smoothed=smoothed, sigma=sigma)
     gradient_dzdx = (gradient_dzdx / to_grad * focal_length).unsqueeze(dim=4)
     gradient_dzdy = (gradient_dzdy / to_grad * focal_length).unsqueeze(dim=4)
     z_ones = torch.ones(gradient_dzdy.shape)
-    #normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
-    normals = torch.cat((-gradient_dzdx, -gradient_dzdy, z_ones), dim=4)
+    normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
-    #normals_norms = torch.cat(3 * [normals_norms])
     normals = normals / normals_norms
 
-    #normals[:, :, :, :, 2] = 1.0
-    # normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
-    # normals = normals / normals_norms
-
-
     return normals
+
+
+def save_diff_normals(normals, img_file_name, start_time, camera, reprojected_data, out_suffix):
+
+    focal_length = camera['focal_length']
+    principal_point_x = camera["principal_point_x"]
+    principal_point_y = camera["principal_point_y"]
+
+    end_time = time.time()
+    print("done. Elapsed time: {}".format(end_time - start_time))
+    img = normals[0, 0].numpy() * 255
+    img[:, :, 2] = -img[:, :, 2]
+    cv.imwrite('work/normals_diff_normals_colors_{}.png'.format(out_suffix), img)
+
+    img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_file_name))
+
+    # TODO remove the loop and do it with the help of O(1) matrix operations (and the filter in a loop)
+    counter = 0
+    for y in range(0, 1920, 20):
+        for x in range(0, 1080, 20):
+            counter = counter + 1
+            X = reprojected_data[0, :, y, x]
+            to_project = X + normals[0, 0, y, x] / focal_length * 10
+            u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
+            v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
+            color = normals[0, 0, y, x].tolist()
+            if counter % 100 == 0:
+                print("Drawing {}, {}".format(y, x))
+            cv.line(img, (x, y), (int(u), int(v)), color=(255, 255, 255), thickness=1)
+
+    cv.imwrite('work/normals_diff_normals_{}.png'.format(out_suffix), img)
+
+    end_time = time.time()
+    print("Elapsed time: {}".format(end_time - start_time))
 
 
 if __name__ == "__main__":
@@ -281,28 +306,28 @@ if __name__ == "__main__":
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
 
-    normals = diff_normal_from_reprojected(reprojected_data, focal_length, depth_data_single_file)
 
-    end_time = time.time()
-    print("done. Elapsed time: {}".format(end_time - start_time))
+    normals_modes = [
+        diff_normal_from_depth_data(focal_length, depth_data_single_file),
+        diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 1.0),
+        diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 3.0),
+        diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 5.0),
+        diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 7.0),
+        diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 9.0),
+        diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 11.0),
+        ]
+    out_suffixes = [
+        "unsmoothed",
+        "sigma_1",
+        "sigma_3",
+        "sigma_5",
+        "sigma_7",
+        "sigma_9",
+        "sigma_11",
+    ]
 
-    img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(single_file))
-    #img = normals[0, 0].numpy() * 255
-
-    counter = 0
-    for y in range(0, 1920, 10):
-        for x in range(0, 1080, 10):
-            counter = counter + 1
-            X = reprojected_data[0, :, y, x]
-            to_project = X + normals[0, 0, y, x] / focal_length * 10
-            u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
-            v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
-            color = normals[0, 0, y, x].tolist()
-            if counter % 100 == 0:
-                print("Drawing {}, {}".format(y, x))
-            cv.line(img, (x, y), (int(u), int(v)), color=(255, 255, 255), thickness=1)
-
-    cv.imwrite('work/normals_diff_real_normals.png', img)
+    for idx, normals in enumerate(normals_modes):
+        save_diff_normals(normals, single_file, start_time, camera, reprojected_data, out_suffixes[idx])
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
