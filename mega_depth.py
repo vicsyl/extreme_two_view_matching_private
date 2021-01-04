@@ -7,13 +7,36 @@ import time
 from scene_info import read_cameras, read_images
 from image_processing import spatial_gradient_first_order
 
-def read_depth_data(directory, limit=None):
+
+def get_files(dir, suffix, limit=None):
+    filenames = [filename for filename in sorted(os.listdir(dir)) if filename.endswith(suffix)]
+    if limit is not None:
+        filenames = filenames[0:limit]
+    return filenames
+
+
+def read_depth_data_np(directory, limit=None):
 
     data_map = {}
 
-    filenames = [filename for filename in sorted(os.listdir(directory)) if filename.endswith(".txt")]
-    if limit is not None:
-        filenames = filenames[0:limit]
+    filenames = get_files(directory, ".npy", limit)
+
+    for filename in filenames:
+        np_depth = np.load('{}/{}'.format(directory, filename))
+        depth_data = torch.from_numpy(np_depth)
+        data_map[filename[:-4]] = depth_data
+
+    return data_map
+
+
+def read_depth_data_txt(directory, limit=None):
+
+    data_map = {}
+
+    filenames = get_files(directory, ".txt", limit)
+    # filenames = [filename for filename in sorted(os.listdir(directory)) if filename.endswith(".txt")]
+    # if limit is not None:
+    #     filenames = filenames[0:limit]
 
     for filename in filenames:
         np_depth = np.loadtxt('{}/{}'.format(directory, filename), delimiter=',')
@@ -21,6 +44,7 @@ def read_depth_data(directory, limit=None):
         data_map[filename[:-4]] = depth_data
 
     return data_map
+
 
 def svd_normal_from_reprojected(reprojected_data, coord, window_size=5):
 
@@ -149,7 +173,7 @@ def reproject(depth_data_map, cameras, images):
 
 def save_svd_normals():
 
-    depth_data_map = read_depth_data("depth_data/mega_depth/scene1", limit=1)
+    depth_data_map = read_depth_data_txt("depth_data/mega_depth/scene1", limit=1)
     cameras = read_cameras("scene1")
     images = read_images("scene1")
     reprojected_data = reproject(depth_data_map, cameras, images)
@@ -218,12 +242,26 @@ def diff_normal_from_reprojected(reprojected_data, focal_length, depth_data_map)
 
 if __name__ == "__main__":
 
+    start_time = time.time()
+    print("clock started")
 
-    depth_data_map = read_depth_data("depth_data/mega_depth/scene1", limit=1)
+    #depth_data_map = read_depth_data_txt("depth_data/mega_depth/scene1", limit=1)
+    depth_data_map = read_depth_data_np("depth_data/mega_depth/scene1", limit=1)
+
+    end_time = time.time()
+    print("done. Elapsed time: {}".format(end_time - start_time))
+
     cameras = read_cameras("scene1")
     images = read_images("scene1")
+
+    end_time = time.time()
+    print("done. Elapsed time: {}".format(end_time - start_time))
+
     reprojected_data = reproject(depth_data_map, cameras, images)
     test_reproject_project(depth_data_map, cameras, images, reprojected_data)
+
+    end_time = time.time()
+    print("done. Elapsed time: {}".format(end_time - start_time))
 
     single_file = next(iter(depth_data_map))
     camera_id = images[single_file]["camera_id"]
@@ -234,16 +272,35 @@ if __name__ == "__main__":
     width = camera["width"]
     height = camera["height"]
 
-    start_time = time.time()
-    print("clock started")
+    end_time = time.time()
+    print("done. Elapsed time: {}".format(end_time - start_time))
 
     depth_data_single_file = depth_data_map[single_file]
     depth_data_single_file = upsample_depth_data(depth_data_single_file, (height, width))
 
+    end_time = time.time()
+    print("done. Elapsed time: {}".format(end_time - start_time))
+
     normals = diff_normal_from_reprojected(reprojected_data, focal_length, depth_data_single_file)
+
+    end_time = time.time()
+    print("done. Elapsed time: {}".format(end_time - start_time))
 
     img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(single_file))
     #img = normals[0, 0].numpy() * 255
+
+    counter = 0
+    for y in range(0, 1920, 10):
+        for x in range(0, 1080, 10):
+            counter = counter + 1
+            X = reprojected_data[0, :, y, x]
+            to_project = X + normals[0, 0, y, x] / focal_length * 10
+            u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
+            v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
+            color = normals[0, 0, y, x].tolist()
+            if counter % 100 == 0:
+                print("Drawing {}, {}".format(y, x))
+            cv.line(img, (x, y), (int(u), int(v)), color=(255, 255, 255), thickness=1)
 
     cv.imwrite('work/normals_diff_real_normals.png', img)
 
