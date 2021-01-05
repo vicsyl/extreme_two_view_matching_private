@@ -1,11 +1,40 @@
 import numpy as np
+from dataclasses import dataclass
 
+
+@dataclass
 class ImagePairEntry:
+    img1: str
+    img2: str
+    difficulty: int
 
-    def __init__(self, img1, img2, difficulty):
-        self.img1 = img1
-        self.img2 = img2
-        self.difficulty = difficulty
+
+@dataclass
+class ImageEntry:
+    image_name: str
+    image_id: int
+    camera_id: int
+    qs: (float, float, float, float)
+    t: (float, float, float)
+
+    def read_data_from_line(self, line):
+        data = np.fromstring(line.strip(), dtype=np.float32, sep=" ")
+        data = data.reshape((data.shape[0] // 3, 3))
+        data_indices = data[:, 2].astype(dtype=np.int32).reshape(data.shape[0])
+        data = data[:, :2]
+        self.data = data
+        self.ids = data_indices
+
+
+@dataclass
+class CameraEntry:
+
+    id: int
+    model: str
+    height_width: (int, int)
+    focal_length: float
+    principal_point_x_y: (int, int)
+    distortion: float
 
 
 def read_image_pairs(scene):
@@ -46,24 +75,28 @@ def read_images(scene):
             qx = float(bits[2])
             qy = float(bits[3])
             qz = float(bits[4])
+            qs = (qw, qx, qy, qz)
             tx = float(bits[5])
             ty = float(bits[6])
             tz = float(bits[7])
+            ts = (tx, ty, tz)
             camera_id = int(bits[8])
             name = bits[9].strip()[:-4]
 
-            image_map[name] = {
-                "image_id": image_id,
-                "camera_id": camera_id,
-                "qs": (qw, qx, qy, qz),
-                "t": (tx, ty, tz),
-            }
+            image_map[name] = ImageEntry(name, image_id, camera_id, qs, ts)
+            # {
+            #     "image_id": image_id,
+            #     "camera_id": camera_id,
+            #     "qs": (qw, qx, qy, qz),
+            #     "t": (tx, ty, tz),
+            # }
 
         else:
             odd = True
-            data = np.fromstring(line.strip(), dtype=float, sep=" ")
-            data = data.reshape((data.shape[0]//3, 3))
-            image_map[name]["data"] = data
+            # data = np.fromstring(line.strip(), dtype=float, sep=" ")
+            # data = data.reshape((data.shape[0]//3, 3))
+            # ["data"] = data
+            image_map[name].read_data_from_line(line.strip())
 
     f.close()
     return image_map
@@ -87,18 +120,21 @@ def read_cameras(scene):
         principal_point_x = int(bits[5])
         principal_point_y = int(bits[6])
         distortion = float(bits[7])
-        camera_map[id] = {
-            "model": model,
-            "width": width,
-            "height": height,
-            "focal_length": focal_length,
-            "principal_point_x": principal_point_x,
-            "principal_point_y": principal_point_y,
-            "distortion": distortion,
-        }
+        camera_map[id] = CameraEntry(id, model, (height, width), focal_length, (principal_point_x, principal_point_y), distortion)
+
+        #     {
+        #     "model": model,
+        #     "width": width,
+        #     "height": height,
+        #     "focal_length": focal_length,
+        #     "principal_point_x": principal_point_x,
+        #     "principal_point_y": principal_point_y,
+        #     "distortion": distortion,
+        # }
 
     f.close()
     return camera_map
+
 
 if __name__ == "__main__":
 

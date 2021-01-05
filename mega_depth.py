@@ -1,4 +1,3 @@
-import math
 import numpy as np
 import os
 import torch
@@ -76,13 +75,13 @@ def test_reproject_project(depth_data_map, cameras, images, reprojected_data):
 
     for dict_idx, depth_data_file in enumerate(depth_data_map):
 
-        camera_id = images[depth_data_file]["camera_id"]
+        camera_id = images[depth_data_file].camera_id
         camera = cameras[camera_id]
-        focal_point_length = camera['focal_length']
-        width = camera["width"]
-        height = camera["height"]
-        principal_point_x = camera["principal_point_x"]
-        principal_point_y = camera["principal_point_y"]
+        focal_point_length = camera.focal_length
+        width = camera.height_width[1]
+        height = camera.height_width[0]
+        principal_point_x = camera.principal_point_x_y[0]
+        principal_point_y = camera.principal_point_x_y[1]
 
         # TODO centralize
         depth_data = depth_data_map[depth_data_file]
@@ -137,13 +136,13 @@ def reproject(depth_data_map, cameras, images):
 
     for dict_idx, depth_data_file in enumerate(depth_data_map):
 
-        camera_id = images[depth_data_file]["camera_id"]
+        camera_id = images[depth_data_file].camera_id
         camera = cameras[camera_id]
-        focal_point_length = camera['focal_length']
-        width = camera["width"]
-        height = camera["height"]
-        principal_point_x = camera["principal_point_x"]
-        principal_point_y = camera["principal_point_y"]
+        focal_point_length = camera.focal_length
+        width = camera.height_width[1]
+        height = camera.height_width[0]
+        principal_point_x = camera.principal_point_x_y[0]
+        principal_point_y = camera.principal_point_x_y[1]
 
         if ret is None:
             ret = torch.zeros(len(depth_data_map), 3, height, width)
@@ -182,9 +181,10 @@ def save_svd_normals():
     single_file = next(iter(depth_data_map))
     camera_id = images[single_file]["camera_id"]
     camera = cameras[camera_id]
-    focal_length = camera['focal_length']
-    principal_point_x = camera["principal_point_x"]
-    principal_point_y = camera["principal_point_y"]
+
+    # focal_length = camera['focal_length']
+    # principal_point_x = camera["principal_point_x"]
+    # principal_point_y = camera["principal_point_y"]
 
     window_sizes = [5, 7, 9, 11, 13]
     counter = 0
@@ -233,9 +233,9 @@ def diff_normal_from_depth_data(focal_length, depth_data_map, smoothed: bool=Fal
 
 def save_diff_normals(normals, img_file_name, start_time, camera, reprojected_data, out_suffix):
 
-    focal_length = camera['focal_length']
-    principal_point_x = camera["principal_point_x"]
-    principal_point_y = camera["principal_point_y"]
+    focal_length = camera.focal_length
+    principal_point_x = camera.principal_point_x_y[0]
+    principal_point_y = camera.principal_point_x_y[0]
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
@@ -289,13 +289,13 @@ if __name__ == "__main__":
     print("done. Elapsed time: {}".format(end_time - start_time))
 
     single_file = next(iter(depth_data_map))
-    camera_id = images[single_file]["camera_id"]
+    camera_id = images[single_file].camera_id
     camera = cameras[camera_id]
-    focal_length = camera['focal_length']
-    principal_point_x = camera["principal_point_x"]
-    principal_point_y = camera["principal_point_y"]
-    width = camera["width"]
-    height = camera["height"]
+    focal_length = camera.focal_length
+    principal_point_x = camera.principal_point_x_y[0]
+    principal_point_y = camera.principal_point_x_y[1]
+    width = camera.height_width[1]
+    height = camera.height_width[0]
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
