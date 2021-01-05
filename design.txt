@@ -19,3 +19,8 @@
 https://docs.opencv.org/master/dc/dc3/tutorial_py_matcher.html
 
 let's do a very basic version and come to that later
+
+
+with torch.no_grad():??
+
+- ground truth
