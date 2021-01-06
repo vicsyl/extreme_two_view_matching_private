@@ -2,6 +2,7 @@ from scene_info import *
 import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 
 """
     DISCLAIMER: this function was taken from templates (.py files or jupyter notebooks) 
@@ -41,12 +42,14 @@ def split_points(tentative_matches, kps1, kps2):
     return src_pts, dst_pts
 
 
-def find_homography(tentative_matches, kps1, kps2):
+def find_homography(tentative_matches, kps1, kps2, img1, img2, show=True):
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
     H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 1.0)
 
-    draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
+    if show:
+        draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
+
     return H, inlier_mask
 
 
@@ -61,7 +64,9 @@ def find_correspondences(descriptor, img1, img2, ratio_thresh=0.8, show=True):
     # cv.imwrite('work/sift_keypoints_{}.jpg'.format(img_pair.img1), img_sift_keypoints1)
     # cv.imwrite('work/sift_keypoints_{}.jpg'.format(img_pair.img2), img_sift_keypoints2)
 
-    matcher = cv.DescriptorMatcher_create(cv.DescriptorMatcher_BRUTEFORCE_HAMMING)
+    #matcher = cv.DescriptorMatcher_create(cv.DescriptorMatcher_BRUTEFORCE_HAMMING)
+    matcher = cv.BFMatcher()
+
     knn_matches = matcher.knnMatch(descs1, descs2, 2)
 
     tentative_matches = []
@@ -78,45 +83,141 @@ def find_correspondences(descriptor, img1, img2, ratio_thresh=0.8, show=True):
     return tentative_matches, kps1, kps2
 
 
-if __name__ == "__main__":
-
-    scene_name = "scene1"
-
-    akaze_desc = cv.AKAZE_create()
-    sift = cv.SIFT_create()
-
-    img_pairs = read_image_pairs(scene_name)
-    images_info = read_images(scene_name)
-
-    img_pair: ImagePairEntry = img_pairs[0][0]
-
-    img1 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img1))
-    img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
-
-    tentative_matches, kps1, kps2 = find_correspondences(akaze_desc, img1, img2, ratio_thresh=0.75, show=True)
-    H, inlier_mask = find_homography(tentative_matches, kps1, kps2)
-
-    # TODO CONTINUE2
-    # verify pose - this seems to be difficult, up next...
-    a = images_info[img_pair.img1].qs
-    b = images_info[img_pair.img1].t
-    c = H
-
-    # verify matches
-    # inlier_mask_flat = inlier_mask[:, 0]
-    # inlier_mask_flat_bool = inlier_mask_flat[inlier_mask_flat == 1]
+def correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2, images_info, img_pair):
     matches = [m for (idx, m) in enumerate(tentative_matches) if inlier_mask[idx ,0] == 1]
     kps1_indices = [m.queryIdx for m in matches]
     kps2_indices = [m.trainIdx for m in matches]
 
-    kps1_matches_points = [list(kps1[kps1_index].pt) for kps1_index in kps1_indices]
-    kps2_matches_points = [list(kps2[kps2_index].pt) for kps2_index in kps2_indices]
+    data_point1_ids, mins1 = get_kps_gt_id(kps1, kps1_indices, images_info[img_pair.img1], diff_threshold=100.0)
+    data_point2_ids, mins2 = get_kps_gt_id(kps2, kps2_indices, images_info[img_pair.img2], diff_threshold=100.0)
 
-    kps1_matches_np = np.array(kps1_matches_points)
-    kps2_matches_np = np.array(kps2_matches_points)
+    data_point_ids_matches = data_point1_ids[data_point1_ids == data_point2_ids]
+    unique = np.unique(data_point_ids_matches)
+    return unique
 
-    # TODO CONTINUE1
-    # find from data a points closest to coordinates1,2
-    data1 = images_info[img_pair.img1].data
 
-    print("done")
+def get_kps_gt_id(kps, kps_indices, image_entry: ImageEntry, diff_threshold=2.0):
+
+    kps_matches_points = [list(kps[kps_index].pt) for kps_index in kps_indices]
+    kps_matches_np = np.array(kps_matches_points)
+
+    image_data = image_entry.data
+    data_ids = image_entry.data_point_idxs
+
+    diff = np.ndarray(image_data.shape)
+    mins = np.ndarray(kps_matches_np.shape[0])
+    data_point_ids = -2 * np.ones(kps_matches_np.shape[0], dtype=np.int32)
+    for p_idx, match_point in enumerate(kps_matches_np):
+        diff[:, 0] = image_data[:, 0] - match_point[0]
+        diff[:, 1] = image_data[:, 1] - match_point[1]
+        diff_norm = np.linalg.norm(diff, axis=1)
+        min_index = np.argmin(diff_norm)
+        min_diff = diff_norm[min_index]
+        mins[p_idx] = min_diff
+        if min_diff < diff_threshold:
+            data_point_ids[p_idx] = data_ids[min_index]
+
+    return data_point_ids, mins
+
+
+def find_keypoints(scene_name, image_entry: ImageEntry, descriptor):
+    #images_info.image_name
+
+    img_path = 'original_dataset/{}/images/{}.jpg'.format(scene_name, image_entry.image_name)
+    img = cv.imread(img_path)
+    if img is None:
+        return None, None
+    kps, descs = descriptor.detectAndCompute(img, None)
+    return kps, descs
+
+def find_keypoints_match_with_data(scene_name, image_entry: ImageEntry, descriptor, diff_threshold):
+
+    kps, descs = find_keypoints(scene_name, image_entry, descriptor)
+    if kps is None:
+        return None
+    kps_indices = list(range(len(kps)))
+
+    data_point_ids, mins = get_kps_gt_id(kps, kps_indices, image_entry, diff_threshold=diff_threshold)
+    data_point_ids = data_point_ids[data_point_ids != -2]
+    return data_point_ids
+
+
+def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_create(), limit=None):
+
+    images_info = read_images(scene_name)
+
+    existent_ids = 0
+    for idx, image_entry_key in enumerate(images_info):
+        image_entry = images_info[image_entry_key]
+        data_point_ids = find_keypoints_match_with_data(scene_name, image_entry, descriptor, diff_threshold)
+        if data_point_ids is None:
+            print("Image: {} doesn't exist!!!".format(image_entry.image_name))
+        else:
+            all_points = len(image_entry.data)
+            print("Image: {}, points matches:{}/{}".format(image_entry.image_name, len(data_point_ids), all_points))
+            existent_ids = existent_ids + 1
+            if limit is not None and existent_ids == limit:
+                break
+
+
+def match_image_pair(img_pair, images_info, descriptor):
+
+    img1 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img1))
+    img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
+
+    tentative_matches, kps1, kps2 = find_correspondences(descriptor, img1, img2, ratio_thresh=0.75, show=False)
+    H, inlier_mask = find_homography(tentative_matches, kps1, kps2, img1, img2, show=False)
+
+    unique = correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2, images_info, img_pair)
+
+    print("Image pair: {}x{}:".format(img_pair.img1, img_pair.img2))
+    print("Number of correspondences: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
+    print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
+
+    # TODO CONTINUE2
+    # verify pose - this seems to be difficult, up next...
+    # a = images_info[img_pair.img1].qs
+    # b = images_info[img_pair.img1].t
+    # c = H
+
+
+def img_correspondences(scene_name, descriptor=cv.SIFT_create(), difficulties = set(range(18)), limit=None):
+
+    #akaze_desc = cv.AKAZE_create()
+    img_pairs = read_image_pairs(scene_name)
+    images_info = read_images(scene_name)
+
+    for difficulty, img_pair_in_difficulty in enumerate(img_pairs):
+        if difficulty not in difficulties:
+            continue
+        print("Difficulty: {}".format(difficulty))
+        if limit is None:
+            limit = len(img_pair_in_difficulty)
+        for i in range(min(limit, len(img_pair_in_difficulty))):
+            img_pair: ImagePairEntry = img_pairs[difficulty][i]
+            match_image_pair(img_pair, images_info, descriptor)
+
+
+def main():
+
+    start = time.time()
+
+    scene_name = "scene1"
+    #akaze_desc = cv.AKAZE_create()
+    sift_descriptor = cv.SIFT_create()
+
+    limit = 10
+    keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
+
+
+    #limit = 3
+    #difficulties = set(range(1))
+    #img_correspondences(scene_name, sift_descriptor, difficulties, limit)
+
+    print("All done")
+    end = time.time()
+    print("Time elapsed: {}".format(end - start))
+
+
+if __name__ == "__main__":
+    main()

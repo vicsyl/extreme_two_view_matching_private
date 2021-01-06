@@ -22,8 +22,10 @@ class ImageEntry:
         data = data.reshape((data.shape[0] // 3, 3))
         data_indices = data[:, 2].astype(dtype=np.int32).reshape(data.shape[0])
         data = data[:, :2]
-        self.data = data[data_indices != -1]
-        #self.ids = data_indices[data_indices != -1]
+        self.data = data
+        self.data_point_idxs = data_indices
+        # self.data = data[data_indices != -1]
+        # self.ids = data_indices[data_indices != -1]
 
 
 @dataclass
