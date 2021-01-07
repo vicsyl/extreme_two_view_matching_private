@@ -45,6 +45,40 @@ def read_depth_data_txt(directory, limit=None):
     return data_map
 
 
+def svd_normal_from_reprojected_test(reprojected_data, coord, window_size=5):
+
+    assert window_size % 2 == 1
+
+    pixel_count = window_size ** 2
+
+    xs2 = torch.zeros((window_size, window_size))
+    ys2 = torch.zeros((window_size, window_size))
+    zs2 = torch.zeros((window_size, window_size))
+
+    for x_i in range(window_size):
+        for y_i in range(window_size):
+            xs2[x_i, y_i] = x_i
+            ys2[x_i, y_i] = y_i
+            zs2[x_i, y_i] = x_i
+
+    xs = xs2.reshape(pixel_count)
+    ys = ys2.reshape(pixel_count)
+    zs = zs2.reshape(pixel_count)
+
+    centered_xs = xs - torch.sum(xs) / float(pixel_count)
+    centered_ys = ys - torch.sum(ys) / float(pixel_count)
+    centered_zs = zs - torch.sum(zs) / float(pixel_count)
+    to_decompose = torch.stack((centered_xs, centered_ys, centered_zs), dim=1)
+    U, S, V = torch.svd(to_decompose)
+    normal = -V[2, :]
+
+    norm = torch.norm(normal)
+    #print("norm: {}".format(norm))
+    normal = normal / norm
+
+    return normal
+
+
 def svd_normal_from_reprojected(reprojected_data, coord, window_size=5):
 
     (u, v) = coord
@@ -63,7 +97,7 @@ def svd_normal_from_reprojected(reprojected_data, coord, window_size=5):
     centered_zs = zs - torch.sum(zs) / float(pixel_count)
     to_decompose = torch.stack((centered_xs, centered_ys, centered_zs), dim=1)
     U, S, V = torch.svd(to_decompose)
-    normal = V[:, 2]
+    normal = -V[2, :]
 
     norm = torch.norm(normal)
     #print("norm: {}".format(norm))
@@ -116,6 +150,51 @@ def upsample_depth_data(depth_data, shape_h_w):
     return depth_data
 
 
+'''
+THIS is actually not that simple
+'''
+def reproject_test_simple_planes(depth_data_map, cameras, images):
+
+    """
+    :param depth_data_map:
+    :param cameras:
+    :param images:
+    :return: torch.tensor (B, 3, H, W) - beware it in the order of x, y, z
+    """
+    ret = None
+    zs_c = 1
+
+    for dict_idx, depth_data_file in enumerate(depth_data_map):
+
+        camera_id = images[depth_data_file].camera_id
+        camera = cameras[camera_id]
+        focal_point_length = camera.focal_length
+        width = camera.height_width[1]
+        height = camera.height_width[0]
+        principal_point_x = camera.principal_point_x_y[0]
+        principal_point_y = camera.principal_point_x_y[1]
+
+        if ret is None:
+            ret = torch.zeros(len(depth_data_map), 3, height, width)
+
+        width_linspace = torch.linspace(0 - principal_point_x, width - 1 - principal_point_x, steps=width)
+        height_linspace = torch.linspace(0 - principal_point_y, height - 1 - principal_point_y, steps=height)
+
+        grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
+
+        projection_distances_from_origin = torch.sqrt(1 + torch.sqrt((grid_x / focal_point_length) ** 2 + (grid_y / focal_point_length) ** 2))
+        zs = (1 / (1 - 0.1 * grid_x / focal_point_length))
+        xs = grid_x * zs_c / focal_point_length
+        ys = grid_y * zs_c / focal_point_length
+
+        ret[dict_idx, 0] = xs
+        ret[dict_idx, 1] = ys
+        ret[dict_idx, 2] = zs
+
+    return ret
+
+
+
 def reproject(depth_data_map, cameras, images):
     """
     :param depth_data_map:
@@ -123,15 +202,6 @@ def reproject(depth_data_map, cameras, images):
     :param images:
     :return: torch.tensor (B, 3, H, W) - beware it in the order of x, y, z
     """
-
-    # "model": model,
-    # "width": width,
-    # "height": height,
-    # "focal_length": focal_length,
-    # "principal_point_x": principal_point_x,
-    # "principal_point_y": principal_point_y,
-    # "distortion": distortion,
-
     ret = None
 
     for dict_idx, depth_data_file in enumerate(depth_data_map):
@@ -170,50 +240,54 @@ def reproject(depth_data_map, cameras, images):
     return ret
 
 
-def save_svd_normals():
+def svd_normals():
 
-    depth_data_map = read_depth_data_txt("depth_data/mega_depth/scene1", limit=1)
+    depth_data_map = read_depth_data_np("depth_data/mega_depth/scene1", limit=3)
     cameras = read_cameras("scene1")
     images = read_images("scene1")
     reprojected_data = reproject(depth_data_map, cameras, images)
+    #reprojected_data = reproject_test_simple_planes(depth_data_map, cameras, images)
     test_reproject_project(depth_data_map, cameras, images, reprojected_data)
 
-    single_file = next(iter(depth_data_map))
-    camera_id = images[single_file]["camera_id"]
-    camera = cameras[camera_id]
+    for file_name in depth_data_map:
 
-    # focal_length = camera['focal_length']
-    # principal_point_x = camera["principal_point_x"]
-    # principal_point_y = camera["principal_point_y"]
+        #single_file = next(iter(depth_data_map))
+        camera_id = images[file_name].camera_id
+        camera = cameras[camera_id]
+        focal_length = camera.focal_length
+        principal_point_x = camera.principal_point_x_y[0]
+        principal_point_y = camera.principal_point_x_y[1]
 
-    window_sizes = [5, 7, 9, 11, 13]
-    counter = 0
+        window_sizes = [5] #, 7, 9, 11, 13]
+        counter = 0
 
-    for window_size in window_sizes:
-        img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(single_file))
-        for y in range(window_size, 1920 - window_size, 1):
-            for x in range(window_size, 1080 - window_size, 1):
+        for window_size in window_sizes:
+            img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(file_name))
+            for y in range(window_size + 2, 1920 - window_size, 1):
+                for x in range(window_size + 3, 1080 - window_size, 1):
 
-                counter = counter + 1
-                normal = svd_normal_from_reprojected(reprojected_data[0], (y, x), window_size=window_size)
+                    counter = counter + 1
+                    normal = svd_normal_from_reprojected(reprojected_data[0], (y, x), window_size=window_size)
 
-                # X = reprojected_data[0, :, y, x]
-                # to_project = X + normal / focal_length * 10
-                # u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
-                # v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
+                    X = reprojected_data[0, :, y, x]
+                    #print(X)
+                    to_project = X + normal / focal_length * 35
+                    u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
+                    v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
+                    #cv.line(img, (x, y), (int(u), int(v)), color=(255, 255, 255), thickness=2)
 
-                if counter % 1000 == 0:
-                    print("Drawing {}, {} for window size: {}".format(y, x, window_size))
+                    if counter % 1000 == 0:
+                        print("Drawing {}, {} for window size: {}".format(y, x, window_size))
 
-                norm = torch.norm(normal)
-                rgb_from_normal = [
-                    int(255 * (normal[0] / norm).item()),
-                    int(255 * (normal[1] / norm).item()),
-                    int(255 * (normal[2] / norm).item()),
-                ]
-                img[y, x] = rgb_from_normal
+                    norm = torch.norm(normal)
+                    rgb_from_normal = [
+                        int(255 * (normal[0] / norm).item()),
+                        int(255 * (normal[1] / norm).item()),
+                        int(255 * (normal[2] / norm).item()),
+                    ]
+                    img[y, x] = rgb_from_normal
 
-        cv.imwrite('work/normals_window_size_{}.jpg'.format(window_size), img)
+            cv.imwrite('work/{}_normals_svd_window_size_{}.jpg'.format(file_name, window_size), img)
 
 
 def diff_normal_from_depth_data(focal_length, depth_data_map, smoothed: bool=False, sigma: float=1.0):
@@ -265,10 +339,7 @@ def save_diff_normals(normals, img_file_name, start_time, camera, reprojected_da
     print("Elapsed time: {}".format(end_time - start_time))
 
 
-if __name__ == "__main__":
-
-    start_time = time.time()
-    print("clock started")
+def save_diff_normals_different_windows():
 
     #depth_data_map = read_depth_data_txt("depth_data/mega_depth/scene1", limit=1)
     depth_data_map = read_depth_data_np("depth_data/mega_depth/scene1", limit=1)
@@ -292,8 +363,6 @@ if __name__ == "__main__":
     camera_id = images[single_file].camera_id
     camera = cameras[camera_id]
     focal_length = camera.focal_length
-    principal_point_x = camera.principal_point_x_y[0]
-    principal_point_y = camera.principal_point_x_y[1]
     width = camera.height_width[1]
     height = camera.height_width[0]
 
@@ -328,6 +397,16 @@ if __name__ == "__main__":
 
     for idx, normals in enumerate(normals_modes):
         save_diff_normals(normals, single_file, start_time, camera, reprojected_data, out_suffixes[idx])
+
+
+
+
+if __name__ == "__main__":
+
+    start_time = time.time()
+    print("clock started")
+
+    svd_normals()
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))

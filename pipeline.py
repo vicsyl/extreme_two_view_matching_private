@@ -130,6 +130,7 @@ def find_keypoints(scene_name, image_entry: ImageEntry, descriptor):
     kps, descs = descriptor.detectAndCompute(img, None)
     return kps, descs
 
+
 def find_keypoints_match_with_data(scene_name, image_entry: ImageEntry, descriptor, diff_threshold):
 
     kps, descs = find_keypoints(scene_name, image_entry, descriptor)
@@ -138,6 +139,7 @@ def find_keypoints_match_with_data(scene_name, image_entry: ImageEntry, descript
     kps_indices = list(range(len(kps)))
 
     data_point_ids, mins = get_kps_gt_id(kps, kps_indices, image_entry, diff_threshold=diff_threshold)
+    # FIXME - still need to distinguish between indices -1!!!
     data_point_ids = data_point_ids[data_point_ids != -2]
     return data_point_ids
 
@@ -149,6 +151,7 @@ def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_cre
     existent_ids = 0
     for idx, image_entry_key in enumerate(images_info):
         image_entry = images_info[image_entry_key]
+        # FIXME - still need to distinguish between indices -1!!!
         data_point_ids = find_keypoints_match_with_data(scene_name, image_entry, descriptor, diff_threshold)
         if data_point_ids is None:
             print("Image: {} doesn't exist!!!".format(image_entry.image_name))
@@ -160,13 +163,13 @@ def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_cre
                 break
 
 
-def match_image_pair(img_pair, images_info, descriptor):
+def match_image_pair(img_pair, images_info, descriptor, show=True):
 
     img1 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img1))
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
-    tentative_matches, kps1, kps2 = find_correspondences(descriptor, img1, img2, ratio_thresh=0.75, show=False)
-    H, inlier_mask = find_homography(tentative_matches, kps1, kps2, img1, img2, show=False)
+    tentative_matches, kps1, kps2 = find_correspondences(descriptor, img1, img2, ratio_thresh=0.75, show=show)
+    H, inlier_mask = find_homography(tentative_matches, kps1, kps2, img1, img2, show=show)
 
     unique = correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2, images_info, img_pair)
 
@@ -206,13 +209,18 @@ def main():
     #akaze_desc = cv.AKAZE_create()
     sift_descriptor = cv.SIFT_create()
 
-    limit = 10
-    keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
+    # image_pairs = read_image_pairs(scene_name)
+    # image_info_map = read_images(scene_name)
+    #
+    # image_pair = image_pairs[0][0]
+    # match_image_pair(image_pair, image_info_map, sift_descriptor)
 
+    # limit = 10
+    # keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
 
-    #limit = 3
-    #difficulties = set(range(1))
-    #img_correspondences(scene_name, sift_descriptor, difficulties, limit)
+    limit = 3
+    difficulties = set(range(18))
+    img_correspondences(scene_name, sift_descriptor, difficulties, limit)
 
     print("All done")
     end = time.time()

@@ -24,3 +24,12 @@ let's do a very basic version and come to that later
 with torch.no_grad():??
 
 - ground truth
+
+
+Current plan:
+a) essential matrix!!! (from ransac!!) -> real correspondence!!! -> pose verification (FROM E, NOT HOMOGRAPHY)
+b) normals, clustering and rectification
+c) what they really did
+
+
+
