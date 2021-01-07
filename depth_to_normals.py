@@ -6,6 +6,8 @@ import time
 from scene_info import read_cameras, read_images
 from image_processing import spatial_gradient_first_order
 
+import sperical_kmeans
+
 
 def get_files(dir, suffix, limit=None):
     filenames = [filename for filename in sorted(os.listdir(dir)) if filename.endswith(suffix)]
@@ -435,7 +437,21 @@ def sobel_normals_5x5():
 
         img = normals.numpy() * 255
         img[:, :, 2] = -img[:, :, 2]
-        cv.imwrite('work/normals_sobel_normals_colors_fixed.png', img)
+        cv.imwrite('work/{}_normals_sobel_normals_colors_fixed.png'.format(file_name), img)
+
+        cluster_centers, arg_mins = sperical_kmeans.kmeans(normals)
+        img[:, :, 0][arg_mins == 0] = 255
+        img[:, :, 0][arg_mins != 0] = 0
+        img[:, :, 1][arg_mins == 1] = 255
+        img[:, :, 1][arg_mins != 1] = 0
+        img[:, :, 2][arg_mins == 2] = 255
+        img[:, :, 2][arg_mins != 2] = 0
+
+        print("cluster centers: {}".format(cluster_centers))
+
+        cv.imwrite('work/{}_normals_sobel_normals_clusters_2.png'.format(file_name), img)
+
+
 
         # def diff_normal_from_depth_data(focal_length, depth_data_map, smoothed: bool = False, sigma: float = 1.0):
         #     # Could be also done from reprojected data, but this seems to be correct and more straghtforward
