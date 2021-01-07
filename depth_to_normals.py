@@ -200,7 +200,7 @@ def reproject(depth_data_map, cameras, images):
     :param depth_data_map:
     :param cameras:
     :param images:
-    :return: torch.tensor (B, 3, H, W) - beware it in the order of x, y, z
+    :return: torch.tensor (B, 3, H, W) - be aware it is in the order of x, y, z
     """
     ret = None
 
@@ -295,8 +295,8 @@ def diff_normal_from_depth_data(focal_length, depth_data_map, smoothed: bool=Fal
     # Could be also done from reprojected data, but this seems to be correct and more straghtforward
     to_grad = depth_data_map
     gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(to_grad, smoothed=smoothed, sigma=sigma)
-    gradient_dzdx = (gradient_dzdx / to_grad * focal_length).unsqueeze(dim=4)
-    gradient_dzdy = (gradient_dzdy / to_grad * focal_length).unsqueeze(dim=4)
+    gradient_dzdx = (gradient_dzdx * 30000).unsqueeze(dim=4)
+    gradient_dzdy = (gradient_dzdy * 30000).unsqueeze(dim=4)
     z_ones = torch.ones(gradient_dzdy.shape)
     normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
@@ -315,9 +315,9 @@ def save_diff_normals(normals, img_file_name, start_time, camera, reprojected_da
     print("done. Elapsed time: {}".format(end_time - start_time))
     img = normals[0, 0].numpy() * 255
     img[:, :, 2] = -img[:, :, 2]
-    cv.imwrite('work/normals_diff_normals_colors_{}.png'.format(out_suffix), img)
+    cv.imwrite('work/normals_diff_normals_colors_fixed_{}.png'.format(out_suffix), img)
 
-    img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_file_name))
+    # img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_file_name))
 
     # TODO remove the loop and do it with the help of O(1) matrix operations (and the filter in a loop)
     counter = 0
@@ -325,7 +325,8 @@ def save_diff_normals(normals, img_file_name, start_time, camera, reprojected_da
         for x in range(0, 1080, 20):
             counter = counter + 1
             X = reprojected_data[0, :, y, x]
-            to_project = X + normals[0, 0, y, x] / focal_length * 10
+
+            to_project = X # + normals[0, 0, y, x] / focal_length
             u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
             v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
             color = normals[0, 0, y, x].tolist()
@@ -333,7 +334,7 @@ def save_diff_normals(normals, img_file_name, start_time, camera, reprojected_da
                 print("Drawing {}, {}".format(y, x))
             cv.line(img, (x, y), (int(u), int(v)), color=(255, 255, 255), thickness=1)
 
-    cv.imwrite('work/normals_diff_normals_{}.png'.format(out_suffix), img)
+    cv.imwrite('work/normals_diff_normals_fixed_{}.png'.format(out_suffix), img)
 
     end_time = time.time()
     print("Elapsed time: {}".format(end_time - start_time))
@@ -399,6 +400,55 @@ def save_diff_normals_different_windows():
         save_diff_normals(normals, single_file, start_time, camera, reprojected_data, out_suffixes[idx])
 
 
+def sobel_normals_5x5():
+
+    depth_data_map = read_depth_data_np("depth_data/mega_depth/scene1", limit=10)
+
+    cameras = read_cameras("scene1")
+    images = read_images("scene1")
+
+    # reprojected_data = reproject(depth_data_map, cameras, images)
+    # test_reproject_project(depth_data_map, cameras, images, reprojected_data)
+
+    for file_name in depth_data_map:
+        #single_file = next(iter(depth_data_map))
+        camera_id = images[file_name].camera_id
+        camera = cameras[camera_id]
+        focal_length = camera.focal_length
+        width = camera.height_width[1]
+        height = camera.height_width[0]
+
+        depth_data = depth_data_map[file_name]
+        depth_data = upsample_depth_data(depth_data, (height, width))
+
+        cv_img = depth_data.squeeze(dim=0).squeeze(0).unsqueeze(2).numpy()
+
+        sobelx = cv.Sobel(cv_img, cv.CV_64F, 1, 0, ksize=5)
+        sobely = cv.Sobel(cv_img, cv.CV_64F, 0, 1, ksize=5)
+
+        sobelx = (torch.from_numpy(sobelx) * 50).unsqueeze(2)
+        sobely = (torch.from_numpy(sobely) * 50).unsqueeze(2)
+        z_ones = torch.ones(sobelx.shape)
+        normals = torch.cat((-sobelx, -sobely, -z_ones), dim=2)
+        normals_norms = torch.norm(normals, dim=2).unsqueeze(dim=2)
+        normals = normals / normals_norms
+
+        img = normals.numpy() * 255
+        img[:, :, 2] = -img[:, :, 2]
+        cv.imwrite('work/normals_sobel_normals_colors_fixed.png', img)
+
+        # def diff_normal_from_depth_data(focal_length, depth_data_map, smoothed: bool = False, sigma: float = 1.0):
+        #     # Could be also done from reprojected data, but this seems to be correct and more straghtforward
+        #     to_grad = depth_data_map
+        #     gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(to_grad, smoothed=smoothed, sigma=sigma)
+        #     gradient_dzdx = (gradient_dzdx * 30000).unsqueeze(dim=4)
+        #     gradient_dzdy = (gradient_dzdy * 30000).unsqueeze(dim=4)
+        #     z_ones = torch.ones(gradient_dzdy.shape)
+        #     normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
+        #     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
+        #     normals = normals / normals_norms
+        #
+        #     return normals
 
 
 if __name__ == "__main__":
@@ -406,7 +456,9 @@ if __name__ == "__main__":
     start_time = time.time()
     print("clock started")
 
-    svd_normals()
+    #svd_normals()
+    #save_diff_normals_different_windows()
+    sobel_normals_5x5()
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
