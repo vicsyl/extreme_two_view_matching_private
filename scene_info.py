@@ -2,6 +2,10 @@ import numpy as np
 from dataclasses import dataclass
 
 
+"""
+Classes to read info about the data sets (info about matching pairs of images, cameras and points in the images)
+"""
+
 @dataclass
 class ImagePairEntry:
     img1: str
@@ -123,16 +127,6 @@ def read_cameras(scene):
         principal_point_y = int(bits[6])
         distortion = float(bits[7])
         camera_map[id] = CameraEntry(id, model, (height, width), focal_length, (principal_point_x, principal_point_y), distortion)
-
-        #     {
-        #     "model": model,
-        #     "width": width,
-        #     "height": height,
-        #     "focal_length": focal_length,
-        #     "principal_point_x": principal_point_x,
-        #     "principal_point_y": principal_point_y,
-        #     "distortion": distortion,
-        # }
 
     f.close()
     return camera_map

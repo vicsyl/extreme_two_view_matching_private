@@ -1,4 +1,7 @@
 .idea
 original_dataset
 work
+depth_data
+sent
 .DS_Store
+*.pyc

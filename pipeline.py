@@ -4,18 +4,34 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 
+
 """
-    DISCLAIMER: this function was taken from templates (.py files or jupyter notebooks) 
-    for the tasks for the MPV course taken by me (Vaclav Vavra) in the spring semester 2020.
+These functions find correspondences using various feature descriptors
+and then by finding a transformation homography using RANSAC.
+When found, the correspondences are the examined and compared with the dataset info
+- it checks whether some of the matched features actually correspond to same identified
+points in both images
+- I also want to check whether the homography correspond to the correct relative posed 
+   - this also can be checked against the dataset info and it's still to be done
+   
+Problems:
+- during the implementation I actually realized that homographies would typically only 
+find matches between corresponding planes. I can either match using multiple homographies 
+or employ some means to estimate epipolar geometry       
 """
+
+
+"""
+DISCLAIMER: some of these functions were implemented by me (Vaclav Vavra)
+during the MPV course in spring semester 2020, mostly with the help
+of the provided template.
+"""
+
+
 def decolorize(img):
     return cv.cvtColor(cv.cvtColor(img,cv.COLOR_RGB2GRAY), cv.COLOR_GRAY2RGB)
 
 
-"""
-    DISCLAIMER: this function was taken from templates (.py files or jupyter notebooks) 
-    for the tasks for the MPV course taken by me (Vaclav Vavra) in the spring semester 2020.
-"""
 def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
     h, w, ch = img1.shape
     pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
@@ -176,12 +192,6 @@ def match_image_pair(img_pair, images_info, descriptor, show=True):
     print("Image pair: {}x{}:".format(img_pair.img1, img_pair.img2))
     print("Number of correspondences: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
     print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
-
-    # TODO CONTINUE2
-    # verify pose - this seems to be difficult, up next...
-    # a = images_info[img_pair.img1].qs
-    # b = images_info[img_pair.img1].t
-    # c = H
 
 
 def img_correspondences(scene_name, descriptor=cv.SIFT_create(), difficulties = set(range(18)), limit=None):
