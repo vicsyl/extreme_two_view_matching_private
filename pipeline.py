@@ -45,7 +45,7 @@ def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
                    matchesMask = matches_mask, # draw only inliers
                    flags = 20)
     img_out = cv.drawMatches(decolorize(img1), kps1, img2_tr, kps2, tentative_matches, None, **draw_params)
-    plt.figure(figsize=(20, 10))
+    plt.figure()
     plt.title("Matches with estimated homography")
     plt.imshow(img_out)
     plt.show()

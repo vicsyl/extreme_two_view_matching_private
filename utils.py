@@ -1,3 +1,8 @@
+import torch
+import numpy as np
+import os
+
+
 def get_files(dir, suffix, limit=None):
     filenames = [filename for filename in sorted(os.listdir(dir)) if filename.endswith(suffix)]
     if limit is not None:
@@ -17,3 +22,7 @@ def read_depth_data_np(directory, limit=None):
         data_map[filename[:-4]] = depth_data
 
     return data_map
+
+
+def get_depth_data_file_names(directory, limit=None):
+    return [filename for filename in get_files(directory, ".npy", limit)]

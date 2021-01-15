@@ -7,6 +7,7 @@ from scene_info import read_cameras, read_images
 from image_processing import spatial_gradient_first_order
 from tests import *
 from utils import *
+import matplotlib.pyplot as plt
 
 import spherical_kmeans
 
@@ -156,7 +157,7 @@ def svd_normals():
     images = read_images("scene1")
     reprojected_data = reproject(depth_data_map, cameras, images)
     #reprojected_data = reproject_test_simple_planes(depth_data_map, cameras, images)
-    test_reproject_project(depth_data_map, cameras, images, reprojected_data)
+    test_reproject_project_old(depth_data_map, cameras, images, reprojected_data)
 
     for file_name in depth_data_map:
 
@@ -214,137 +215,94 @@ def diff_normal_from_depth_data(focal_length, depth_data_map, mask=torch.tensor(
     return normals
 
 
-def save_diff_normals(normals, img_file_name, start_time, camera, reprojected_data, out_suffix):
-
-    focal_length = camera.focal_length
-    principal_point_x = camera.principal_point_x_y[0]
-    principal_point_y = camera.principal_point_x_y[0]
-
-    end_time = time.time()
-    print("done. Elapsed time: {}".format(end_time - start_time))
+def show_and_save_normals(normals, title, img_file_name=None, save=False):
     img = normals[0, 0].numpy() * 255
     img[:, :, 2] = -img[:, :, 2]
-    cv.imwrite('work/normals_diff_normals_colors_fixed_{}.png'.format(out_suffix), img)
 
-    # img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_file_name))
-    # counter = 0
-    # for y in range(0, 1920, 20):
-    #     for x in range(0, 1080, 20):
-    #         counter = counter + 1
-    #         X = reprojected_data[0, :, y, x]
-    #
-    #         to_project = X # + normals[0, 0, y, x] / focal_length
-    #         u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
-    #         v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
-    #         color = normals[0, 0, y, x].tolist()
-    #         if counter % 100 == 0:
-    #             print("Drawing {}, {}".format(y, x))
-    #         cv.line(img, (x, y), (int(u), int(v)), color=(255, 255, 255), thickness=1)
-    #
-    # cv.imwrite('work/normals_diff_normals_fixed_{}.png'.format(out_suffix), img)
-
-    end_time = time.time()
-    print("Elapsed time: {}".format(end_time - start_time))
+    img_to_show = np.absolute(img.astype(dtype=np.int8))
+    plt.figure()
+    plt.title(title)
+    plt.imshow(img_to_show)
+    plt.show()
+    if save:
+        cv.imwrite(img_file_name, img)
+        cv.imwrite("{}_int.png".format(img_file_name[:-4]), img_to_show)
 
 
-def save_diff_normals_different_windows():
+def save_diff_normals_different_windows(scene: str, limit=1, save=False):
 
-    depth_data_map = read_depth_data_np("depth_data/mega_depth/scene1", limit=1)
+    directory = "depth_data/mega_depth/{}".format(scene)
+    file_names = get_depth_data_file_names(directory, limit)
 
-    end_time = time.time()
-    print("done. Elapsed time: {}".format(end_time - start_time))
+    cameras = read_cameras(scene)
+    images = read_images(scene)
 
-    cameras = read_cameras("scene1")
-    images = read_images("scene1")
+    for depth_data_file_name in file_names: # depth_data_maps:
 
-    end_time = time.time()
-    print("done. Elapsed time: {}".format(end_time - start_time))
-
-    reprojected_data = reproject(depth_data_map, cameras, images)
-    test_reproject_project(depth_data_map, cameras, images, reprojected_data)
-
-    end_time = time.time()
-    print("done. Elapsed time: {}".format(end_time - start_time))
-
-    single_file = next(iter(depth_data_map))
-    camera_id = images[single_file].camera_id
-    camera = cameras[camera_id]
-    focal_length = camera.focal_length
-    width = camera.height_width[1]
-    height = camera.height_width[0]
-
-    end_time = time.time()
-    print("done. Elapsed time: {}".format(end_time - start_time))
-
-    depth_data_single_file = depth_data_map[single_file]
-    depth_data_single_file = upsample_depth_data(depth_data_single_file, (height, width))
-
-    end_time = time.time()
-    print("done. Elapsed time: {}".format(end_time - start_time))
-
-    #mask = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0, -0.5, -0.5, -0.5, -0.5]]).float()
-    mask = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
-                          0.5, 0.5, 0.5, 0.5, 0.5,
-                          0,
-                          -0.5, -0.5, -0.5, -0.5, -0.5,
-                          -0.5, -0.5, -0.5, -0.5, -0.5,
-                          ]]).float()
-
-    normals_modes = [
-        diff_normal_from_depth_data(focal_length, depth_data_single_file, mask=mask),
-        # diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 1.0),
-        # diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 3.0),
-        # diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 5.0),
-        # diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 7.0),
-        # diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 9.0),
-        # diff_normal_from_depth_data(focal_length, depth_data_single_file, True, 11.0),
-        ]
-    out_suffixes = [
-        "unsmoothed",
-        "sigma_1",
-        "sigma_3",
-        "sigma_5",
-        "sigma_7",
-        "sigma_9",
-        "sigma_11",
-    ]
-
-    for idx, normals in enumerate(normals_modes):
-        save_diff_normals(normals, single_file, start_time, camera, reprojected_data, out_suffixes[idx])
-
-
-def sobel_normals_5x5():
-
-    depth_data_map = read_depth_data_np("depth_data/mega_depth/scene1", limit=2)
-
-    cameras = read_cameras("scene1")
-    images = read_images("scene1")
-
-    # reprojected_data = reproject(depth_data_map, cameras, images)
-    # test_reproject_project(depth_data_map, cameras, images, reprojected_data)
-
-    for file_name in depth_data_map:
-        #single_file = next(iter(depth_data_map))
-        camera_id = images[file_name].camera_id
+        camera_id = images[depth_data_file_name[0:-4]].camera_id
         camera = cameras[camera_id]
         focal_length = camera.focal_length
+        width = camera.height_width[1]
+        height = camera.height_width[0]
+
+        depth_data_np = np.load('{}/{}'.format(directory, depth_data_file_name))
+        depth_data_map = torch.from_numpy(depth_data_np)
+        depth_data_map = upsample_depth_data(depth_data_map, (height, width))
+
+        mask = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
+                              0.5, 0.5, 0.5, 0.5, 0.5,
+                              0,
+                              -0.5, -0.5, -0.5, -0.5, -0.5,
+                              -0.5, -0.5, -0.5, -0.5, -0.5,
+                              ]]).float()
+
+        normals_params_list = [
+            (False, None, "unsmoothed"),
+            (True, 1.0, "sigma_1"),
+            (True, 3.0, "sigma_3"),
+            (True, 5.0, "sigma_5"),
+            (True, 7.0, "sigma_7"),
+            (True, 9.0, "sigma_9"),
+            (True, 11.0, "sigma_11"),
+            ]
+
+        for idx, params in enumerate(normals_params_list):
+            smoothed, sigma, param_str = params
+            normals = diff_normal_from_depth_data(focal_length, depth_data_map, mask=mask, smoothed=smoothed, sigma=sigma)
+            file_name = 'work/normals_diff_normals_colors_fixed_{}_{}.png'.format(param_str, depth_data_file_name)
+            title = "normals big mask - {} - {}".format(param_str, depth_data_file_name)
+            show_and_save_normals(normals, title, file_name, save=save)
+
+
+def sobel_normals_5x5(scene: str, limit=None):
+
+    # TODO just filenames
+    depth_data_map = read_depth_data_np("depth_data/mega_depth/{}".format(scene), limit=limit)
+
+    cameras = read_cameras(scene)
+    images = read_images(scene)
+
+    for file_name in depth_data_map:
+        camera_id = images[file_name].camera_id
+        camera = cameras[camera_id]
         width = camera.height_width[1]
         height = camera.height_width[0]
 
         depth_data = depth_data_map[file_name]
         depth_data = upsample_depth_data(depth_data, (height, width))
 
+        # sobel 5x5 - imput numpy, output numpy, mask unknown
+        # normals: (u, v, n_x, n_y, n_z)
         cv_img = depth_data.squeeze(dim=0).squeeze(0).unsqueeze(2).numpy()
-
         sobelx = cv.Sobel(cv_img, cv.CV_64F, 1, 0, ksize=5)
         sobely = cv.Sobel(cv_img, cv.CV_64F, 0, 1, ksize=5)
-
         sobelx = (torch.from_numpy(sobelx) * 50).unsqueeze(2)
         sobely = (torch.from_numpy(sobely) * 50).unsqueeze(2)
         z_ones = torch.ones(sobelx.shape)
         normals = torch.cat((-sobelx, -sobely, -z_ones), dim=2)
         normals_norms = torch.norm(normals, dim=2).unsqueeze(dim=2)
         normals = normals / normals_norms
+
 
         img = normals.numpy() * 255
         img[:, :, 2] = -img[:, :, 2]
@@ -368,9 +326,10 @@ if __name__ == "__main__":
     start_time = time.time()
     print("clock started")
 
-    #svd_normals()
-    save_diff_normals_different_windows()
-    #sobel_normals_5x5()
+    save_diff_normals_different_windows(scene="scene1", limit=3, save=True)
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
+
+    #svd_normals()
+    #sobel_normals_5x5()

@@ -1,4 +1,5 @@
 import torch
+from resize import upsample
 
 '''
 This was to test svd_normal_from_reprojected - this would return the reprojected data points
@@ -46,7 +47,36 @@ def reproject_test_simple_planes(depth_data_map, cameras, images):
     return ret
 
 
-def test_reproject_project(depth_data_map, cameras, images, reprojected_data):
+def test_reproject_project(depth_data_file, cameras, images, reprojected_data):
+
+    camera_id = images[depth_data_file].camera_id
+    camera = cameras[camera_id]
+    focal_point_length = camera.focal_length
+    width = camera.height_width[1]
+    height = camera.height_width[0]
+    principal_point_x = camera.principal_point_x_y[0]
+    principal_point_y = camera.principal_point_x_y[1]
+
+    xs = reprojected_data[0] / reprojected_data[2]
+    ys = reprojected_data[1] / reprojected_data[2]
+
+    width_linspace = torch.linspace(0 - principal_point_x, width - 1 - principal_point_x, steps=width) / focal_point_length
+    height_linspace = torch.linspace(0 - principal_point_y, height - 1 - principal_point_y, steps=height) / focal_point_length
+
+    grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
+
+    diff_y = ys - grid_y
+    norm_y = torch.norm(diff_y)
+    diff_x = xs - grid_x
+    norm_x = torch.norm(diff_x)
+
+    assert norm_x.item() < 0.1
+    assert norm_y.item() < 0.1
+
+    print("test_reproject_project ok")
+
+
+def test_reproject_project_old(depth_data_map, cameras, images, reprojected_data):
 
     for dict_idx, depth_data_file in enumerate(depth_data_map):
 
