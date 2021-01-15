@@ -29,3 +29,4 @@ def upsample(depth_data, height, width):
     depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
     upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
     depth_data = upsampling(depth_data)
+    return depth_data

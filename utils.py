@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import os
-
+from resize import upsample
 
 def get_files(dir, suffix, limit=None):
     filenames = [filename for filename in sorted(os.listdir(dir)) if filename.endswith(suffix)]
@@ -26,3 +26,11 @@ def read_depth_data_np(directory, limit=None):
 
 def get_depth_data_file_names(directory, limit=None):
     return [filename for filename in get_files(directory, ".npy", limit)]
+
+
+def read_depth_data(filename, directory, height, width):
+
+    depth_data_np = np.load('{}/{}'.format(directory, filename))
+    depth_data = torch.from_numpy(depth_data_np)
+    depth_data = upsample(depth_data, height, width)
+    return depth_data

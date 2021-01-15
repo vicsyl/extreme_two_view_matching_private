@@ -95,6 +95,8 @@ def svd_normal_from_reprojected(reprojected_data, coord, window_size=5):
 
     return normal
 
+
+#TODO remove - logic moved to resize.upsample
 def upsample_depth_data(depth_data, shape_h_w):
 
     (height, width) = shape_h_w
@@ -102,7 +104,6 @@ def upsample_depth_data(depth_data, shape_h_w):
     upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
     depth_data = upsampling(depth_data)
     return depth_data
-
 
 
 def reproject(depth_data_map, cameras, images):
@@ -200,11 +201,11 @@ def svd_normals():
             cv.imwrite('work/{}_normals_svd_window_size_{}.jpg'.format(file_name, window_size), img)
 
 
-def diff_normal_from_depth_data(focal_length, depth_data_map, mask=torch.tensor([[0.5, 0, -0.5]]).float(), smoothed: bool=False, sigma: float=1.0):
+# TODO centralize the logic around the "factor"
+def diff_normal_from_depth_data(focal_length, depth_data, mask=torch.tensor([[0.5, 0, -0.5]]).float(), smoothed: bool=False, sigma: float=1.0):
 
-    # Could be also done from reprojected data, but this seems to be correct and more straghtforward
-    to_grad = depth_data_map
-    gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(to_grad, mask=mask, smoothed=smoothed, sigma=sigma)
+    # Could be also done from reprojected data, but this seems to be correct and more straightforward
+    gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
     gradient_dzdx = (gradient_dzdx * (focal_length / 30)).unsqueeze(dim=4)
     gradient_dzdy = (gradient_dzdy * (focal_length / 30)).unsqueeze(dim=4)
     z_ones = torch.ones(gradient_dzdy.shape)
@@ -215,8 +216,27 @@ def diff_normal_from_depth_data(focal_length, depth_data_map, mask=torch.tensor(
     return normals
 
 
-def show_and_save_normals(normals, title, img_file_name=None, save=False):
-    img = normals[0, 0].numpy() * 255
+# TODO centralize the logic around the "factor"
+def normal_from_sobel_and_depth_data(depth_data, size):
+
+    # sobel size x size - imput numpy, output numpy, mask unknown
+    # normals: (u, v, n_x, n_y, n_z)
+    cv_img = depth_data.squeeze(dim=0).squeeze(0).unsqueeze(2).numpy()
+    sobelx = cv.Sobel(cv_img, cv.CV_64F, 1, 0, ksize=size)
+    sobely = cv.Sobel(cv_img, cv.CV_64F, 0, 1, ksize=size)
+    sobelx = (torch.from_numpy(sobelx) * 50).unsqueeze(2)
+    sobely = (torch.from_numpy(sobely) * 50).unsqueeze(2)
+    z_ones = torch.ones(sobelx.shape)
+    normals = torch.cat((-sobelx, -sobely, -z_ones), dim=2)
+    normals_norms = torch.norm(normals, dim=2).unsqueeze(dim=2)
+    normals = normals / normals_norms
+    return normals
+
+
+def show_and_save_normals(normals, title, img_file_name=None, save=False, cluster=False):
+    if len(normals.shape) == 5:
+        normals = normals.squeeze(dim=0).squeeze(dim=0)
+    img = normals.numpy() * 255
     img[:, :, 2] = -img[:, :, 2]
 
     img_to_show = np.absolute(img.astype(dtype=np.int8))
@@ -228,8 +248,30 @@ def show_and_save_normals(normals, title, img_file_name=None, save=False):
         cv.imwrite(img_file_name, img)
         cv.imwrite("{}_int.png".format(img_file_name[:-4]), img_to_show)
 
+    if cluster:
+        cluster_centers, arg_mins = spherical_kmeans.kmeans(normals)
+        print("cluster centers: {}".format(cluster_centers))
 
-def save_diff_normals_different_windows(scene: str, limit=1, save=False):
+        img[:, :, 0][arg_mins == 0] = 255
+        img[:, :, 0][arg_mins != 0] = 0
+        img[:, :, 1][arg_mins == 1] = 255
+        img[:, :, 1][arg_mins != 1] = 0
+        img[:, :, 2][arg_mins == 2] = 255
+        img[:, :, 2][arg_mins != 2] = 0
+
+        #TODO not consistent with the previous logic
+        #img_to_show = np.absolute(img.astype(dtype=np.int8))
+        img_to_show = img
+        plt.figure()
+        plt.title("{}_clusters".format(title))
+        plt.imshow(img_to_show)
+        plt.show()
+
+        if save:
+            cv.imwrite("{}_clusters.png".format(img_file_name[:-4]), img)
+
+
+def save_diff_normals_different_windows(scene: str, limit, save, cluster):
 
     directory = "depth_data/mega_depth/{}".format(scene)
     file_names = get_depth_data_file_names(directory, limit)
@@ -237,7 +279,7 @@ def save_diff_normals_different_windows(scene: str, limit=1, save=False):
     cameras = read_cameras(scene)
     images = read_images(scene)
 
-    for depth_data_file_name in file_names: # depth_data_maps:
+    for depth_data_file_name in file_names:
 
         camera_id = images[depth_data_file_name[0:-4]].camera_id
         camera = cameras[camera_id]
@@ -245,9 +287,7 @@ def save_diff_normals_different_windows(scene: str, limit=1, save=False):
         width = camera.height_width[1]
         height = camera.height_width[0]
 
-        depth_data_np = np.load('{}/{}'.format(directory, depth_data_file_name))
-        depth_data_map = torch.from_numpy(depth_data_np)
-        depth_data_map = upsample_depth_data(depth_data_map, (height, width))
+        depth_data = read_depth_data(depth_data_file_name, directory, height, width)
 
         mask = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
                               0.5, 0.5, 0.5, 0.5, 0.5,
@@ -268,57 +308,34 @@ def save_diff_normals_different_windows(scene: str, limit=1, save=False):
 
         for idx, params in enumerate(normals_params_list):
             smoothed, sigma, param_str = params
-            normals = diff_normal_from_depth_data(focal_length, depth_data_map, mask=mask, smoothed=smoothed, sigma=sigma)
+            normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
             file_name = 'work/normals_diff_normals_colors_fixed_{}_{}.png'.format(param_str, depth_data_file_name)
             title = "normals big mask - {} - {}".format(param_str, depth_data_file_name)
-            show_and_save_normals(normals, title, file_name, save=save)
+            show_and_save_normals(normals, title, file_name, save=save, cluster=cluster)
 
 
-def sobel_normals_5x5(scene: str, limit=None):
+def sobel_normals_5x5(scene: str, limit, save, cluster):
 
-    # TODO just filenames
-    depth_data_map = read_depth_data_np("depth_data/mega_depth/{}".format(scene), limit=limit)
+    directory = "depth_data/mega_depth/{}".format(scene)
+    file_names = get_depth_data_file_names(directory, limit)
 
     cameras = read_cameras(scene)
     images = read_images(scene)
 
-    for file_name in depth_data_map:
-        camera_id = images[file_name].camera_id
+    for file_name in file_names:
+        camera_id = images[file_name[:-4]].camera_id
         camera = cameras[camera_id]
         width = camera.height_width[1]
         height = camera.height_width[0]
 
-        depth_data = depth_data_map[file_name]
-        depth_data = upsample_depth_data(depth_data, (height, width))
+        depth_data = read_depth_data(file_name, directory, height, width)
 
-        # sobel 5x5 - imput numpy, output numpy, mask unknown
-        # normals: (u, v, n_x, n_y, n_z)
-        cv_img = depth_data.squeeze(dim=0).squeeze(0).unsqueeze(2).numpy()
-        sobelx = cv.Sobel(cv_img, cv.CV_64F, 1, 0, ksize=5)
-        sobely = cv.Sobel(cv_img, cv.CV_64F, 0, 1, ksize=5)
-        sobelx = (torch.from_numpy(sobelx) * 50).unsqueeze(2)
-        sobely = (torch.from_numpy(sobely) * 50).unsqueeze(2)
-        z_ones = torch.ones(sobelx.shape)
-        normals = torch.cat((-sobelx, -sobely, -z_ones), dim=2)
-        normals_norms = torch.norm(normals, dim=2).unsqueeze(dim=2)
-        normals = normals / normals_norms
+        mask_size=5
+        normals = normal_from_sobel_and_depth_data(depth_data, size=mask_size)
 
-
-        img = normals.numpy() * 255
-        img[:, :, 2] = -img[:, :, 2]
-        cv.imwrite('work/{}_normals_sobel_normals_colors_fixed.png'.format(file_name), img)
-
-        cluster_centers, arg_mins = spherical_kmeans.kmeans(normals)
-        img[:, :, 0][arg_mins == 0] = 255
-        img[:, :, 0][arg_mins != 0] = 0
-        img[:, :, 1][arg_mins == 1] = 255
-        img[:, :, 1][arg_mins != 1] = 0
-        img[:, :, 2][arg_mins == 2] = 255
-        img[:, :, 2][arg_mins != 2] = 0
-
-        print("cluster centers: {}".format(cluster_centers))
-
-        cv.imwrite('work/{}_normals_sobel_normals_clusters_2.png'.format(file_name), img)
+        file_name ='work/{}_normals_sobel_normals_colors_fixed.png'.format(file_name)
+        title = "normals sobel {}x{} - {}".format(mask_size, mask_size, file_name[:-4])
+        show_and_save_normals(normals, title, file_name, save=save, cluster=cluster)
 
 
 if __name__ == "__main__":
@@ -326,10 +343,8 @@ if __name__ == "__main__":
     start_time = time.time()
     print("clock started")
 
-    save_diff_normals_different_windows(scene="scene1", limit=3, save=True)
+    save_diff_normals_different_windows(scene="scene1", limit=2, save=True, cluster=True)
+    sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
-
-    #svd_normals()
-    #sobel_normals_5x5()
