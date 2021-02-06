@@ -25,7 +25,7 @@ def read_depth_data_np(directory, limit=None):
 
 
 def get_depth_data_file_names(directory, limit=None):
-    return [filename for filename in get_files(directory, ".npy", limit)]
+    return get_files(directory, ".npy", limit)
 
 
 def read_depth_data(filename, directory, height, width):

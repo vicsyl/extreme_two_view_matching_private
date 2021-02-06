@@ -39,8 +39,17 @@ class CameraEntry:
     model: str
     height_width: (int, int)
     focal_length: float
+    # TODO it's never used as a tuple.... ( -> principal_point_x, principal_point_y)
     principal_point_x_y: (int, int)
     distortion: float
+
+    def get_K(self):
+        K = np.array([
+            [self.focal_length,                 0, self.principal_point_x_y[0]],
+            [                0, self.focal_length, self.principal_point_x_y[1]],
+            [                0,                 0,                          1]
+        ])
+        return K
 
 
 def read_image_pairs(scene):

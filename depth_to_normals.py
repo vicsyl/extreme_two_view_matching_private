@@ -236,7 +236,7 @@ def normal_from_sobel_and_depth_data(depth_data, size):
 def show_and_save_normals(normals, title, img_file_name=None, save=False, cluster=False):
     if len(normals.shape) == 5:
         normals = normals.squeeze(dim=0).squeeze(dim=0)
-    img = normals.numpy() * 255
+        img = normals.numpy() * 255
     img[:, :, 2] = -img[:, :, 2]
 
     img_to_show = np.absolute(img.astype(dtype=np.int8))
@@ -249,11 +249,19 @@ def show_and_save_normals(normals, title, img_file_name=None, save=False, cluste
         cv.imwrite("{}_int.png".format(img_file_name[:-4]), img_to_show)
 
     if cluster:
-        cluster_centers, arg_mins = spherical_kmeans.kmeans(normals)
-        print("cluster centers: {}".format(cluster_centers))
+        clustered_normals, arg_mins = spherical_kmeans.kmeans(normals)
+        print("clustered normals: {}".format(clustered_normals))
 
-        img[:, :, 0][arg_mins == 0] = 255
-        img[:, :, 0][arg_mins != 0] = 0
+        # for enabled_color in range(3):
+        #     for color in range(3):
+        #         if color == enabled_color:
+        #             img[:, :, color][arg_mins == color] = 255
+        #         else:
+        #             img[:, :, color][arg_mins == color] = 0
+        #         img[:, :, color][arg_mins != color] = 0
+
+        img[:, :, 1][arg_mins == 0] = 255
+        img[:, :, 1][arg_mins != 0] = 0
         img[:, :, 1][arg_mins == 1] = 255
         img[:, :, 1][arg_mins != 1] = 0
         img[:, :, 2][arg_mins == 2] = 255
@@ -263,12 +271,16 @@ def show_and_save_normals(normals, title, img_file_name=None, save=False, cluste
         #img_to_show = np.absolute(img.astype(dtype=np.int8))
         img_to_show = img
         plt.figure()
+        #plt.title("{}_clusters_{}".format(title, enabled_color))
         plt.title("{}_clusters".format(title))
         plt.imshow(img_to_show)
         plt.show()
 
         if save:
             cv.imwrite("{}_clusters.png".format(img_file_name[:-4]), img)
+            cv.imwrite("{}_clusters_indices.png".format(img_file_name[:-4]), arg_mins.numpy().astype(dtype=np.int8))
+            np.savetxt('{}_clusters_normals.txt'.format(img_file_name), clustered_normals.numpy(), delimiter=',', fmt='%1.8f')
+
 
 
 def save_diff_normals_different_windows(scene: str, limit, save, cluster):
@@ -281,6 +293,7 @@ def save_diff_normals_different_windows(scene: str, limit, save, cluster):
 
     for depth_data_file_name in file_names:
 
+        print("Processing: {}".format(depth_data_file_name))
         camera_id = images[depth_data_file_name[0:-4]].camera_id
         camera = cameras[camera_id]
         focal_length = camera.focal_length
@@ -297,12 +310,12 @@ def save_diff_normals_different_windows(scene: str, limit, save, cluster):
                               ]]).float()
 
         normals_params_list = [
-            (False, None, "unsmoothed"),
-            (True, 1.0, "sigma_1"),
-            (True, 3.0, "sigma_3"),
-            (True, 5.0, "sigma_5"),
-            (True, 7.0, "sigma_7"),
-            (True, 9.0, "sigma_9"),
+            # (False, None, "unsmoothed"),
+            # (True, 1.0, "sigma_1"),
+            # (True, 3.0, "sigma_3"),
+            # (True, 5.0, "sigma_5"),
+            # (True, 7.0, "sigma_7"),
+            # (True, 9.0, "sigma_9"),
             (True, 11.0, "sigma_11"),
             ]
 
@@ -343,8 +356,8 @@ if __name__ == "__main__":
     start_time = time.time()
     print("clock started")
 
-    save_diff_normals_different_windows(scene="scene1", limit=2, save=True, cluster=True)
-    sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
+    save_diff_normals_different_windows(scene="scene1", limit=5, save=True, cluster=True)
+    #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
