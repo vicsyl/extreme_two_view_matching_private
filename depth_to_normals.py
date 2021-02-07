@@ -232,7 +232,13 @@ def normal_from_sobel_and_depth_data(depth_data, size):
     return normals
 
 
-def show_and_save_normals(normals, title, file_name_prefix=None, save=False, cluster=False, angle_threshold=4*math.pi/9):
+def show_and_save_normals(normals,
+                          title,
+                          file_name_prefix=None,
+                          save=False,
+                          cluster=False,
+                          angle_threshold=4*math.pi/9):
+
     if len(normals.shape) == 5:
         normals = normals.squeeze(dim=0).squeeze(dim=0)
         img = normals.numpy() * 255
@@ -254,12 +260,13 @@ def show_and_save_normals(normals, title, file_name_prefix=None, save=False, clu
         dot_product = torch.sum(normals * minus_z_direction, dim=-1)
         threshold = math.cos(angle_threshold)
         filtered = torch.where(dot_product >= threshold, 1, 0)
+        #filtered[0:960, 0:350] = 0
 
         clustered_normals, arg_mins = spherical_kmeans.kmeans(normals, filtered)
         print("clustered normals: {}".format(clustered_normals))
 
-        img[:, :, 1][arg_mins == 0] = 255
-        img[:, :, 1][arg_mins != 0] = 0
+        img[:, :, 0][arg_mins == 0] = 255
+        img[:, :, 0][arg_mins != 0] = 0
         img[:, :, 1][arg_mins == 1] = 255
         img[:, :, 1][arg_mins != 1] = 0
         img[:, :, 2][arg_mins == 2] = 255
@@ -313,7 +320,7 @@ def save_diff_normals_different_windows(scene: str, limit, save, cluster):
         normals_params_list = [
             #(False, None, "unsmoothed"),
             #(True, 1.0, "sigma_1"),
-            (True, 3.0, "sigma_3"),
+            #(True, 3.0, "sigma_3"),
             (True, 5.0, "sigma_5"),
             #(True, 7.0, "sigma_7"),
             #(True, 9.0, "sigma_9"),
@@ -360,7 +367,7 @@ if __name__ == "__main__":
     start_time = time.time()
     print("clock started")
 
-    save_diff_normals_different_windows(scene="scene1", limit=3, save=True, cluster=True)
+    save_diff_normals_different_windows(scene="scene1", limit=1, save=True, cluster=True)
     #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
 
     end_time = time.time()
