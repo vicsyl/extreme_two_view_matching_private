@@ -54,7 +54,7 @@ def kmeans(normals: torch.Tensor, filter, max_iter=20):
     arg_mins = mins[1].squeeze(0)
     filtered_arg_mins = torch.where(filter == 1, arg_mins, 3)
     mins = mins[0].squeeze(0)
-    arg_mins = torch.where(mins < 0.7, filtered_arg_mins, 3)
+    arg_mins = torch.where(mins < 0.6, filtered_arg_mins, 3)
 
     ret = cluster_centers[:, 0, 0, :], arg_mins
     return ret

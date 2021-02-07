@@ -260,6 +260,7 @@ def show_and_save_normals(normals,
         dot_product = torch.sum(normals * minus_z_direction, dim=-1)
         threshold = math.cos(angle_threshold)
         filtered = torch.where(dot_product >= threshold, 1, 0)
+        #naive sky filtering
         #filtered[0:960, 0:350] = 0
 
         clustered_normals, arg_mins = spherical_kmeans.kmeans(normals, filtered)
@@ -277,12 +278,14 @@ def show_and_save_normals(normals,
         img_to_show = img
         plt.figure()
         #plt.title("{}_clusters_{}".format(title, enabled_color))
-        plt.title("{}_clusters".format(title))
+        # TODO refactor
+        desc = "red={},\ngreen={},\nblue={}".format(clustered_normals[0], clustered_normals[1], clustered_normals[2] if len(clustered_normals) == 3 else "N/A")
+        plt.title(desc)
         plt.imshow(img_to_show)
+        plt.savefig("{}_clusters.jpg".format(file_name_prefix))
         plt.show()
 
         if save:
-            cv.imwrite("{}_clusters.jpg".format(file_name_prefix), img)
             cv.imwrite("{}_clusters_indices.png".format(file_name_prefix), arg_mins.numpy().astype(dtype=np.int8))
             np.savetxt('{}_clusters_normals.txt'.format(file_name_prefix), clustered_normals.numpy(), delimiter=',', fmt='%1.8f')
 
