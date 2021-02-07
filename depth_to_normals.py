@@ -1,6 +1,3 @@
-import numpy as np
-import os
-import torch
 import cv2 as cv
 import time
 from scene_info import read_cameras, read_images
@@ -10,6 +7,8 @@ from utils import *
 import matplotlib.pyplot as plt
 
 import spherical_kmeans
+from pathlib import Path
+
 
 """
 Functions in this file are supposed to compute normals from the
@@ -233,7 +232,7 @@ def normal_from_sobel_and_depth_data(depth_data, size):
     return normals
 
 
-def show_and_save_normals(normals, title, img_file_name=None, save=False, cluster=False):
+def show_and_save_normals(normals, title, file_name_prefix=None, save=False, cluster=False):
     if len(normals.shape) == 5:
         normals = normals.squeeze(dim=0).squeeze(dim=0)
         img = normals.numpy() * 255
@@ -245,20 +244,12 @@ def show_and_save_normals(normals, title, img_file_name=None, save=False, cluste
     plt.imshow(img_to_show)
     plt.show()
     if save:
-        cv.imwrite(img_file_name, img)
-        cv.imwrite("{}_int.png".format(img_file_name[:-4]), img_to_show)
+        cv.imwrite("{}.jpg".format(file_name_prefix), img)
+        cv.imwrite("{}_int.jpg".format(file_name_prefix), img_to_show)
 
     if cluster:
         clustered_normals, arg_mins = spherical_kmeans.kmeans(normals)
         print("clustered normals: {}".format(clustered_normals))
-
-        # for enabled_color in range(3):
-        #     for color in range(3):
-        #         if color == enabled_color:
-        #             img[:, :, color][arg_mins == color] = 255
-        #         else:
-        #             img[:, :, color][arg_mins == color] = 0
-        #         img[:, :, color][arg_mins != color] = 0
 
         img[:, :, 1][arg_mins == 0] = 255
         img[:, :, 1][arg_mins != 0] = 0
@@ -277,10 +268,13 @@ def show_and_save_normals(normals, title, img_file_name=None, save=False, cluste
         plt.show()
 
         if save:
-            cv.imwrite("{}_clusters.png".format(img_file_name[:-4]), img)
-            cv.imwrite("{}_clusters_indices.png".format(img_file_name[:-4]), arg_mins.numpy().astype(dtype=np.int8))
-            np.savetxt('{}_clusters_normals.txt'.format(img_file_name), clustered_normals.numpy(), delimiter=',', fmt='%1.8f')
+            cv.imwrite("{}_clusters.jpg".format(file_name_prefix), img)
+            np.save("{}_clusters_indices".format(file_name_prefix), arg_mins.numpy().astype(dtype=np.int8))
+            np.savetxt('{}_clusters_normals.txt'.format(file_name_prefix), clustered_normals.numpy(), delimiter=',', fmt='%1.8f')
 
+
+def get_depth_data_file_names(directory, limit=None):
+    return get_files(directory, ".npy", limit)
 
 
 def save_diff_normals_different_windows(scene: str, limit, save, cluster):
@@ -310,21 +304,22 @@ def save_diff_normals_different_windows(scene: str, limit, save, cluster):
                               ]]).float()
 
         normals_params_list = [
-            # (False, None, "unsmoothed"),
-            # (True, 1.0, "sigma_1"),
-            # (True, 3.0, "sigma_3"),
-            # (True, 5.0, "sigma_5"),
-            # (True, 7.0, "sigma_7"),
-            # (True, 9.0, "sigma_9"),
-            (True, 11.0, "sigma_11"),
+            #(False, None, "unsmoothed"),
+            #(True, 1.0, "sigma_1"),
+            (True, 3.0, "sigma_3"),
+            (True, 5.0, "sigma_5"),
+            #(True, 7.0, "sigma_7"),
+            #(True, 9.0, "sigma_9"),
+            #(True, 11.0, "sigma_11"),
             ]
 
         for idx, params in enumerate(normals_params_list):
             smoothed, sigma, param_str = params
             normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
-            file_name = 'work/normals_diff_normals_colors_fixed_{}_{}.png'.format(param_str, depth_data_file_name)
+            Path("work/{}/normals".format(scene)).mkdir(parents=True, exist_ok=True)
+            file_name_prefix = 'work/{}/normals/normals_diff_normals_colors_fixed_{}_{}'.format(scene, param_str, depth_data_file_name[:-4])
             title = "normals big mask - {} - {}".format(param_str, depth_data_file_name)
-            show_and_save_normals(normals, title, file_name, save=save, cluster=cluster)
+            show_and_save_normals(normals, title, file_name_prefix, save=save, cluster=cluster)
 
 
 def sobel_normals_5x5(scene: str, limit, save, cluster):
@@ -352,6 +347,8 @@ def sobel_normals_5x5(scene: str, limit, save, cluster):
 
 
 if __name__ == "__main__":
+
+
 
     start_time = time.time()
     print("clock started")

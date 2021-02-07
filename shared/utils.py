@@ -24,10 +24,6 @@ def read_depth_data_np(directory, limit=None):
     return data_map
 
 
-def get_depth_data_file_names(directory, limit=None):
-    return get_files(directory, ".npy", limit)
-
-
 def read_depth_data(filename, directory, height, width):
 
     depth_data_np = np.load('{}/{}'.format(directory, filename))
@@ -36,7 +32,7 @@ def read_depth_data(filename, directory, height, width):
     return depth_data
 
 
-def quaternions_to_R(qs: tuple):
+def quaternions_to_R(qs):
 
     q00 = qs[0] * qs[0]
     q11 = qs[1] * qs[1]

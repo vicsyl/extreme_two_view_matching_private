@@ -1,4 +1,3 @@
-import numpy as np
 from scene_info import *
 from utils import quaternions_to_R
 import cv2 as cv

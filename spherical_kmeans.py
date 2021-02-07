@@ -38,9 +38,10 @@ def kmeans(normals: torch.Tensor, max_iter=20):
         # arg_mins = torch.where(mins < 0.6, arg_mins, 3)
 
         if old_arg_mins is not None:
-            print("changes: {}".format(old_arg_mins[old_arg_mins != arg_mins].shape[0]))
-            if torch.all(torch.eq(old_arg_mins, arg_mins)):
-                quit = True
+            changes = old_arg_mins[old_arg_mins != arg_mins].shape[0]
+            print("changes: {}".format(changes))
+            if changes == 0:
+                break
 
         old_arg_mins = arg_mins
 
@@ -49,8 +50,6 @@ def kmeans(normals: torch.Tensor, max_iter=20):
             new_cluster = torch.sum(cluster_i_points, 0) / cluster_i_points.shape[0]
             new_cluster = new_cluster / torch.norm(new_cluster)
             cluster_centers[i, :, :, :] = new_cluster
-        if quit:
-            break
 
     for i in range(3):
         diffs = cluster_centers[:] - normals
