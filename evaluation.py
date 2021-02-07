@@ -3,6 +3,7 @@ from scene_info import *
 from utils import quaternions_to_R
 import cv2 as cv
 import math
+import time
 
 """
 DISCLAIMER: the following methods have been adopted from https://github.com/ducha-aiki/ransac-tutorial-2020-data:
@@ -207,4 +208,11 @@ def test_compare_poses():
 
 
 if __name__ == "__main__":
+
+    start = time.time()
+
     test_compare_poses()
+
+    print("All done")
+    end = time.time()
+    print("Time elapsed: {}".format(end - start))

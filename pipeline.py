@@ -74,22 +74,6 @@ def find_homography(tentative_matches, kps1, kps2, img1, img2, show=True):
     return H, inlier_mask
 
 
-def find_E(tentative_matches, kps1, kps2, img1, img2, K, show=True):
-
-    src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
-
-    # TODO threshold and prob params left to default values
-    E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K, cv.RANSAC)
-
-    # E, inlier_mask = findEssentialMat(points1, points2, cameraMatrix1, distCoeffs1, cameraMatrix2, distCoeffs2[, method[, prob[,
-    #                  threshold[, mask]]]]) -> retval, mask
-
-    if show:
-        draw_matches(kps1, kps2, tentative_matches, None, inlier_mask, img1, img2)
-
-    return E, inlier_mask
-
-
 def find_correspondences(descriptor, img1, img2, ratio_thresh=0.8, show=True):
 
     kps1, descs1 = descriptor.detectAndCompute(img1, None)
@@ -222,20 +206,14 @@ def match_image_pair(img_pair, images_info, descriptor, cameras, show=True):
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
     tentative_matches, kps1, kps2 = find_correspondences(descriptor, img1, img2, ratio_thresh=0.75, show=show)
-    #E, inlier_mask = find_E(tentative_matches, kps1, kps2, img1, img2, K_1, show=show)
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
     # TODO threshold and prob params left to default values
-    E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K, cv.RANSAC)
-    #E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K_1, None, K_2, None, cv.RANSAC)
+    E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K_1, None, K_2, None, cv.RANSAC)
 
     if show:
         draw_matches(kps1, kps2, tentative_matches, None, inlier_mask, img1, img2)
-
-    return E, inlier_mask
-
-
 
     unique = correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2, images_info, img_pair)
 
