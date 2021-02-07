@@ -4,6 +4,8 @@ from utils import quaternions_to_R
 import cv2 as cv
 import math
 import time
+import os
+
 
 """
 DISCLAIMER: the following methods have been adopted from https://github.com/ducha-aiki/ransac-tutorial-2020-data:
@@ -179,6 +181,9 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
 
     p1n = normalize_keypoints(pts1, K1).astype(np.float64)
     p2n = normalize_keypoints(pts2, K2).astype(np.float64)
+    # Q: this doesn't change the result!!!
+    # p1n = pts1
+    # p2n = pts2
 
     ang_errors = eval_essential_matrix(p1n, p2n, E, dR, dT)
     ang_errors_max = max(ang_errors)
@@ -187,31 +192,59 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     print("max error: {}".format(ang_errors_max))
 
 
-def test_compare_poses():
+def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
 
-    # E = np.array([
-    #     [0.02992817, 0.56223836, -0.18380981],
-    #     [-0.47956285, 0.02913080, -0.46642550],
-    #     [0.22033274, 0.38495511, 0.06393313],
-    # ])
+    dirs = [dirname for dirname in sorted(os.listdir(input_dir)) if os.path.isdir("{}/{}".format(input_dir, dirname))]
+    if limit is not None:
+        dirs = dirs[0:limit]
 
-    scene = "scene1"
-    scene_info = SceneInfo.read_scene(scene)
-    img_pair = scene_info.img_pairs[0][0]
-    print("img pair: {}".format(img_pair))
+    flattened_img_pairs = [pair for diff in scene_info.img_pairs for pair in diff]
+    img_pair_map = {"{}_{}".format(img_pair.img1, img_pair.img2): img_pair for img_pair in flattened_img_pairs}
 
-    template = "frame_0000001535_4_frame_0000000305_1"
-    E = np.loadtxt("work/{}/{}_essential_matrices.txt".format(scene, template), delimiter=',')
-    dst_pts = np.loadtxt("work/{}/{}_dst_pts.txt".format(scene, template), delimiter=',')
-    src_pts = np.loadtxt("work/{}/{}_src_pts.txt".format(scene, template), delimiter=',')
-    compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
+    for dir in dirs:
+
+        if not img_pair_map.__contains__(dir):
+            continue
+
+        whole_path = "{}/{}".format(input_dir, dir)
+
+        img_pair = img_pair_map[dir]
+        E = np.loadtxt("{}/essential_matrix.txt".format(whole_path), delimiter=',')
+        dst_pts = np.loadtxt("{}/dst_pts.txt".format(whole_path), delimiter=',')
+        src_pts = np.loadtxt("{}/src_pts.txt".format(whole_path), delimiter=',')
+        print("Evaluating: {}".format(dir))
+        compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
+
+
+# def test_compare_poses():
+#
+#     # E = np.array([
+#     #     [0.02992817, 0.56223836, -0.18380981],
+#     #     [-0.47956285, 0.02913080, -0.46642550],
+#     #     [0.22033274, 0.38495511, 0.06393313],
+#     # ])
+#
+#     scene = "scene1"
+#     scene_info = SceneInfo.read_scene(scene)
+#     img_pair = scene_info.img_pairs[0][0]
+#     print("img pair: {}".format(img_pair))
+#
+#     template = "frame_0000001535_4_frame_0000000305_1"
+#     E = np.loadtxt("work/{}/{}_essential_matrices.txt".format(scene, template), delimiter=',')
+#     dst_pts = np.loadtxt("work/{}/{}_dst_pts.txt".format(scene, template), delimiter=',')
+#     src_pts = np.loadtxt("work/{}/{}_src_pts.txt".format(scene, template), delimiter=',')
+#     compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
 
 
 if __name__ == "__main__":
 
     start = time.time()
 
-    test_compare_poses()
+    #test_compare_poses()
+
+    scene = "scene1"
+    scene_info = SceneInfo.read_scene(scene)
+    evaluate_all(scene_info, "work/{}/matching".format(scene), limit = None)
 
     print("All done")
     end = time.time()

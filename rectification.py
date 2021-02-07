@@ -2,7 +2,7 @@ import math
 import numpy as np
 import os
 import cv2 as cv
-from pipeline import decolorize
+from matching import decolorize
 from utils import get_files
 import matplotlib.pyplot as plt
 from scene_info import read_cameras

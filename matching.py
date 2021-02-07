@@ -3,7 +3,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 import time
-
+from pathlib import Path
 
 """
 These functions find correspondences using various feature descriptors
@@ -243,9 +243,12 @@ def img_correspondences(scene_name, descriptor, difficulties=set(range(18)), lim
             E, inlier_mask, src_pts, dst_pts = match_image_pair(img_pair, images_info, descriptor, cameras)
             src_pts_inliers = src_pts[inlier_mask[:, 0] == [1]]
             dst_pts_inliers = dst_pts[inlier_mask[:, 0] == [1]]
-            np.savetxt("work/{}/{}_{}_essential_matrices.txt".format(scene_name, img_pair.img1, img_pair.img2), E, delimiter=',', fmt='%1.8f')
-            np.savetxt("work/{}/{}_{}_src_pts.txt".format(scene_name, img_pair.img1, img_pair.img2), src_pts_inliers, delimiter=',', fmt='%1.8f')
-            np.savetxt("work/{}/{}_{}_dst_pts.txt".format(scene_name, img_pair.img1, img_pair.img2), dst_pts_inliers, delimiter=',', fmt='%1.8f')
+
+            dir = "work/{}/matching/{}_{}".format(scene_name, img_pair.img1, img_pair.img2)
+            Path(dir).mkdir(parents=True, exist_ok=True)
+            np.savetxt("{}/essential_matrix.txt".format(dir), E, delimiter=',', fmt='%1.8f')
+            np.savetxt("{}/src_pts.txt".format(dir), src_pts_inliers, delimiter=',', fmt='%1.8f')
+            np.savetxt("{}/dst_pts.txt".format(dir), dst_pts_inliers, delimiter=',', fmt='%1.8f')
 
 
 def main():
@@ -258,8 +261,8 @@ def main():
 
     # keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
 
-    limit = 1
-    difficulties = set(range(1))
+    limit = 4
+    difficulties = set(range(3))
     img_correspondences(scene_name, sift_descriptor, difficulties, limit)
 
     print("All done")
