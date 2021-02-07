@@ -232,7 +232,7 @@ def normal_from_sobel_and_depth_data(depth_data, size):
     return normals
 
 
-def show_and_save_normals(normals, title, file_name_prefix=None, save=False, cluster=False):
+def show_and_save_normals(normals, title, file_name_prefix=None, save=False, cluster=False, angle_threshold=4*math.pi/9):
     if len(normals.shape) == 5:
         normals = normals.squeeze(dim=0).squeeze(dim=0)
         img = normals.numpy() * 255
@@ -248,7 +248,14 @@ def show_and_save_normals(normals, title, file_name_prefix=None, save=False, clu
         cv.imwrite("{}_int.jpg".format(file_name_prefix), img_to_show)
 
     if cluster:
-        clustered_normals, arg_mins = spherical_kmeans.kmeans(normals)
+
+        minus_z_direction = torch.zeros(normals.shape)
+        minus_z_direction[:, :, 2] = -1.0
+        dot_product = torch.sum(normals * minus_z_direction, dim=-1)
+        threshold = math.cos(angle_threshold)
+        filtered = torch.where(dot_product >= threshold, 1, 0)
+
+        clustered_normals, arg_mins = spherical_kmeans.kmeans(normals, filtered)
         print("clustered normals: {}".format(clustered_normals))
 
         img[:, :, 1][arg_mins == 0] = 255
@@ -269,7 +276,7 @@ def show_and_save_normals(normals, title, file_name_prefix=None, save=False, clu
 
         if save:
             cv.imwrite("{}_clusters.jpg".format(file_name_prefix), img)
-            np.save("{}_clusters_indices".format(file_name_prefix), arg_mins.numpy().astype(dtype=np.int8))
+            cv.imwrite("{}_clusters_indices.png".format(file_name_prefix), arg_mins.numpy().astype(dtype=np.int8))
             np.savetxt('{}_clusters_normals.txt'.format(file_name_prefix), clustered_normals.numpy(), delimiter=',', fmt='%1.8f')
 
 
@@ -353,7 +360,7 @@ if __name__ == "__main__":
     start_time = time.time()
     print("clock started")
 
-    save_diff_normals_different_windows(scene="scene1", limit=5, save=True, cluster=True)
+    save_diff_normals_different_windows(scene="scene1", limit=3, save=True, cluster=True)
     #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
 
     end_time = time.time()
