@@ -52,6 +52,23 @@ class CameraEntry:
         return K
 
 
+@dataclass
+class SceneInfo:
+    img_pairs: list
+    img_info_map: dict
+    cameras: dict
+
+    @staticmethod
+    def read_scene(scene):
+        img_pairs = read_image_pairs(scene)
+        img_info_map = read_images(scene)
+        cameras = read_cameras(scene)
+        return SceneInfo(img_pairs, img_info_map, cameras)
+
+    def get_camera1_from_img_pair(self, img_pair: ImagePairEntry):
+        self.cameras[self.img_info_map[img_pair.img1].camera_id]
+
+
 def read_image_pairs(scene):
 
     file_name = "original_dataset/{}/{}_image_pairs.txt".format(scene, scene)
@@ -116,6 +133,7 @@ def read_images(scene):
     f.close()
     return image_map
 
+
 def read_cameras(scene):
 
     file_name = "original_dataset/{}/0/cameras.txt".format(scene)
@@ -141,9 +159,11 @@ def read_cameras(scene):
     return camera_map
 
 
-if __name__ == "__main__":
-
+def test():
     cameras = read_cameras("scene1")
     images = read_images("scene1")
     img_pairs = read_image_pairs("scene1")
     print("cameras and images read")
+
+if __name__ == "__main__":
+    test()

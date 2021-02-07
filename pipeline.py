@@ -35,8 +35,13 @@ def decolorize(img):
 def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
     h, w, ch = img1.shape
     pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
-    dst = cv.perspectiveTransform(pts, H)
-    img2_tr = cv.polylines(decolorize(img2), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
+
+    if H is not None:
+        dst = cv.perspectiveTransform(pts, H)
+        img2_tr = cv.polylines(decolorize(img2), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
+    else:
+        img2_tr = decolorize(img2)
+
     matches_mask = inlier_mask.ravel().tolist()
 
     # Blue is estimated homography
@@ -53,8 +58,8 @@ def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
 
 
 def split_points(tentative_matches, kps1, kps2):
-    src_pts = np.float32([ kps1[m.queryIdx].pt for m in tentative_matches ]).reshape(-1,2)
-    dst_pts = np.float32([ kps2[m.trainIdx].pt for m in tentative_matches ]).reshape(-1,2)
+    src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1,2)
+    dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1,2)
     return src_pts, dst_pts
 
 
@@ -67,6 +72,19 @@ def find_homography(tentative_matches, kps1, kps2, img1, img2, show=True):
         draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
 
     return H, inlier_mask
+
+
+def find_E(tentative_matches, kps1, kps2, img1, img2, K, show=True):
+
+    src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
+
+    # TODO threshold and prob params left to default values
+    E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K, cv.RANSAC)
+
+    if show:
+        draw_matches(kps1, kps2, tentative_matches, None, inlier_mask, img1, img2)
+
+    return E, inlier_mask
 
 
 def find_correspondences(descriptor, img1, img2, ratio_thresh=0.8, show=True):
@@ -179,36 +197,61 @@ def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_cre
                 break
 
 
-def match_image_pair(img_pair, images_info, descriptor, show=True):
+def match_image_pair(img_pair, images_info, descriptor, cameras, show=True):
+
+    camera_1_id = images_info[img_pair.img1].camera_id
+    camera_1 = cameras[camera_1_id]
+    K_1 = camera_1.get_K()
+    camera_2_id = images_info[img_pair.img2].camera_id
+    camera_2 = cameras[camera_2_id]
+    K_2 = camera_2.get_K()
+
+    if camera_1_id == camera_2_id:
+        print("the same camera used in a img pair")
+    else:
+        print("different cameras used in a img pair")
+        print("camera_1 props:\n{}".format(camera_1))
+        print("camera_1 (will use this) K:\n{}".format(K_1))
+        print("camera_2 props:\n{}".format(camera_2))
+        print("camera_2 K:\n{}".format(K_2))
 
     img1 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img1))
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
     tentative_matches, kps1, kps2 = find_correspondences(descriptor, img1, img2, ratio_thresh=0.75, show=show)
-    H, inlier_mask = find_homography(tentative_matches, kps1, kps2, img1, img2, show=show)
+    E, inlier_mask = find_E(tentative_matches, kps1, kps2, img1, img2, K_1, show=show)
 
     unique = correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2, images_info, img_pair)
 
     print("Image pair: {}x{}:".format(img_pair.img1, img_pair.img2))
     print("Number of correspondences: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
+    print("Number of not-correspondences: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
     print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
 
+    src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
+    return E, inlier_mask, src_pts, dst_pts
 
-def img_correspondences(scene_name, descriptor=cv.SIFT_create(), difficulties = set(range(18)), limit=None):
 
-    #akaze_desc = cv.AKAZE_create()
+def img_correspondences(scene_name, descriptor, difficulties=set(range(18)), limit=None):
+
     img_pairs = read_image_pairs(scene_name)
     images_info = read_images(scene_name)
+    cameras = read_cameras(scene_name)
 
     for difficulty, img_pair_in_difficulty in enumerate(img_pairs):
         if difficulty not in difficulties:
             continue
         print("Difficulty: {}".format(difficulty))
-        if limit is None:
+        if limit is None or limit > len(img_pair_in_difficulty):
             limit = len(img_pair_in_difficulty)
-        for i in range(min(limit, len(img_pair_in_difficulty))):
+        for i in range(limit):
             img_pair: ImagePairEntry = img_pairs[difficulty][i]
-            match_image_pair(img_pair, images_info, descriptor)
+            E, inlier_mask, src_pts, dst_pts = match_image_pair(img_pair, images_info, descriptor, cameras)
+            src_pts_inliers = src_pts[inlier_mask[:, 0] == [1]]
+            dst_pts_inliers = dst_pts[inlier_mask[:, 0] == [1]]
+            np.savetxt("work/{}/{}_{}_essential_matrices.txt".format(scene_name, img_pair.img1, img_pair.img2), E, delimiter=',', fmt='%1.8f')
+            np.savetxt("work/{}/{}_{}_src_pts.txt".format(scene_name, img_pair.img1, img_pair.img2), src_pts_inliers, delimiter=',', fmt='%1.8f')
+            np.savetxt("work/{}/{}_{}_dst_pts.txt".format(scene_name, img_pair.img1, img_pair.img2), dst_pts_inliers, delimiter=',', fmt='%1.8f')
 
 
 def main():
@@ -219,17 +262,10 @@ def main():
     #akaze_desc = cv.AKAZE_create()
     sift_descriptor = cv.SIFT_create()
 
-    # image_pairs = read_image_pairs(scene_name)
-    # image_info_map = read_images(scene_name)
-    #
-    # image_pair = image_pairs[0][0]
-    # match_image_pair(image_pair, image_info_map, sift_descriptor)
-
-    # limit = 10
     # keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
 
-    limit = 3
-    difficulties = set(range(18))
+    limit = 1
+    difficulties = set(range(1))
     img_correspondences(scene_name, sift_descriptor, difficulties, limit)
 
     print("All done")
