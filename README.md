@@ -45,6 +45,9 @@ dimension chosen as the multiple of 32 that best preserves the original aspect r
 * various possibilities, how to improve it / speed it up
 * TODO I think it would be beneficial to decide automatically on the number of the clusters (i.e. dominating planes), at least between 2 and 3
 
+(for clipping before warping...)
+https://docs.opencv.org/master/d2/de8/group__core__array.html#gad327659ac03e5fd6894b90025e6900a7
+
 
 ## Rectification
 
@@ -58,7 +61,7 @@ dimension chosen as the multiple of 32 that best preserves the original aspect r
 
 ## Matching
 
-* pretty straighforward, need to plug in different descriptors
+* pretty straight-forward, need to plug in different descriptors (don't spend time on it - just SIFT)
 
 
 ## Evaluation
@@ -67,9 +70,26 @@ dimension chosen as the multiple of 32 that best preserves the original aspect r
 * I don't really get the translation error (it's again error between two translation directions (of a unit size)?)
 * also, it seems to me interesting that the papers only mentions the rotation error, not the translation error 
 * on first sight the estimation errors look reasonable
+* I would still like to look at different metrics (e.g. number of correctly matched keypoints - according to the ground truth)
 
 
 # Others
+* next week - NOT NOW
+    ** cluster
+    ** speed up
+    ** activate conda
+    ** https://cw.felk.cvut.cz/w/cmp/grid/modules
 
 * the pipeline doesn't seem to be very fast
 * I think I also need to start computing on the CMP cluster 
+
+
+!!!* make it run out of the shelf
+
+
+Presentation - 6-8 slides (is able to match images)
+(other data)
+"interesting paper has been proposed"
+"get-in-line" data along with the repeatability
+report - Tex / Overleaf 
+"log your work" (!!!) 
