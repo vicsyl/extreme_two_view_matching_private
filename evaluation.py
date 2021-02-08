@@ -244,7 +244,7 @@ if __name__ == "__main__":
 
     scene = "scene1"
     scene_info = SceneInfo.read_scene(scene)
-    evaluate_all(scene_info, "work/{}/matching".format(scene), limit = None)
+    evaluate_all(scene_info, "work/{}/matching".format(scene), limit=None)
 
     print("All done")
     end = time.time()

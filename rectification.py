@@ -2,10 +2,9 @@ import math
 import numpy as np
 import os
 import cv2 as cv
-from matching import decolorize
-from utils import get_files
 import matplotlib.pyplot as plt
 import glob
+import time
 from scene_info import read_cameras
 
 def get_rotation_matrix(unit_rotation_vector, theta):
@@ -69,15 +68,15 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
 
     Rs = get_rectification_rotations(normals)
 
+    all_descs = None
     all_kps = []
-    all_descs = []
 
     for normal_index, R in enumerate(Rs):
 
         src = get_bounding_box(normals, normal_indices, normal_index, img)
 
-        T = K @ R @ K_inv
 
+        T = K @ R @ K_inv
         dst = cv.perspectiveTransform(src, T)
         mins = (np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1]))
         if mins[0] < 0 or mins[1] < 0:
@@ -89,6 +88,14 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
             T = translate @ T
             dst = cv.perspectiveTransform(src, T)
 
+        bounding_box = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
+        # TODO this is too defensive (and wrong) I think, I can warp only the plane
+        if bounding_box[0] * bounding_box[1] > 10**8:
+            #scale_factor = 1 / math.sqrt((bounding_box[0] * bounding_box[1]) / 10**7)
+            #bounding_box = (int(bounding_box[0] * scale_factor), int(bounding_box[1] * scale_factor))
+            print("warping to an img that is too big, skipping")
+            continue
+
         T_inv = np.linalg.inv(T)
 
         print("rotation: \n {}".format(R))
@@ -96,8 +103,7 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         print("src: \n {}".format(src))
         print("dst: \n {}".format(dst))
 
-        maxs_precise = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
-        recified = cv.warpPerspective(img, T, maxs_precise)
+        recified = cv.warpPerspective(img, T, bounding_box)
 
         kps, descs = descriptor.detectAndCompute(recified, None)
 
@@ -111,19 +117,19 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         kps_int_coords = np.int32(new_kps).reshape(-1, 2)
 
         h, w, _ = img.shape
-        first = kps_int_coords[:, 1]
+        first = kps_int_coords[:, 0]
         first = np.where(0 <= first, first, 0)
         first = np.where(first < w, first, 0)
-        seconds = kps_int_coords[:, 0]
+        seconds = kps_int_coords[:, 1]
         seconds = np.where(0 <= seconds, seconds, 0)
         seconds = np.where(seconds < h, seconds, 0)
-        kps_int_coords[:, 1] = first
-        kps_int_coords[:, 0] = seconds
+        kps_int_coords[:, 0] = first
+        kps_int_coords[:, 1] = seconds
 
         #normal_indices = normal_indices[:, :, 0]
 
         #cluster_mask = [(1 if normal_indices[kps_int_coord[0], [kps_int_coord[1]], 0] == i else 0) for kps_int_coord in kps_int_coords]
-        cluster_mask_bool = np.array([normal_indices[kps_int_coord[0], [kps_int_coord[1]], 0] == normal_index for kps_int_coord in kps_int_coords]).reshape(-1)
+        cluster_mask_bool = np.array([normal_indices[kps_int_coord[1], [kps_int_coord[0]], 0] == normal_index for kps_int_coord in kps_int_coords]).reshape(-1)
         #cluster_mask_bool2 = np.array([True for kps_int_coord in kps_int_coords])
 
         descs = descs[cluster_mask_bool]
@@ -138,15 +144,19 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         print("adding {} keypoints".format(len(kps)))
 
         all_kps.extend(kps)
-        all_descs.extend(descs)
+
+        if all_descs is None:
+            all_descs = descs
+        else:
+            all_descs = np.vstack((all_descs, descs))
 
         #ints = np.int(new_kps)1
         #q = normal_indices[new_kps]
 
         #dst = cv.perspectiveTransform(src, T)
 
-        #plt.figure()
-        plt.figure(dpi=300)
+        plt.figure()
+        #plt.figure(dpi=300)
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(recified)
         plt.show()
@@ -157,8 +167,27 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
     return all_kps, all_descs
 
 
+# original_input_dir - to scene info
+def read_img_normals_info(parent_dir, img_name_dir):
+
+    if not os.path.isdir("{}/{}".format(parent_dir, img_name_dir)):
+        return None, None
+
+    paths_png = glob.glob("{}/{}/*.png".format(parent_dir, img_name_dir))
+    paths_txt = glob.glob("{}/{}/*.txt".format(parent_dir, img_name_dir))
+
+    if paths_png is None or paths_txt is None:
+        print(".txt or .png file doesn't exist in {}!".format(img_name_dir))
+        raise
+
+    normals = np.loadtxt(paths_txt[0], delimiter=',')
+    normal_indices = cv.imread(paths_png[0], None)
+    return normals, normal_indices
+
+
 def show_rectifications(parent_dir, original_input_dir, limit):
 
+    # TODO
     cameras = read_cameras("scene1")
     K = cameras[1801].get_K()
     K_inv = np.linalg.inv(K)
@@ -169,65 +198,20 @@ def show_rectifications(parent_dir, original_input_dir, limit):
     if limit is not None:
         dirs = dirs[0:limit]
 
-    for input_dir in dirs:
+    for img_name_dir in dirs:
 
-        paths_png = glob.glob("{}/{}/*.png".format(parent_dir, input_dir))
-        paths_txt = glob.glob("{}/{}/*.txt".format(parent_dir, input_dir))
-
-        img_file_path = '{}/{}.jpg'.format(original_input_dir, input_dir)
-        # normals_file = '{}/{}_normals.txt'.format(parent_dir, file_name[:-4])
-
-        if paths_png is None or paths_txt is None:
-            print(".txt or .png file doesn't exist in {}!".format(input_dir))
-            continue
-
-        normals = np.loadtxt(paths_txt[0], delimiter=',')
+        img_file_path = '{}/{}.jpg'.format(original_input_dir, img_name_dir)
         img = cv.imread(img_file_path, None)
-        normal_indices = cv.imread(paths_png[0], None)
-
-        # h, w, _ = img.shape
-        # src = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
-
+        normals, normal_indices = read_img_normals_info(parent_dir, img_name_dir)
         get_rectified_keypoints(normals, normal_indices, img, K, K_inv, cv.SIFT_create(), True)
-
-        # Rs = get_rectification_rotations(normals)
-        #
-        # for i, R in enumerate(Rs):
-        #
-        #     src = get_bounding_box(normals, normal_indices, i, img)
-        #
-        #     T = K @ R @ K_inv
-        #     T_inv = np.linalg.inv(T)
-        #
-        #     dst = cv.perspectiveTransform(src, T)
-        #     mins = (np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1]))
-        #     if mins[0] < 0 or mins[1] < 0:
-        #         translate = np.array([
-        #             [1, 0, -mins[0]],
-        #             [0, 1, -mins[1]],
-        #             [0, 0, 1],
-        #         ])
-        #         T = translate @ T
-        #         dst = cv.perspectiveTransform(src, T)
-        #
-        #     print("rotation: \n {}".format(R))
-        #     print("transformation: \n {}".format(T))
-        #     print("src: \n {}".format(src))
-        #     print("dst: \n {}".format(dst))
-        #
-        #     maxs_precise = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
-        #     recified = cv.warpPerspective(img, T, maxs_precise)
-        #
-        #     plt.figure()
-        #     plt.title("normal {}".format(normals[i]))
-        #     plt.imshow(recified)
-        #     plt.show()
-        #
-        #     # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
-        #     # plt.imshow(img_rectified)
-        #     # plt.show()
 
 
 if __name__ == "__main__":
-    #show_rectifications("work/cluster_transformations", limit=1)
-    show_rectifications("work/scene1/normals/simple_diff_mask_sigma_5", "original_dataset/scene1/images", limit=2)
+
+    start = time.time()
+
+    show_rectifications("work/scene1/normals/simple_diff_mask_sigma_5", "original_dataset/scene1/images", limit=1)
+
+    print("All done")
+    end = time.time()
+    print("Time elapsed: {}".format(end - start))

@@ -3,6 +3,8 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+
+from rectification import read_img_normals_info, get_rectified_keypoints
 from pathlib import Path
 
 """
@@ -187,15 +189,16 @@ def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_cre
 def get_features(descriptor, img):
     return descriptor.detectAndCompute(img, None)
 
-
-def match_image_pair(img_pair, images_info, descriptor, cameras, show=True):
+def match_image_pair(img_pair, images_info, descriptor, normals1, normal_indices1, normals2, normal_indices2, cameras, show=True):
 
     camera_1_id = images_info[img_pair.img1].camera_id
     camera_1 = cameras[camera_1_id]
     K_1 = camera_1.get_K()
+    K_1_inv = np.linalg.inv(K_1)
     camera_2_id = images_info[img_pair.img2].camera_id
     camera_2 = cameras[camera_2_id]
     K_2 = camera_2.get_K()
+    K_2_inv = np.linalg.inv(K_2)
 
     if camera_1_id == camera_2_id:
         print("the same camera used in a img pair")
@@ -210,11 +213,15 @@ def match_image_pair(img_pair, images_info, descriptor, cameras, show=True):
     img1 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img1))
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
-    kps1, descs1 = get_features(descriptor, img1)
-    kps2, descs2 = get_features(descriptor, img2)
+    kps1, descs1 = get_rectified_keypoints(normals1, normal_indices1, img1, K_1, K_1_inv, descriptor)
+    kps2, descs2 = get_rectified_keypoints(normals2, normal_indices2, img1, K_2, K_2_inv, descriptor)
+    # kps3, descs3 = get_features(descriptor, img1)
+    # kps4, descs4 = get_features(descriptor, img2)
+    # kps1, descs1 = get_features(descriptor, img1)
+    # kps2, descs2 = get_features(descriptor, img2)
 
     # TODO remove kps1, kps2 and test
-    tentative_matches, kps1, kps2 = find_correspondences(descriptor, img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.75, show=show)
+    tentative_matches, kps1, kps2 = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.75, show=show)
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
@@ -235,7 +242,7 @@ def match_image_pair(img_pair, images_info, descriptor, cameras, show=True):
     return E, inlier_mask, src_pts, dst_pts
 
 
-def img_correspondences(scene_name, descriptor, difficulties=set(range(18)), limit=None):
+def img_correspondences(scene_name, descriptor, normals_dir, difficulties=set(range(18)), limit=None):
 
     img_pairs = read_image_pairs(scene_name)
     images_info = read_images(scene_name)
@@ -245,11 +252,30 @@ def img_correspondences(scene_name, descriptor, difficulties=set(range(18)), lim
         if difficulty not in difficulties:
             continue
         print("Difficulty: {}".format(difficulty))
-        if limit is None or limit > len(img_pair_in_difficulty):
-            limit = len(img_pair_in_difficulty)
-        for i in range(limit):
+
+        # if limit is None or limit > len(img_pair_in_difficulty):
+        max_limit = len(img_pair_in_difficulty)
+
+        # def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, show=False):
+
+        counter = 0
+        for i in range(max_limit):
+
+            if limit is not None and counter >= limit:
+                break
+
             img_pair: ImagePairEntry = img_pairs[difficulty][i]
-            E, inlier_mask, src_pts, dst_pts = match_image_pair(img_pair, images_info, descriptor, cameras)
+            normals1, normal_indices1 = read_img_normals_info(normals_dir, img_pair.img1)
+            if normals1 is None:
+                print("first img's normals not found: {}".format(img_pair.img1))
+                continue
+            normals2, normal_indices2 = read_img_normals_info(normals_dir, img_pair.img2)
+            if normals2 is None:
+                print("second img's normals not found: {}".format(img_pair.img2))
+                continue
+            counter = counter + 1
+
+            E, inlier_mask, src_pts, dst_pts = match_image_pair(img_pair, images_info, descriptor, normals1, normal_indices1, normals2, normal_indices2, cameras)
             src_pts_inliers = src_pts[inlier_mask[:, 0] == [1]]
             dst_pts_inliers = dst_pts[inlier_mask[:, 0] == [1]]
 
@@ -262,6 +288,8 @@ def img_correspondences(scene_name, descriptor, difficulties=set(range(18)), lim
 
 def main():
 
+    normals_dir ="work/scene1/normals/simple_diff_mask_sigma_5"
+
     start = time.time()
 
     scene_name = "scene1"
@@ -270,9 +298,9 @@ def main():
 
     # keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
 
-    limit = 4
-    difficulties = set(range(3))
-    img_correspondences(scene_name, sift_descriptor, difficulties, limit)
+    limit = 20
+    difficulties = set(range(1))
+    img_correspondences(scene_name, sift_descriptor, normals_dir, difficulties, limit)
 
     print("All done")
     end = time.time()

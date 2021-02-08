@@ -2,6 +2,7 @@ import torch
 import math
 import cv2 as cv
 from matplotlib import pyplot as plt
+import numpy as np
 
 def sobel():
     img = cv.imread('original_dataset/scene1/images/frame_0000000010_3.jpg', None)
@@ -23,8 +24,23 @@ def sobel():
 
     plt.show()
 
+
+def first_pos():
+
+    ar = np.array([
+        [0, 0, 1, 1],
+        [0, 1, 0, 1],
+        [1, 0, 0, 0],
+    ])
+    ones = np.where(ar == 1)
+    twos = np.where(ar == 2)
+
+    print()
+
+
 if __name__ == "__main__":
 
+    first_pos()
 
     c = torch.tensor([[1, 2, 3], [-1, 1, 4]], dtype=torch.float)
 

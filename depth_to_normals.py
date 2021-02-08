@@ -294,10 +294,14 @@ def get_depth_data_file_names(directory, limit=None):
     return get_files(directory, ".npy", limit)
 
 
-def save_diff_normals_different_windows(scene: str, limit, save, cluster):
+def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, interesting_files=None):
 
     read_directory = "depth_data/mega_depth/{}".format(scene)
-    file_names = get_depth_data_file_names(read_directory, limit)
+
+    if limit is not None:
+        file_names = get_depth_data_file_names(read_directory, limit)
+    else:
+        file_names = interesting_files
 
     cameras = read_cameras(scene)
     images = read_images(scene)
@@ -323,9 +327,9 @@ def save_diff_normals_different_windows(scene: str, limit, save, cluster):
         normals_params_list = [
             #(False, None, "unsmoothed"),
             #(True, 1.0, "sigma_1"),
-            (True, 3.0, "sigma_3"),
+            #(True, 3.0, "sigma_3"),
             (True, 5.0, "sigma_5"),
-            (True, 7.0, "sigma_7"),
+            #(True, 7.0, "sigma_7"),
             #(True, 9.0, "sigma_9"),
             #(True, 11.0, "sigma_11"),
             ]
@@ -367,15 +371,42 @@ def sobel_normals_5x5(scene: str, limit, save, cluster):
         show_and_save_normals(normals, title, file_name, save=save, cluster=cluster)
 
 
-if __name__ == "__main__":
+def main():
 
+    interesting_imgs = [
+        "frame_0000001535_4.npy", "frame_0000000305_1.npy",
+        "frame_0000001135_4.npy", "frame_0000001150_4.npy",
+        "frame_0000000785_2.npy", "frame_0000000710_2.npy",
+        "frame_0000000155_4.npy", "frame_0000002375_1.npy",
+        "frame_0000000535_3.npy", "frame_0000000450_3.npy",
+        "frame_0000000895_4.npy", "frame_0000000610_2.npy",
+        "frame_0000000225_3.npy", "frame_0000000265_4.npy",
+        "frame_0000000105_2.npy", "frame_0000000365_3.npy",
+        "frame_0000001785_3.npy", "frame_0000000125_1.npy",
+        "frame_0000000910_3.npy", "frame_0000000870_4.npy",
+        "frame_0000002230_1.npy", "frame_0000000320_3.npy",
+        "frame_0000000315_3.npy", "frame_0000000085_4.npy",
+        "frame_0000002070_1.npy", "frame_0000000055_2.npy",
+        "frame_0000001670_1.npy", "frame_0000000705_3.npy",
+        "frame_0000000345_1.npy", "frame_0000001430_4.npy",
+        "frame_0000002185_1.npy", "frame_0000000460_4.npy",
+        "frame_0000001175_3.npy", "frame_0000001040_4.npy",
+        "frame_0000000165_1.npy", "frame_0000000335_1.npy",
+        "frame_0000001585_4.npy", "frame_0000001435_4.npy",
+        "frame_0000000110_4.npy", "frame_0000000130_3.npy",
+    ]
 
+    interesting_imgs = list(set(interesting_imgs))
 
     start_time = time.time()
     print("clock started")
 
-    save_diff_normals_different_windows(scene="scene1", limit=10, save=True, cluster=True)
+    save_diff_normals_different_windows(scene="scene1", save=True, cluster=True, interesting_files=interesting_imgs, limit=None)
     #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
 
     end_time = time.time()
     print("done. Elapsed time: {}".format(end_time - start_time))
+
+
+if __name__ == "__main__":
+    main()
