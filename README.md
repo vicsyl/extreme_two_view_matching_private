@@ -64,6 +64,8 @@ dimension chosen as the multiple of 32 that best preserves the original aspect r
 ## Evaluation
 
 * adopted the evaluation of pose (essential matrix) estimation from https://github.com/ducha-aiki/ransac-tutorial-2020-data
+* I don't really get the translation error (it's again error between two translation directions (of a unit size)?)
+* also, it seems to me interesting that the papers only mentions the rotation error, not the translation error 
 * on first sight the estimation errors look reasonable
 
 
