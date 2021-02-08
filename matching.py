@@ -74,10 +74,10 @@ def find_homography(tentative_matches, kps1, kps2, img1, img2, show=True):
     return H, inlier_mask
 
 
-def find_correspondences(descriptor, img1, img2, ratio_thresh=0.8, show=True):
+def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.8, show=True):
 
-    kps1, descs1 = descriptor.detectAndCompute(img1, None)
-    kps2, descs2 = descriptor.detectAndCompute(img2, None)
+    # kps1, descs1 = descriptor.detectAndCompute(img1, None)
+    # kps2, descs2 = descriptor.detectAndCompute(img2, None)
 
     # img_sift_keypoints1 = cv.drawKeypoints(img1, kps1, img1, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
     # img_sift_keypoints2 = cv.drawKeypoints(img2, kps2, img2, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
@@ -184,6 +184,10 @@ def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_cre
                 break
 
 
+def get_features(descriptor, img):
+    return descriptor.detectAndCompute(img, None)
+
+
 def match_image_pair(img_pair, images_info, descriptor, cameras, show=True):
 
     camera_1_id = images_info[img_pair.img1].camera_id
@@ -202,10 +206,15 @@ def match_image_pair(img_pair, images_info, descriptor, cameras, show=True):
         print("camera_2 props:\n{}".format(camera_2))
         print("camera_2 K:\n{}".format(K_2))
 
+
     img1 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img1))
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
-    tentative_matches, kps1, kps2 = find_correspondences(descriptor, img1, img2, ratio_thresh=0.75, show=show)
+    kps1, descs1 = get_features(descriptor, img1)
+    kps2, descs2 = get_features(descriptor, img2)
+
+    # TODO remove kps1, kps2 and test
+    tentative_matches, kps1, kps2 = find_correspondences(descriptor, img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.75, show=show)
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 

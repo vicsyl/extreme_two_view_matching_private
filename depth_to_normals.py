@@ -296,8 +296,8 @@ def get_depth_data_file_names(directory, limit=None):
 
 def save_diff_normals_different_windows(scene: str, limit, save, cluster):
 
-    directory = "depth_data/mega_depth/{}".format(scene)
-    file_names = get_depth_data_file_names(directory, limit)
+    read_directory = "depth_data/mega_depth/{}".format(scene)
+    file_names = get_depth_data_file_names(read_directory, limit)
 
     cameras = read_cameras(scene)
     images = read_images(scene)
@@ -311,7 +311,7 @@ def save_diff_normals_different_windows(scene: str, limit, save, cluster):
         width = camera.height_width[1]
         height = camera.height_width[0]
 
-        depth_data = read_depth_data(depth_data_file_name, directory, height, width)
+        depth_data = read_depth_data(depth_data_file_name, read_directory, height, width)
 
         mask = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
                               0.5, 0.5, 0.5, 0.5, 0.5,
@@ -323,9 +323,9 @@ def save_diff_normals_different_windows(scene: str, limit, save, cluster):
         normals_params_list = [
             #(False, None, "unsmoothed"),
             #(True, 1.0, "sigma_1"),
-            #(True, 3.0, "sigma_3"),
+            (True, 3.0, "sigma_3"),
             (True, 5.0, "sigma_5"),
-            #(True, 7.0, "sigma_7"),
+            (True, 7.0, "sigma_7"),
             #(True, 9.0, "sigma_9"),
             #(True, 11.0, "sigma_11"),
             ]
@@ -333,8 +333,12 @@ def save_diff_normals_different_windows(scene: str, limit, save, cluster):
         for idx, params in enumerate(normals_params_list):
             smoothed, sigma, param_str = params
             normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
-            Path("work/{}/normals".format(scene)).mkdir(parents=True, exist_ok=True)
-            file_name_prefix = 'work/{}/normals/normals_diff_normals_colors_fixed_{}_{}'.format(scene, param_str, depth_data_file_name[:-4])
+
+            directory = "work/{}/normals/simple_diff_mask_{}/{}".format(scene, param_str, depth_data_file_name[:-4])
+            print("Creating dir (if not exists already): {}".format(directory))
+            Path(directory).mkdir(parents=True, exist_ok=True)
+
+            file_name_prefix = '{}/{}'.format(directory, depth_data_file_name[:-4])
             title = "normals big mask - {} - {}".format(param_str, depth_data_file_name)
             show_and_save_normals(normals, title, file_name_prefix, save=save, cluster=cluster)
 
@@ -370,7 +374,7 @@ if __name__ == "__main__":
     start_time = time.time()
     print("clock started")
 
-    save_diff_normals_different_windows(scene="scene1", limit=1, save=True, cluster=True)
+    save_diff_normals_different_windows(scene="scene1", limit=10, save=True, cluster=True)
     #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
 
     end_time = time.time()

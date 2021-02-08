@@ -194,6 +194,7 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
 def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
 
     dirs = [dirname for dirname in sorted(os.listdir(input_dir)) if os.path.isdir("{}/{}".format(input_dir, dirname))]
+    dirs = sorted(dirs)
     if limit is not None:
         dirs = dirs[0:limit]
 

@@ -5,6 +5,7 @@ import cv2 as cv
 from matching import decolorize
 from utils import get_files
 import matplotlib.pyplot as plt
+import glob
 from scene_info import read_cameras
 
 def get_rotation_matrix(unit_rotation_vector, theta):
@@ -23,6 +24,7 @@ def get_rotation_matrix(unit_rotation_vector, theta):
     return a + b + c
 
 
+# refactor: just one
 def get_rectification_rotations(normals):
 
     # now the normals will be "from" me, "inside" the surfaces
@@ -31,7 +33,7 @@ def get_rectification_rotations(normals):
     z = np.array([0.0, 0.0, 1.0])
     Rs = []
 
-    for i, normal in enumerate(normals):
+    for _, normal in enumerate(normals):
         assert normal[2] > 0
         rotation_vector = np.cross(normal, z)
         rotation_vector_norm = sin_theta = np.linalg.norm(rotation_vector)
@@ -46,64 +48,186 @@ def get_rectification_rotations(normals):
     return Rs
 
 
-def show_rectifications(directory, limit):
+# TODO the idea of this method was to define a bounding box and only this box could be transformed, however, warpPerspectife (AFAIK)
+# always transforms the whole image... so there is not easy way to do that
+def get_bounding_box(normals, normal_indices, index, img_remove):
+
+    # rows, col = np.where(normal_indices == index)
+    # min_row = min(rows)
+    # max_row = max(rows)
+    # min_col = min(col)
+    # max_col = max(col)
+    # src = np.float32([[min_row, min_col], [min_row, max_col - 1], [max_row - 1, max_col - 1], [max_row - 1, min_col]]).reshape(-1, 1, 2)
+
+    h, w, _ = img_remove.shape
+    src = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
+
+    return src
+
+
+def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, show=False):
+
+    Rs = get_rectification_rotations(normals)
+
+    all_kps = []
+    all_descs = []
+
+    for normal_index, R in enumerate(Rs):
+
+        src = get_bounding_box(normals, normal_indices, normal_index, img)
+
+        T = K @ R @ K_inv
+
+        dst = cv.perspectiveTransform(src, T)
+        mins = (np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1]))
+        if mins[0] < 0 or mins[1] < 0:
+            translate = np.array([
+                [1, 0, -mins[0]],
+                [0, 1, -mins[1]],
+                [0, 0, 1],
+            ])
+            T = translate @ T
+            dst = cv.perspectiveTransform(src, T)
+
+        T_inv = np.linalg.inv(T)
+
+        print("rotation: \n {}".format(R))
+        print("transformation: \n {}".format(T))
+        print("src: \n {}".format(src))
+        print("dst: \n {}".format(dst))
+
+        maxs_precise = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
+        recified = cv.warpPerspective(img, T, maxs_precise)
+
+        kps, descs = descriptor.detectAndCompute(recified, None)
+
+        kps_raw = np.float32([kp.pt for kp in kps]).reshape(-1, 1, 2)
+
+        new_kps = cv.perspectiveTransform(kps_raw, T_inv)
+        #kps_back = cv.perspectiveTransform(new_kps, T)
+        #src_back = cv.perspectiveTransform(dst, T_inv)
+        #diff = kps_back - kps_raw
+
+        kps_int_coords = np.int32(new_kps).reshape(-1, 2)
+
+        h, w, _ = img.shape
+        first = kps_int_coords[:, 1]
+        first = np.where(0 <= first, first, 0)
+        first = np.where(first < w, first, 0)
+        seconds = kps_int_coords[:, 0]
+        seconds = np.where(0 <= seconds, seconds, 0)
+        seconds = np.where(seconds < h, seconds, 0)
+        kps_int_coords[:, 1] = first
+        kps_int_coords[:, 0] = seconds
+
+        #normal_indices = normal_indices[:, :, 0]
+
+        #cluster_mask = [(1 if normal_indices[kps_int_coord[0], [kps_int_coord[1]], 0] == i else 0) for kps_int_coord in kps_int_coords]
+        cluster_mask_bool = np.array([normal_indices[kps_int_coord[0], [kps_int_coord[1]], 0] == normal_index for kps_int_coord in kps_int_coords]).reshape(-1)
+        #cluster_mask_bool2 = np.array([True for kps_int_coord in kps_int_coords])
+
+        descs = descs[cluster_mask_bool]
+        new_kps = new_kps[cluster_mask_bool]
+        kps = [kp for i, kp in enumerate(kps) if cluster_mask_bool[i]]
+
+        cv.drawKeypoints(recified, kps, recified, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+        for kpi, kp in enumerate(kps):
+            kp.pt = tuple(new_kps[kpi, 0].tolist())
+
+        print("adding {} keypoints".format(len(kps)))
+
+        all_kps.extend(kps)
+        all_descs.extend(descs)
+
+        #ints = np.int(new_kps)1
+        #q = normal_indices[new_kps]
+
+        #dst = cv.perspectiveTransform(src, T)
+
+        #plt.figure()
+        plt.figure(dpi=300)
+        plt.title("normal {}".format(normals[normal_index]))
+        plt.imshow(recified)
+        plt.show()
+
+        # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
+        # plt.imshow(img_rectified)
+        # plt.show()
+    return all_kps, all_descs
+
+
+def show_rectifications(parent_dir, original_input_dir, limit):
 
     cameras = read_cameras("scene1")
     K = cameras[1801].get_K()
     K_inv = np.linalg.inv(K)
 
-    file_names = get_files(directory, ".jpg", limit)
+    # /Users/vaclav/ownCloud/SVP/project/work/scene1/normals/simple_diff_mask_sigma_5
+    dirs = [dirname for dirname in sorted(os.listdir(parent_dir)) if os.path.isdir("{}/{}".format(parent_dir, dirname))]
+    dirs = sorted(dirs)
+    if limit is not None:
+        dirs = dirs[0:limit]
 
-    for file_name in file_names:
+    for input_dir in dirs:
 
-        #TODO the original suffix is not stripped
-        img_file = '{}/{}'.format(directory, file_name)
-        normals_file = '{}/{}_normals.txt'.format(directory, file_name[:-4])
+        paths_png = glob.glob("{}/{}/*.png".format(parent_dir, input_dir))
+        paths_txt = glob.glob("{}/{}/*.txt".format(parent_dir, input_dir))
 
-        if not os.path.isfile(normals_file):
-            print("{} doesn't exist!".format(normals_file))
+        img_file_path = '{}/{}.jpg'.format(original_input_dir, input_dir)
+        # normals_file = '{}/{}_normals.txt'.format(parent_dir, file_name[:-4])
+
+        if paths_png is None or paths_txt is None:
+            print(".txt or .png file doesn't exist in {}!".format(input_dir))
             continue
 
-        normals = np.loadtxt(normals_file, delimiter=',')
-        img = cv.imread(img_file, None)
-        h, w, _ = img.shape
-        src = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
+        normals = np.loadtxt(paths_txt[0], delimiter=',')
+        img = cv.imread(img_file_path, None)
+        normal_indices = cv.imread(paths_png[0], None)
 
-        Rs = get_rectification_rotations(normals)
+        # h, w, _ = img.shape
+        # src = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
 
-        for i, R in enumerate(Rs):
+        get_rectified_keypoints(normals, normal_indices, img, K, K_inv, cv.SIFT_create(), True)
 
-            T = K @ R @ K_inv
-
-            dst = cv.perspectiveTransform(src, T)
-            mins = (np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1]))
-            if mins[0] < 0 or mins[1] < 0:
-                translate = np.array([
-                    [1, 0, -mins[0]],
-                    [0, 1, -mins[1]],
-                    [0, 0, 1],
-                ])
-                T = translate @ T
-                dst = cv.perspectiveTransform(src, T)
-
-            print("rotation: \n {}".format(R))
-            print("transformation: \n {}".format(T))
-            print("src: \n {}".format(src))
-            print("dst: \n {}".format(dst))
-
-            maxs_precise = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
-            rotated = cv.warpPerspective(img, T, maxs_precise)
-            img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
-
-            plt.figure()
-            plt.title("normal {}".format(normals[i]))
-            plt.imshow(rotated)
-            plt.show()
-
-            plt.imshow(img_rectified)
-            plt.show()
+        # Rs = get_rectification_rotations(normals)
+        #
+        # for i, R in enumerate(Rs):
+        #
+        #     src = get_bounding_box(normals, normal_indices, i, img)
+        #
+        #     T = K @ R @ K_inv
+        #     T_inv = np.linalg.inv(T)
+        #
+        #     dst = cv.perspectiveTransform(src, T)
+        #     mins = (np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1]))
+        #     if mins[0] < 0 or mins[1] < 0:
+        #         translate = np.array([
+        #             [1, 0, -mins[0]],
+        #             [0, 1, -mins[1]],
+        #             [0, 0, 1],
+        #         ])
+        #         T = translate @ T
+        #         dst = cv.perspectiveTransform(src, T)
+        #
+        #     print("rotation: \n {}".format(R))
+        #     print("transformation: \n {}".format(T))
+        #     print("src: \n {}".format(src))
+        #     print("dst: \n {}".format(dst))
+        #
+        #     maxs_precise = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
+        #     recified = cv.warpPerspective(img, T, maxs_precise)
+        #
+        #     plt.figure()
+        #     plt.title("normal {}".format(normals[i]))
+        #     plt.imshow(recified)
+        #     plt.show()
+        #
+        #     # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
+        #     # plt.imshow(img_rectified)
+        #     # plt.show()
 
 
 if __name__ == "__main__":
-
-    show_rectifications("work/cluster_transformations", limit=1)
+    #show_rectifications("work/cluster_transformations", limit=1)
+    show_rectifications("work/scene1/normals/simple_diff_mask_sigma_5", "original_dataset/scene1/images", limit=2)
