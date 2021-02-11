@@ -190,6 +190,18 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     print("errors: {}".format(ang_errors))
     print("max error: {}".format(ang_errors_max))
 
+    return ang_errors
+
+
+@dataclass
+class Stats:
+    ang_error_R: float
+    ang_error_T: float
+    tentative_matches: int
+    inliers: int
+    all_features_1: int
+    all_features_2: int
+
 
 def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
 
@@ -201,9 +213,12 @@ def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
     flattened_img_pairs = [pair for diff in scene_info.img_pairs for pair in diff]
     img_pair_map = {"{}_{}".format(img_pair.img1, img_pair.img2): img_pair for img_pair in flattened_img_pairs}
 
+    result_map = {}
+
     for dir in dirs:
 
         if not img_pair_map.__contains__(dir):
+            print("dir '{}' not recognized!!!".format(dir))
             continue
 
         whole_path = "{}/{}".format(input_dir, dir)
@@ -212,9 +227,17 @@ def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
         E = np.loadtxt("{}/essential_matrix.txt".format(whole_path), delimiter=',')
         dst_pts = np.loadtxt("{}/dst_pts.txt".format(whole_path), delimiter=',')
         src_pts = np.loadtxt("{}/src_pts.txt".format(whole_path), delimiter=',')
-        print("Evaluating: {}".format(dir))
-        compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
+        stats = np.loadtxt("{}/stats.txt".format(whole_path), delimiter=',')
+        tentative_matches = stats[0]
+        inliers = stats[1]
+        all_features_1 = stats[2]
+        all_features_2 = stats[3]
 
+        print("Evaluating: {}".format(dir))
+        ang_errors = compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
+        result_map[dir] = Stats(ang_errors[0], ang_errors[1], tentative_matches, inliers, all_features_1, all_features_2)
+
+    return result_map
 
 # def test_compare_poses():
 #
@@ -240,11 +263,80 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    #test_compare_poses()
-
     scene = "scene1"
     scene_info = SceneInfo.read_scene(scene)
-    evaluate_all(scene_info, "work/{}/matching".format(scene), limit=None)
+    with_map = evaluate_all(scene_info, "work/{}/matching/with_rectification".format(scene), limit=None)
+    without_map = evaluate_all(scene_info, "work/{}/matching/without_rectification".format(scene), limit=None)
+
+    with_r_err = 0
+    with_t_err = 0
+    without_t_err = 0
+    without_r_err = 0
+
+    diff_r = []
+    diff_t = []
+
+
+    with_inlier_ratio = 0.0
+    without_inlier_ratio = 0.0
+
+    with_tentative_matches = 0
+    without_tentative_matches = 0
+
+    common_enties = 0
+
+    for key in with_map:
+        if not without_map.__contains__(key):
+            continue
+        common_enties += 1
+        with_r_err += with_map[key].ang_error_R
+        with_t_err += with_map[key].ang_error_T
+        without_r_err += without_map[key].ang_error_R
+        without_t_err += without_map[key].ang_error_T
+        diff_r.append((with_map[key].ang_error_R - without_map[key].ang_error_R, key))
+        diff_t.append((with_map[key].ang_error_T - without_map[key].ang_error_T, key))
+
+        with_tentative_matches_p = with_map[key].tentative_matches
+        without_tentative_matches_p = without_map[key].tentative_matches
+        print("with tentative matches for {}: {}".format(key, with_tentative_matches_p))
+        print("without tentative matches for {}: {}".format(key, without_tentative_matches_p))
+        with_tentative_matches += with_tentative_matches_p
+        without_tentative_matches += without_tentative_matches_p
+
+        with_inlier_ratio_p = (with_map[key].inliers / with_map[key].tentative_matches)
+        without_inlier_ratio_p = (without_map[key].inliers / without_map[key].tentative_matches)
+        print("with inlier ratio_p for {}: {}".format(key, with_inlier_ratio_p))
+        print("without inlier ratio_p for {}: {}".format(key, without_inlier_ratio_p))
+        with_inlier_ratio += with_inlier_ratio_p
+        without_inlier_ratio += without_inlier_ratio_p
+
+        #print("with: {}, without: {}".format(with_map[key], without_map[key]))
+
+
+    with_inlier_ratio /= float(common_enties)
+    without_inlier_ratio /= float(common_enties)
+    with_tentative_matches /= float(common_enties)
+    without_tentative_matches /= float(common_enties)
+
+
+    diff_r.sort(key=lambda x: x[0])
+    diff_t.sort(key=lambda x: x[0])
+
+    for r_diff in diff_r:
+        print("R diff: {} in {}".format(r_diff[0], r_diff[1]))
+
+    for t_diff in diff_t:
+        print("T diff: {} in {}".format(t_diff[0], t_diff[1]))
+
+
+    print("common entries: {}".format(common_enties))
+    print("with rectification errors. R: {}, T: {}".format(with_r_err, with_t_err))
+    print("without rectification errors. R: {}, T: {}".format(without_r_err, without_t_err))
+    print("with tentative matches: {}".format(with_tentative_matches))
+    print("without tentative_matches: {}".format(without_tentative_matches))
+    print("with inlier ratio: {}".format(with_inlier_ratio))
+    print("without inlier ratio: {}".format(without_inlier_ratio))
+
 
     print("All done")
     end = time.time()

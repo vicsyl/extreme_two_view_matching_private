@@ -68,6 +68,13 @@ class SceneInfo:
     def get_camera1_from_img_pair(self, img_pair: ImagePairEntry):
         self.cameras[self.img_info_map[img_pair.img1].camera_id]
 
+    def imgs_for_comparing_difficulty(self, difficulty, suffix=".npy"):
+        interesting_imgs = set()
+        for img_pair in self.img_pairs[difficulty]:
+            interesting_imgs.add(img_pair.img1 + suffix)
+            interesting_imgs.add(img_pair.img2 + suffix)
+        return sorted(list(interesting_imgs))
+
 
 def read_image_pairs(scene):
 

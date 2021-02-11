@@ -64,7 +64,7 @@ def get_bounding_box(normals, normal_indices, index, img_remove):
     return src
 
 
-def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, show=False):
+def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, show=False, out_dir=None):
 
     Rs = get_rectification_rotations(normals)
 
@@ -91,8 +91,6 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         bounding_box = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
         # TODO this is too defensive (and wrong) I think, I can warp only the plane
         if bounding_box[0] * bounding_box[1] > 10**8:
-            #scale_factor = 1 / math.sqrt((bounding_box[0] * bounding_box[1]) / 10**7)
-            #bounding_box = (int(bounding_box[0] * scale_factor), int(bounding_box[1] * scale_factor))
             print("warping to an img that is too big, skipping")
             continue
 
@@ -110,9 +108,6 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         kps_raw = np.float32([kp.pt for kp in kps]).reshape(-1, 1, 2)
 
         new_kps = cv.perspectiveTransform(kps_raw, T_inv)
-        #kps_back = cv.perspectiveTransform(new_kps, T)
-        #src_back = cv.perspectiveTransform(dst, T_inv)
-        #diff = kps_back - kps_raw
 
         kps_int_coords = np.int32(new_kps).reshape(-1, 2)
 
@@ -126,11 +121,7 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         kps_int_coords[:, 0] = first
         kps_int_coords[:, 1] = seconds
 
-        #normal_indices = normal_indices[:, :, 0]
-
-        #cluster_mask = [(1 if normal_indices[kps_int_coord[0], [kps_int_coord[1]], 0] == i else 0) for kps_int_coord in kps_int_coords]
         cluster_mask_bool = np.array([normal_indices[kps_int_coord[1], [kps_int_coord[0]], 0] == normal_index for kps_int_coord in kps_int_coords]).reshape(-1)
-        #cluster_mask_bool2 = np.array([True for kps_int_coord in kps_int_coords])
 
         descs = descs[cluster_mask_bool]
         new_kps = new_kps[cluster_mask_bool]
@@ -150,16 +141,13 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         else:
             all_descs = np.vstack((all_descs, descs))
 
-        #ints = np.int(new_kps)1
-        #q = normal_indices[new_kps]
-
-        #dst = cv.perspectiveTransform(src, T)
-
         plt.figure()
         #plt.figure(dpi=300)
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(recified)
-        plt.show()
+        #plt.show()
+        if out_dir is not None:
+            plt.savefig("{}/rectified_{}.jpg".format(out_dir, normal_index))
 
         # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
         # plt.imshow(img_rectified)

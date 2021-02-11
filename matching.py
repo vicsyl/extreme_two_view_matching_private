@@ -3,6 +3,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import os
 
 from rectification import read_img_normals_info, get_rectified_keypoints
 from pathlib import Path
@@ -52,11 +53,7 @@ def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
                    matchesMask = matches_mask, # draw only inliers
                    flags = 20)
     img_out = cv.drawMatches(decolorize(img1), kps1, img2_tr, kps2, tentative_matches, None, **draw_params)
-    plt.figure()
-    plt.title("Matches with estimated homography")
-    plt.imshow(img_out)
-    plt.show()
-    return
+    return img_out
 
 
 def split_points(tentative_matches, kps1, kps2):
@@ -76,18 +73,8 @@ def find_homography(tentative_matches, kps1, kps2, img1, img2, show=True):
     return H, inlier_mask
 
 
-def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.8, show=True):
+def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, ratio_thresh=0.8, show=True):
 
-    # kps1, descs1 = descriptor.detectAndCompute(img1, None)
-    # kps2, descs2 = descriptor.detectAndCompute(img2, None)
-
-    # img_sift_keypoints1 = cv.drawKeypoints(img1, kps1, img1, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-    # img_sift_keypoints2 = cv.drawKeypoints(img2, kps2, img2, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-    #
-    # cv.imwrite('work/sift_keypoints_{}.jpg'.format(img_pair.img1), img_sift_keypoints1)
-    # cv.imwrite('work/sift_keypoints_{}.jpg'.format(img_pair.img2), img_sift_keypoints2)
-
-    #matcher = cv.DescriptorMatcher_create(cv.DescriptorMatcher_BRUTEFORCE_HAMMING)
     matcher = cv.BFMatcher()
 
     knn_matches = matcher.knnMatch(descs1, descs2, 2)
@@ -101,9 +88,10 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.
         tentative_matches_in_singleton_list = [[m] for m in tentative_matches]
         img3 = cv.drawMatchesKnn(img1, kps1, img2, kps2, tentative_matches_in_singleton_list, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
         plt.imshow(img3)
-        plt.show()
+        #plt.show()
+        plt.savefig("{}/tentative.jpg".format(out_dir))
 
-    return tentative_matches, kps1, kps2
+    return tentative_matches
 
 
 def correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2, images_info, img_pair):
@@ -189,7 +177,17 @@ def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_cre
 def get_features(descriptor, img):
     return descriptor.detectAndCompute(img, None)
 
-def match_image_pair(img_pair, images_info, descriptor, normals1, normal_indices1, normals2, normal_indices2, cameras, show=True):
+def match_image_pair(img_pair,
+                     images_info,
+                     descriptor,
+                     normals1,
+                     normal_indices1,
+                     normals2,
+                     normal_indices2,
+                     cameras,
+                     out_dir,
+                     rectify=True,
+                     show=True):
 
     camera_1_id = images_info[img_pair.img1].camera_id
     camera_1 = cameras[camera_1_id]
@@ -209,19 +207,17 @@ def match_image_pair(img_pair, images_info, descriptor, normals1, normal_indices
         print("camera_2 props:\n{}".format(camera_2))
         print("camera_2 K:\n{}".format(K_2))
 
-
     img1 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img1))
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
-    kps1, descs1 = get_rectified_keypoints(normals1, normal_indices1, img1, K_1, K_1_inv, descriptor)
-    kps2, descs2 = get_rectified_keypoints(normals2, normal_indices2, img1, K_2, K_2_inv, descriptor)
-    # kps3, descs3 = get_features(descriptor, img1)
-    # kps4, descs4 = get_features(descriptor, img2)
-    # kps1, descs1 = get_features(descriptor, img1)
-    # kps2, descs2 = get_features(descriptor, img2)
+    if rectify:
+        kps1, descs1 = get_rectified_keypoints(normals1, normal_indices1, img1, K_1, K_1_inv, descriptor, out_dir=out_dir)
+        kps2, descs2 = get_rectified_keypoints(normals2, normal_indices2, img1, K_2, K_2_inv, descriptor, out_dir=out_dir)
+    else:
+        kps1, descs1 = descriptor.detectAndCompute(img1, None)
+        kps2, descs2 = descriptor.detectAndCompute(img2, None)
 
-    # TODO remove kps1, kps2 and test
-    tentative_matches, kps1, kps2 = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.75, show=show)
+    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, ratio_thresh=0.75, show=show)
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
@@ -229,7 +225,12 @@ def match_image_pair(img_pair, images_info, descriptor, normals1, normal_indices
     E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K_1, None, K_2, None, cv.RANSAC)
 
     if show:
-        draw_matches(kps1, kps2, tentative_matches, None, inlier_mask, img1, img2)
+        img_matches = draw_matches(kps1, kps2, tentative_matches, None, inlier_mask, img1, img2)
+        plt.figure()
+        plt.title("Matches in line with the model")
+        plt.imshow(img_matches)
+        #plt.show()
+        plt.savefig("{}/matches.jpg".format(out_dir))
 
     unique = correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2, images_info, img_pair)
 
@@ -239,10 +240,10 @@ def match_image_pair(img_pair, images_info, descriptor, normals1, normal_indices
     print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
-    return E, inlier_mask, src_pts, dst_pts
+    return E, inlier_mask, src_pts, dst_pts, kps1, kps2
 
 
-def img_correspondences(scene_name, descriptor, normals_dir, difficulties=set(range(18)), limit=None):
+def img_correspondences(scene_name, output_dir, descriptor, normals_dir, difficulties=set(range(18)), rectify=True, limit=None, override_existing=False):
 
     img_pairs = read_image_pairs(scene_name)
     images_info = read_images(scene_name)
@@ -265,6 +266,11 @@ def img_correspondences(scene_name, descriptor, normals_dir, difficulties=set(ra
                 break
 
             img_pair: ImagePairEntry = img_pairs[difficulty][i]
+            out_dir = "work/{}/matching/{}/{}_{}".format(scene_name, output_dir, img_pair.img1, img_pair.img2)
+            if os.path.isdir(out_dir) and not override_existing:
+                print("{} already exists, skipping".format(out_dir))
+                continue
+
             normals1, normal_indices1 = read_img_normals_info(normals_dir, img_pair.img1)
             if normals1 is None:
                 print("first img's normals not found: {}".format(img_pair.img1))
@@ -275,15 +281,18 @@ def img_correspondences(scene_name, descriptor, normals_dir, difficulties=set(ra
                 continue
             counter = counter + 1
 
-            E, inlier_mask, src_pts, dst_pts = match_image_pair(img_pair, images_info, descriptor, normals1, normal_indices1, normals2, normal_indices2, cameras)
-            src_pts_inliers = src_pts[inlier_mask[:, 0] == [1]]
-            dst_pts_inliers = dst_pts[inlier_mask[:, 0] == [1]]
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-            dir = "work/{}/matching/{}_{}".format(scene_name, img_pair.img1, img_pair.img2)
-            Path(dir).mkdir(parents=True, exist_ok=True)
-            np.savetxt("{}/essential_matrix.txt".format(dir), E, delimiter=',', fmt='%1.8f')
-            np.savetxt("{}/src_pts.txt".format(dir), src_pts_inliers, delimiter=',', fmt='%1.8f')
-            np.savetxt("{}/dst_pts.txt".format(dir), dst_pts_inliers, delimiter=',', fmt='%1.8f')
+            E, inlier_mask, src_tentative, dst_tentative, kps1, kps2 = match_image_pair(img_pair, images_info, descriptor, normals1, normal_indices1, normals2, normal_indices2, cameras, out_dir, rectify=rectify, show=True)
+            src_pts_inliers = src_tentative[inlier_mask[:, 0] == [1]]
+            dst_pts_inliers = dst_tentative[inlier_mask[:, 0] == [1]]
+
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            np.savetxt("{}/essential_matrix.txt".format(out_dir), E, delimiter=',', fmt='%1.8f')
+            np.savetxt("{}/src_pts.txt".format(out_dir), src_pts_inliers, delimiter=',', fmt='%1.8f')
+            np.savetxt("{}/dst_pts.txt".format(out_dir), dst_pts_inliers, delimiter=',', fmt='%1.8f')
+            stats = np.array([len(src_tentative), len(src_pts_inliers), len(kps1), len(kps2)], dtype=np.int32)
+            np.savetxt("{}/stats.txt".format(out_dir), stats, delimiter=',', fmt='%i')
 
 
 def main():
@@ -298,9 +307,10 @@ def main():
 
     # keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
 
-    limit = 20
+    limit = 6
     difficulties = set(range(1))
-    img_correspondences(scene_name, sift_descriptor, normals_dir, difficulties, limit)
+    #img_correspondences(scene_name, "without_rectification", sift_descriptor, normals_dir, difficulties, rectify=False, limit=limit)
+    img_correspondences(scene_name, "with_rectification", sift_descriptor, normals_dir, difficulties, rectify=True, limit=limit)
 
     print("All done")
     end = time.time()

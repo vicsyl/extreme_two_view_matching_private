@@ -1,5 +1,4 @@
 import torch
-from resize import upsample
 
 '''
 This was to test svd_normal_from_reprojected - this would return the reprojected data points
