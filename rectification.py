@@ -75,16 +75,20 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
 
         src = get_bounding_box(normals, normal_indices, normal_index, img)
 
-
         T = K @ R @ K_inv
         dst = cv.perspectiveTransform(src, T)
         mins = (np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1]))
         if mins[0] < 0 or mins[1] < 0:
+            # t0 = max(0, -mins[0])
+            # t1 = max(0, -mins[1])
+            t0 = -mins[0]
+            t1 = -mins[1]
             translate = np.array([
-                [1, 0, -mins[0]],
-                [0, 1, -mins[1]],
+                [1, 0, t0],
+                [0, 1, t1],
                 [0, 0, 1],
             ])
+            print("Translating by:\n{}".format(translate))
             T = translate @ T
             dst = cv.perspectiveTransform(src, T)
 
@@ -101,9 +105,10 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         print("src: \n {}".format(src))
         print("dst: \n {}".format(dst))
 
-        recified = cv.warpPerspective(img, T, bounding_box)
+        rectified = cv.warpPerspective(img, T, bounding_box)
+        rectified_indices = cv.warpPerspective(normal_indices, T, bounding_box)
 
-        kps, descs = descriptor.detectAndCompute(recified, None)
+        kps, descs = descriptor.detectAndCompute(rectified, None)
 
         kps_raw = np.float32([kp.pt for kp in kps]).reshape(-1, 1, 2)
 
@@ -121,13 +126,16 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         kps_int_coords[:, 0] = first
         kps_int_coords[:, 1] = seconds
 
-        cluster_mask_bool = np.array([normal_indices[kps_int_coord[1], [kps_int_coord[0]], 0] == normal_index for kps_int_coord in kps_int_coords]).reshape(-1)
+        cluster_mask_bool = np.array([normal_indices[kps_int_coord[1], [kps_int_coord[0]], 0] == normal_index for kps_int_coord in kps_int_coords])
+        cluster_mask_bool = cluster_mask_bool.reshape(-1)
 
         descs = descs[cluster_mask_bool]
+
         new_kps = new_kps[cluster_mask_bool]
+
         kps = [kp for i, kp in enumerate(kps) if cluster_mask_bool[i]]
 
-        cv.drawKeypoints(recified, kps, recified, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        cv.drawKeypoints(rectified, kps, rectified, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
         for kpi, kp in enumerate(kps):
             kp.pt = tuple(new_kps[kpi, 0].tolist())
@@ -141,10 +149,15 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         else:
             all_descs = np.vstack((all_descs, descs))
 
-        plt.figure()
-        #plt.figure(dpi=300)
+        # plt.figure()
+        # plt.title("normal {}".format(normals[normal_index]))
+        # plt.imshow(rectified_indices * 50)
+        # plt.show()
+
+        #plt.figure()
+        plt.figure(dpi=600)
         plt.title("normal {}".format(normals[normal_index]))
-        plt.imshow(recified)
+        plt.imshow(rectified)
         #plt.show()
         if out_dir is not None:
             plt.savefig("{}/rectified_{}.jpg".format(out_dir, normal_index))

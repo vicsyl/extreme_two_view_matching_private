@@ -212,7 +212,7 @@ def match_image_pair(img_pair,
 
     if rectify:
         kps1, descs1 = get_rectified_keypoints(normals1, normal_indices1, img1, K_1, K_1_inv, descriptor, out_dir=out_dir)
-        kps2, descs2 = get_rectified_keypoints(normals2, normal_indices2, img1, K_2, K_2_inv, descriptor, out_dir=out_dir)
+        kps2, descs2 = get_rectified_keypoints(normals2, normal_indices2, img2, K_2, K_2_inv, descriptor, out_dir=out_dir)
     else:
         kps1, descs1 = descriptor.detectAndCompute(img1, None)
         kps2, descs2 = descriptor.detectAndCompute(img2, None)
@@ -243,7 +243,7 @@ def match_image_pair(img_pair,
     return E, inlier_mask, src_pts, dst_pts, kps1, kps2
 
 
-def img_correspondences(scene_name, output_dir, descriptor, normals_dir, difficulties=set(range(18)), rectify=True, limit=None, override_existing=False):
+def img_correspondences(scene_name, output_dir, descriptor, normals_dir, difficulties=set(range(18)), rectify=True, limit=None, override_existing=True):
 
     img_pairs = read_image_pairs(scene_name)
     images_info = read_images(scene_name)
@@ -266,6 +266,11 @@ def img_correspondences(scene_name, output_dir, descriptor, normals_dir, difficu
                 break
 
             img_pair: ImagePairEntry = img_pairs[difficulty][i]
+
+            #magic = "{}_{}".format(img_pair.img1, img_pair.img2)
+            #if magic != "frame_0000000225_3_frame_0000000265_4":
+            #    continue
+
             out_dir = "work/{}/matching/{}/{}_{}".format(scene_name, output_dir, img_pair.img1, img_pair.img2)
             if os.path.isdir(out_dir) and not override_existing:
                 print("{} already exists, skipping".format(out_dir))
@@ -307,10 +312,10 @@ def main():
 
     # keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
 
-    limit = 6
+    limit = 9
     difficulties = set(range(1))
     #img_correspondences(scene_name, "without_rectification", sift_descriptor, normals_dir, difficulties, rectify=False, limit=limit)
-    img_correspondences(scene_name, "with_rectification", sift_descriptor, normals_dir, difficulties, rectify=True, limit=limit)
+    img_correspondences(scene_name, "with_rectification", sift_descriptor, normals_dir, difficulties, rectify=True, limit=limit, override_existing=False)
 
     print("All done")
     end = time.time()
