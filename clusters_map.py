@@ -1,0 +1,363 @@
+clusters_map = {}
+clusters_map['frame_0000000025_3'] = 2
+clusters_map['frame_0000000035_3'] = 2
+clusters_map['frame_0000000045_1'] = 2
+clusters_map['frame_0000000045_2'] = 2
+clusters_map['frame_0000000055_2'] = 2
+clusters_map['frame_0000000055_4'] = 2
+clusters_map['frame_0000000060_1'] = 2
+clusters_map['frame_0000000060_2'] = 2
+clusters_map['frame_0000000060_4'] = 2
+clusters_map['frame_0000000065_2'] = 2
+clusters_map['frame_0000000070_2'] = 2
+clusters_map['frame_0000000070_3'] = 2
+clusters_map['frame_0000000075_2'] = 2
+clusters_map['frame_0000000085_1'] = 2
+clusters_map['frame_0000000085_2'] = 2
+clusters_map['frame_0000000085_4'] = 2
+clusters_map['frame_0000000090_1'] = 2
+clusters_map['frame_0000000090_3'] = 2
+clusters_map['frame_0000000090_4'] = 2
+clusters_map['frame_0000000095_1'] = 2
+clusters_map['frame_0000000100_4'] = 2
+clusters_map['frame_0000000105_2'] = 2
+clusters_map['frame_0000000105_3'] = 2
+clusters_map['frame_0000000110_4'] = 2
+clusters_map['frame_0000000115_3'] = 2
+clusters_map['frame_0000000120_1'] = 2
+clusters_map['frame_0000000120_2'] = 2
+clusters_map['frame_0000000120_4'] = 2
+clusters_map['frame_0000000125_1'] = 2
+clusters_map['frame_0000000125_3'] = 2
+clusters_map['frame_0000000130_3'] = 2
+clusters_map['frame_0000000135_3'] = 2
+clusters_map['frame_0000000135_4'] = 2
+clusters_map['frame_0000000145_2'] = 2
+clusters_map['frame_0000000145_3'] = 2
+clusters_map['frame_0000000155_2'] = 2
+clusters_map['frame_0000000155_4'] = 2
+clusters_map['frame_0000000160_2'] = 2
+clusters_map['frame_0000000165_1'] = 2
+clusters_map['frame_0000000165_2'] = 2
+clusters_map['frame_0000000165_3'] = 2
+clusters_map['frame_0000000165_4'] = 3
+clusters_map['frame_0000000170_1'] = 2
+clusters_map['frame_0000000175_1'] = 2
+clusters_map['frame_0000000175_2'] = 2
+clusters_map['frame_0000000180_1'] = 2
+clusters_map['frame_0000000180_2'] = 2
+clusters_map['frame_0000000180_4'] = 3
+clusters_map['frame_0000000185_3'] = 3
+clusters_map['frame_0000000185_4'] = 3
+clusters_map['frame_0000000190_1'] = 2
+clusters_map['frame_0000000200_1'] = 2
+clusters_map['frame_0000000205_3'] = 2
+clusters_map['frame_0000000210_1'] = 2
+clusters_map['frame_0000000210_3'] = 2
+clusters_map['frame_0000000215_1'] = 2
+clusters_map['frame_0000000225_1'] = 2
+clusters_map['frame_0000000225_3'] = 2
+clusters_map['frame_0000000230_1'] = 2
+clusters_map['frame_0000000240_1'] = 2
+clusters_map['frame_0000000240_4'] = 2
+clusters_map['frame_0000000245_3'] = 2
+clusters_map['frame_0000000250_1'] = 2
+clusters_map['frame_0000000250_3'] = 2
+clusters_map['frame_0000000250_4'] = 3
+clusters_map['frame_0000000255_4'] = 3
+clusters_map['frame_0000000260_4'] = 3
+clusters_map['frame_0000000265_4'] = 3
+clusters_map['frame_0000000270_1'] = 2
+clusters_map['frame_0000000270_2'] = 2
+clusters_map['frame_0000000270_3'] = 2
+clusters_map['frame_0000000270_4'] = 3
+clusters_map['frame_0000000275_2'] = 2
+clusters_map['frame_0000000275_4'] = 3
+clusters_map['frame_0000000280_2'] = 2
+clusters_map['frame_0000000280_3'] = 2
+#!!
+clusters_map['frame_0000000290_4'] = 3
+clusters_map['frame_0000000295_3'] = 2
+#!!!
+clusters_map['frame_0000000295_4'] = 3
+clusters_map['frame_0000000300_4'] = 3
+clusters_map['frame_0000000305_1'] = 2
+clusters_map['frame_0000000310_2'] = 1
+clusters_map['frame_0000000310_3'] = 2
+clusters_map['frame_0000000315_3'] = 2
+clusters_map['frame_0000000320_3'] = 2
+clusters_map['frame_0000000325_1'] = 2
+clusters_map['frame_0000000325_3'] = 2
+clusters_map['frame_0000000335_1'] = 2
+clusters_map['frame_0000000335_3'] = 2
+clusters_map['frame_0000000340_4'] = 2
+clusters_map['frame_0000000345_1'] = 2
+clusters_map['frame_0000000345_3'] = 2
+clusters_map['frame_0000000350_2'] = 1
+#!!!
+clusters_map['frame_0000000355_1'] = 2
+clusters_map['frame_0000000355_3'] = 2
+clusters_map['frame_0000000355_4'] = 2
+clusters_map['frame_0000000360_4'] = 2
+clusters_map['frame_0000000365_2'] = 1
+clusters_map['frame_0000000365_3'] = 2
+clusters_map['frame_0000000375_4'] = 2
+clusters_map['frame_0000000380_4'] = 2
+clusters_map['frame_0000000385_4'] = 2
+#!!!
+clusters_map['frame_0000000390_4'] = 3
+clusters_map['frame_0000000395_1'] = 2
+#!!!
+clusters_map['frame_0000000400_4'] = 3
+clusters_map['frame_0000000405_2'] = 1
+clusters_map['frame_0000000405_3'] = 2
+clusters_map['frame_0000000410_2'] = 1
+clusters_map['frame_0000000420_2'] = 1
+clusters_map['frame_0000000430_1'] = 2
+clusters_map['frame_0000000430_4'] = 2
+clusters_map['frame_0000000435_1'] = 2
+clusters_map['frame_0000000440_3'] = 2
+clusters_map['frame_0000000445_2'] = 1
+clusters_map['frame_0000000450_1'] = 2
+clusters_map['frame_0000000450_3'] = 2
+#!!!
+clusters_map['frame_0000000450_4'] = 2
+#!!!
+clusters_map['frame_0000000460_4'] = 2
+clusters_map['frame_0000000470_1'] = 2
+clusters_map['frame_0000000475_1'] = 2
+clusters_map['frame_0000000475_3'] = 2
+#!!
+clusters_map['frame_0000000475_4'] = 2
+#!!!
+clusters_map['frame_0000000480_3'] = 2
+clusters_map['frame_0000000485_1'] = 2
+clusters_map['frame_0000000490_2'] = 1
+#!!!
+clusters_map['frame_0000000500_1'] = 3
+#
+clusters_map['frame_0000000515_1'] = 2
+#
+clusters_map['frame_0000000515_4'] = 1
+clusters_map['frame_0000000520_3'] = 2
+clusters_map['frame_0000000535_3'] = 1
+clusters_map['frame_0000000535_4'] = 1
+#
+clusters_map['frame_0000000545_3'] = 1
+clusters_map['frame_0000000560_1'] = 2
+clusters_map['frame_0000000560_3'] = 1
+clusters_map['frame_0000000565_2'] = 1
+#
+clusters_map['frame_0000000565_4'] = 1
+clusters_map['frame_0000000570_3'] = 1
+#
+clusters_map['frame_0000000570_4'] = 1
+clusters_map['frame_0000000575_3'] = 1
+clusters_map['frame_0000000575_4'] = 1
+clusters_map['frame_0000000580_3'] = 1
+clusters_map['frame_0000000580_4'] = 1
+clusters_map['frame_0000000590_3'] = 1
+clusters_map['frame_0000000595_4'] = 1
+clusters_map['frame_0000000605_4'] = 1
+clusters_map['frame_0000000610_2'] = 1
+clusters_map['frame_0000000615_3'] = 1
+clusters_map['frame_0000000630_3'] = 1
+#
+clusters_map['frame_0000000635_1'] = 2
+clusters_map['frame_0000000640_2'] = 1
+clusters_map['frame_0000000640_3'] = 1
+clusters_map['frame_0000000655_4'] = 1
+clusters_map['frame_0000000660_3'] = 1
+clusters_map['frame_0000000665_2'] = 1
+clusters_map['frame_0000000670_1'] = 1
+clusters_map['frame_0000000675_2'] = 1
+clusters_map['frame_0000000680_4'] = 1
+clusters_map['frame_0000000685_4'] = 1
+clusters_map['frame_0000000690_3'] = 1
+clusters_map['frame_0000000695_2'] = 1
+clusters_map['frame_0000000695_3'] = 1
+clusters_map['frame_0000000705_3'] = 1
+clusters_map['frame_0000000710_2'] = 1
+clusters_map['frame_0000000710_3'] = 1
+clusters_map['frame_0000000730_3'] = 1
+clusters_map['frame_0000000730_4'] = 1
+clusters_map['frame_0000000750_1'] = 1
+clusters_map['frame_0000000755_3'] = 1
+clusters_map['frame_0000000770_4'] = 1
+clusters_map['frame_0000000775_1'] = 1
+clusters_map['frame_0000000785_1'] = 1
+clusters_map['frame_0000000785_2'] = 1
+clusters_map['frame_0000000785_3'] = 1
+clusters_map['frame_0000000795_4'] = 1
+clusters_map['frame_0000000800_2'] = 1
+clusters_map['frame_0000000830_2'] = 1
+clusters_map['frame_0000000845_1'] = 1
+clusters_map['frame_0000000850_2'] = 1
+clusters_map['frame_0000000870_4'] = 1
+clusters_map['frame_0000000890_3'] = 1
+clusters_map['frame_0000000895_4'] = 1
+clusters_map['frame_0000000910_3'] = 1
+clusters_map['frame_0000000915_3'] = 1
+clusters_map['frame_0000000920_2'] = 1
+clusters_map['frame_0000000955_1'] = 1
+clusters_map['frame_0000000955_2'] = 1
+clusters_map['frame_0000000960_2'] = 1
+clusters_map['frame_0000000960_4'] = 1
+clusters_map['frame_0000000965_1'] = 1
+clusters_map['frame_0000000975_1'] = 1
+clusters_map['frame_0000000980_1'] = 1
+clusters_map['frame_0000000980_3'] = 1
+clusters_map['frame_0000000985_2'] = 1
+clusters_map['frame_0000000990_1'] = 1
+clusters_map['frame_0000000995_1'] = 1
+clusters_map['frame_0000000995_4'] = 1
+clusters_map['frame_0000001010_1'] = 1
+clusters_map['frame_0000001020_3'] = 1
+clusters_map['frame_0000001030_3'] = 1
+clusters_map['frame_0000001030_4'] = 1
+clusters_map['frame_0000001035_4'] = 1
+clusters_map['frame_0000001040_4'] = 1
+clusters_map['frame_0000001045_3'] = 1
+clusters_map['frame_0000001060_1'] = 1
+clusters_map['frame_0000001085_1'] = 1
+clusters_map['frame_0000001090_4'] = 1
+clusters_map['frame_0000001095_4'] = 1
+clusters_map['frame_0000001100_4'] = 1
+clusters_map['frame_0000001110_4'] = 1
+clusters_map['frame_0000001115_2'] = 2
+clusters_map['frame_0000001115_4'] = 1
+clusters_map['frame_0000001120_3'] = 1
+clusters_map['frame_0000001135_4'] = 1
+clusters_map['frame_0000001145_1'] = 1
+clusters_map['frame_0000001145_2'] = 2
+clusters_map['frame_0000001145_4'] = 1
+clusters_map['frame_0000001150_4'] = 1
+clusters_map['frame_0000001155_1'] = 1
+clusters_map['frame_0000001160_3'] = 1
+clusters_map['frame_0000001165_4'] = 1
+clusters_map['frame_0000001170_3'] = 1
+clusters_map['frame_0000001175_3'] = 1
+clusters_map['frame_0000001180_3'] = 1
+clusters_map['frame_0000001190_2'] = 2
+clusters_map['frame_0000001190_3'] = 1
+clusters_map['frame_0000001220_2'] = 2
+clusters_map['frame_0000001225_2'] = 2
+clusters_map['frame_0000001230_3'] = 1
+clusters_map['frame_0000001235_2'] = 2
+clusters_map['frame_0000001235_4'] = 2
+clusters_map['frame_0000001250_2'] = 2
+clusters_map['frame_0000001250_4'] = 2
+clusters_map['frame_0000001260_3'] = 1
+clusters_map['frame_0000001275_2'] = 2
+clusters_map['frame_0000001280_2'] = 2
+clusters_map['frame_0000001285_1'] = 1
+clusters_map['frame_0000001310_2'] = 2
+#
+clusters_map['frame_0000001310_4'] = 2
+clusters_map['frame_0000001320_2'] = 2
+#
+clusters_map['frame_0000001320_4'] = 2
+clusters_map['frame_0000001330_1'] = 1
+#
+clusters_map['frame_0000001335_4'] = 2
+clusters_map['frame_0000001340_3'] = 1
+clusters_map['frame_0000001345_2'] = 2
+#
+clusters_map['frame_0000001345_4'] = 2
+clusters_map['frame_0000001350_2'] = 2
+#
+clusters_map['frame_0000001355_4'] = 2
+clusters_map['frame_0000001360_2'] = 2
+clusters_map['frame_0000001375_2'] = 2
+clusters_map['frame_0000001375_3'] = 1
+#
+clusters_map['frame_0000001385_4'] = 2
+clusters_map['frame_0000001405_3'] = 1
+clusters_map['frame_0000001425_1'] = 1
+clusters_map['frame_0000001430_3'] = 1
+clusters_map['frame_0000001430_4'] = 2
+clusters_map['frame_0000001435_4'] = 2
+clusters_map['frame_0000001440_4'] = 2
+clusters_map['frame_0000001450_1'] = 1
+clusters_map['frame_0000001460_3'] = 2
+clusters_map['frame_0000001460_4'] = 2
+clusters_map['frame_0000001465_4'] = 2
+#
+clusters_map['frame_0000001475_3'] = 2
+clusters_map['frame_0000001480_3'] = 2
+clusters_map['frame_0000001490_4'] = 2
+clusters_map['frame_0000001500_1'] = 1
+clusters_map['frame_0000001500_4'] = 2
+clusters_map['frame_0000001510_3'] = 2
+#
+clusters_map['frame_0000001515_3'] = 2
+#!!!!
+clusters_map['frame_0000001520_4'] = 2
+#!!!!
+clusters_map['frame_0000001535_4'] = 2
+clusters_map['frame_0000001550_4'] = 2
+clusters_map['frame_0000001565_4'] = 2
+clusters_map['frame_0000001570_3'] = 2
+clusters_map['frame_0000001570_4'] = 2
+clusters_map['frame_0000001580_4'] = 2
+clusters_map['frame_0000001585_4'] = 2
+clusters_map['frame_0000001595_3'] = 2
+clusters_map['frame_0000001605_4'] = 2
+clusters_map['frame_0000001610_4'] = 2
+clusters_map['frame_0000001615_4'] = 2
+clusters_map['frame_0000001620_3'] = 2
+clusters_map['frame_0000001625_4'] = 1
+clusters_map['frame_0000001640_1'] = 1
+clusters_map['frame_0000001650_1'] = 1
+clusters_map['frame_0000001650_3'] = 2
+clusters_map['frame_0000001670_1'] = 1
+clusters_map['frame_0000001680_3'] = 2
+clusters_map['frame_0000001685_1'] = 1
+clusters_map['frame_0000001695_3'] = 2
+clusters_map['frame_0000001700_3'] = 2
+#
+clusters_map['frame_0000001720_1'] = 2
+clusters_map['frame_0000001770_3'] = 2
+clusters_map['frame_0000001785_3'] = 2
+#
+clusters_map['frame_0000001795_1'] = 2
+clusters_map['frame_0000001815_1'] = 1
+clusters_map['frame_0000001835_1'] = 1
+clusters_map['frame_0000001845_1'] = 1
+clusters_map['frame_0000001860_1'] = 1
+clusters_map['frame_0000001875_1'] = 1
+clusters_map['frame_0000001890_1'] = 1
+clusters_map['frame_0000001920_1'] = 1
+#
+clusters_map['frame_0000001935_1'] = 1
+clusters_map['frame_0000001990_1'] = 2
+clusters_map['frame_0000002055_1'] = 2
+clusters_map['frame_0000002065_1'] = 2
+#
+clusters_map['frame_0000002070_1'] = 2
+clusters_map['frame_0000002105_1'] = 2
+clusters_map['frame_0000002115_1'] = 2
+clusters_map['frame_0000002135_1'] = 2
+clusters_map['frame_0000002140_1'] = 2
+clusters_map['frame_0000002150_1'] = 2
+clusters_map['frame_0000002160_1'] = 2
+#
+clusters_map['frame_0000002165_1'] = 2
+#
+clusters_map['frame_0000002185_1'] = 2
+clusters_map['frame_0000002195_1'] = 2
+#
+clusters_map['frame_0000002220_1'] = 2
+clusters_map['frame_0000002230_1'] = 2
+clusters_map['frame_0000002270_1'] = 2
+clusters_map['frame_0000002285_1'] = 2
+clusters_map['frame_0000002295_1'] = 2
+clusters_map['frame_0000002310_1'] = 2
+clusters_map['frame_0000002330_1'] = 2
+clusters_map['frame_0000002360_1'] = 2
+clusters_map['frame_0000002375_1'] = 2
+clusters_map['frame_0000002390_1'] = 2
+#!!!
+clusters_map['frame_0000002400_1'] = 2
+#!!!
+clusters_map['frame_0000002460_1'] = 2

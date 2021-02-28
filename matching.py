@@ -312,7 +312,7 @@ def main():
 
     # keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
 
-    limit = 9
+    limit = 1
     difficulties = set(range(1))
     #img_correspondences(scene_name, "without_rectification", sift_descriptor, normals_dir, difficulties, rectify=False, limit=limit)
     img_correspondences(scene_name, "with_rectification", sift_descriptor, normals_dir, difficulties, rectify=True, limit=limit, override_existing=False)

@@ -32,6 +32,9 @@ def get_rectification_rotations(normals):
     z = np.array([0.0, 0.0, 1.0])
     Rs = []
 
+    # this handles the case when there is only one dominating plane
+    if len(normals.shape) == 1:
+        normals = normals.reshape(1, -1)
     for _, normal in enumerate(normals):
         assert normal[2] > 0
         rotation_vector = np.cross(normal, z)

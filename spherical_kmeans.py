@@ -1,30 +1,30 @@
 import torch
 import math
 
+initial_cluster_centers = torch.Tensor([
+        [+math.sqrt(3) / 2,  0.00, -0.5],
+        [-math.sqrt(3) / 4, +0.75, -0.5],
+        [-math.sqrt(3) / 4, -0.75, -0.5]
+    ])
 
-def kmeans(normals: torch.Tensor, filter, max_iter=20):
+distance_threshold = 0.6
+angle_distance = 2 * math.asin(distance_threshold / 2)
+
+print("angle distance in rad used for k_means in radians: {}".format(angle_distance))
+print("the same in degrees: {}".format(angle_distance / math.pi * 180.0))
+
+def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
     """
     :param normals: torch: w,h,3 (may add b)
     :return:
     """
 
-    clusters = 2
-    old_arg_mins = None
-
-    cluster_center_1_vec = torch.Tensor([+math.sqrt(3) / 2, 0.00, -0.5])
-    cluster_center_2_vec = torch.Tensor([-math.sqrt(3) / 4, +0.75, -0.5])
-    cluster_center_3_vec = torch.Tensor([-math.sqrt(3) / 4, -0.75, -0.5])
-
-    assert torch.norm(cluster_center_1_vec).item() - 1.0 < 000.1
-    assert torch.norm(cluster_center_2_vec).item() - 1.0 < 000.1
-    assert torch.norm(cluster_center_3_vec).item() - 1.0 < 000.1
     shape = tuple([clusters]) + tuple(normals.shape)
-
     cluster_centers = torch.zeros(shape)
-    cluster_centers[0, :, :, :] = cluster_center_1_vec
-    cluster_centers[1, :, :, :] = cluster_center_2_vec
-    #cluster_centers[2, :, :, :] = cluster_center_3_vec
+    for i in range(clusters):
+        cluster_centers[i] = initial_cluster_centers[i]
 
+    old_arg_mins = None
     for iter in range(max_iter):
 
         diffs = cluster_centers[:] - normals
@@ -54,9 +54,6 @@ def kmeans(normals: torch.Tensor, filter, max_iter=20):
     arg_mins = mins[1].squeeze(0)
     filtered_arg_mins = torch.where(filter == 1, arg_mins, 3)
     mins = mins[0].squeeze(0)
-
-    distance_threshold = 0.6
-    angle_distance = 2 * math.asin(distance_threshold/2)
 
     arg_mins = torch.where(mins < distance_threshold, filtered_arg_mins, 3)
 

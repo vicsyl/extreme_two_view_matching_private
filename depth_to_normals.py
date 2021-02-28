@@ -8,12 +8,13 @@ import matplotlib.pyplot as plt
 
 import spherical_kmeans
 from pathlib import Path
+from clusters_map import clusters_map
 
 
 """
 Functions in this file are supposed to compute normals from the
 depth maps. I tried two different approaches
-a) as the original paper decribes, it reprojects points in 5x5 window to 3D and a plane was fitted
+a) as the original paper describes, it reprojects points in 5x5 window to 3D and a plane was fitted
    to these points. I used SVD decomposition for this, which I think is very inefficient, also because I cannot easily parallelize it  
    Using directly psedoinverse matrixces to solve MSE shouldn't be much more efficient.
    The backprojected points within the window will be spread by different distances depending on the projected ray angle and - more importantly - on the depth    
@@ -234,6 +235,7 @@ def normal_from_sobel_and_depth_data(depth_data, size):
 
 def show_and_save_normals(normals,
                           title,
+                          clusters,
                           file_name_prefix=None,
                           save=False,
                           cluster=False,
@@ -263,7 +265,7 @@ def show_and_save_normals(normals,
         #naive sky filtering
         #filtered[0:960, 0:350] = 0
 
-        clustered_normals, arg_mins = spherical_kmeans.kmeans(normals, filtered)
+        clustered_normals, arg_mins = spherical_kmeans.kmeans(normals, filtered, clusters)
         print("clustered normals: {}".format(clustered_normals))
 
         img[:, :, 0][arg_mins == 0] = 255
@@ -278,8 +280,10 @@ def show_and_save_normals(normals,
         img_to_show = img
         plt.figure()
         #plt.title("{}_clusters_{}".format(title, enabled_color))
-        # TODO refactor
-        desc = "red={},\ngreen={},\nblue={}".format(clustered_normals[0], clustered_normals[1], clustered_normals[2] if len(clustered_normals) == 3 else "N/A")
+        colors = ["red", "green", "blue"]
+        desc = ""
+        for i in range(clusters):
+            desc = "{},{}={}".format(desc, colors[i], clustered_normals[i])
         plt.title(desc)
         plt.imshow(img_to_show)
         plt.savefig("{}_clusters.jpg".format(file_name_prefix))
@@ -309,6 +313,14 @@ def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, i
     for depth_data_file_name in file_names:
 
         print("Processing: {}".format(depth_data_file_name))
+
+        fn = depth_data_file_name[:-4]
+        if not clusters_map.__contains__(fn) or clusters_map[fn] == '?':
+            print("{} is missing, skipping".format(fn))
+            continue
+        else:
+            print("{} is ok".format(fn))
+
         camera_id = images[depth_data_file_name[0:-4]].camera_id
         camera = cameras[camera_id]
         focal_length = camera.focal_length
@@ -349,7 +361,12 @@ def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, i
 
             file_name_prefix = '{}/{}'.format(output_directory, depth_data_file_name[:-4])
             title = "normals big mask - {} - {}".format(param_str, depth_data_file_name)
-            show_and_save_normals(normals, title, file_name_prefix, save=save, cluster=cluster)
+            if clusters_map.__contains__(depth_data_file_name[:-4]):
+                clusters = clusters_map[depth_data_file_name[:-4]]
+            else:
+                clusters = 2
+                print("WARNING: number of clusters unknown for {}, defaulting to 2 ...".format(depth_data_file_name))
+            show_and_save_normals(normals, title, clusters, file_name_prefix, save=save, cluster=cluster)
 
 
 def sobel_normals_5x5(scene: str, limit, save, cluster):
@@ -368,12 +385,12 @@ def sobel_normals_5x5(scene: str, limit, save, cluster):
 
         depth_data = read_depth_data(file_name, directory, height, width)
 
-        mask_size=5
+        mask_size = 5
         normals = normal_from_sobel_and_depth_data(depth_data, size=mask_size)
 
         file_name ='work/{}_normals_sobel_normals_colors_fixed.png'.format(file_name)
         title = "normals sobel {}x{} - {}".format(mask_size, mask_size, file_name[:-4])
-        show_and_save_normals(normals, title, file_name, save=save, cluster=cluster)
+        show_and_save_normals(normals, title, clusters=2, file_name_prefix=file_name, save=save, cluster=cluster)
 
 
 def main():
@@ -410,6 +427,7 @@ def main():
     scene_info = SceneInfo.read_scene(scene)
 
     interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
+    #interesting_imgs = interesting_imgs[:3]
 
     save_diff_normals_different_windows(scene="scene1", save=True, cluster=True, interesting_files=interesting_imgs, limit=None, override_existing=False)
     #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
