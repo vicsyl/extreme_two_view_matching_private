@@ -427,9 +427,10 @@ def main():
     scene_info = SceneInfo.read_scene(scene)
 
     interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
+    interesting_imgs = interesting_imgs[:1]
     #interesting_imgs = interesting_imgs[:3]
 
-    save_diff_normals_different_windows(scene="scene1", save=True, cluster=True, interesting_files=interesting_imgs, limit=None, override_existing=False)
+    save_diff_normals_different_windows(scene="scene1", save=True, cluster=True, interesting_files=interesting_imgs, limit=None, override_existing=True)
     #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
 
     end_time = time.time()

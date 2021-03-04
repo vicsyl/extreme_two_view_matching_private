@@ -58,6 +58,10 @@ class SceneInfo:
     img_info_map: dict
     cameras: dict
 
+    def get_img_K(self, img_name):
+        camera_id = self.img_info_map[img_name].camera_id
+        return self.cameras[camera_id].get_K()
+
     @staticmethod
     def read_scene(scene):
         img_pairs = read_image_pairs(scene)

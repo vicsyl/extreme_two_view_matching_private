@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import os
+import math
+import time
 from resize import upsample
 
 def get_files(dir, suffix, limit=None):
@@ -57,8 +59,6 @@ def quaternions_to_R(qs):
     return rot_matrix
 
 
-import math
-
 def test_quaternions():
 
     sqrt_2_d_2 = math.sqrt(2) / 2
@@ -77,6 +77,22 @@ def test_quaternions():
         R = quaternions_to_R(input)
         print("input:\n{}".format(input))
         print("R:\n{}".format(R))
+
+class Timer:
+
+    start_time = None
+    last_time = None
+
+    @staticmethod
+    def start():
+        Timer.start_time = time.time()
+        Timer.last_time = Timer.start_time
+
+    @staticmethod
+    def check_point(label="Unknown label"):
+        end = time.time()
+        print("{}: time elapsed from start: {}. Time elapsed from the last measurement: {}, ".format(label, end - Timer.start_time, end - Timer.last_time))
+        Timer.last_time = end
 
 
 if __name__ == "__main__":

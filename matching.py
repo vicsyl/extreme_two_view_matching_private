@@ -5,7 +5,7 @@ import numpy as np
 import time
 import os
 
-from rectification import read_img_normals_info, get_rectified_keypoints
+from rectification import read_img_normals_info, get_rectified_keypoints_all
 from pathlib import Path
 
 """
@@ -189,14 +189,13 @@ def match_image_pair(img_pair,
                      rectify=True,
                      show=True):
 
+    # TODO just use SceneInfo
     camera_1_id = images_info[img_pair.img1].camera_id
     camera_1 = cameras[camera_1_id]
     K_1 = camera_1.get_K()
-    K_1_inv = np.linalg.inv(K_1)
     camera_2_id = images_info[img_pair.img2].camera_id
     camera_2 = cameras[camera_2_id]
     K_2 = camera_2.get_K()
-    K_2_inv = np.linalg.inv(K_2)
 
     if camera_1_id == camera_2_id:
         print("the same camera used in a img pair")
@@ -211,8 +210,8 @@ def match_image_pair(img_pair,
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
     if rectify:
-        kps1, descs1 = get_rectified_keypoints(normals1, normal_indices1, img1, K_1, K_1_inv, descriptor, out_dir=out_dir)
-        kps2, descs2 = get_rectified_keypoints(normals2, normal_indices2, img2, K_2, K_2_inv, descriptor, out_dir=out_dir)
+        kps1, descs1 = get_rectified_keypoints_all(normals1, normal_indices1, img1, K_1, descriptor, img_pair.img1, out_dir=out_dir)
+        kps2, descs2 = get_rectified_keypoints_all(normals2, normal_indices2, img2, K_2, descriptor, img_pair.img2, out_dir=out_dir)
     else:
         kps1, descs1 = descriptor.detectAndCompute(img1, None)
         kps2, descs2 = descriptor.detectAndCompute(img2, None)
@@ -243,23 +242,20 @@ def match_image_pair(img_pair,
     return E, inlier_mask, src_pts, dst_pts, kps1, kps2
 
 
-def img_correspondences(scene_name, output_dir, descriptor, normals_dir, difficulties=set(range(18)), rectify=True, limit=None, override_existing=True):
+def img_correspondences(scene_name, output_dir, descriptor, normals_dir, difficulties=range(18), rectify=True, limit=None, override_existing=True):
 
     img_pairs = read_image_pairs(scene_name)
     images_info = read_images(scene_name)
     cameras = read_cameras(scene_name)
 
-    for difficulty, img_pair_in_difficulty in enumerate(img_pairs):
-        if difficulty not in difficulties:
-            continue
+    counter = 0
+    for difficulty in difficulties:
+
         print("Difficulty: {}".format(difficulty))
 
         # if limit is None or limit > len(img_pair_in_difficulty):
-        max_limit = len(img_pair_in_difficulty)
+        max_limit = len(img_pairs[difficulty])
 
-        # def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, show=False):
-
-        counter = 0
         for i in range(max_limit):
 
             if limit is not None and counter >= limit:
@@ -313,9 +309,9 @@ def main():
     # keypoints_match_with_data(scene_name, 2, sift_descriptor, limit)
 
     limit = 1
-    difficulties = set(range(1))
+    difficulties = [1]
     #img_correspondences(scene_name, "without_rectification", sift_descriptor, normals_dir, difficulties, rectify=False, limit=limit)
-    img_correspondences(scene_name, "with_rectification", sift_descriptor, normals_dir, difficulties, rectify=True, limit=limit, override_existing=False)
+    img_correspondences(scene_name, "with_rectification_foo", sift_descriptor, normals_dir, difficulties, rectify=True, limit=limit, override_existing=False)
 
     print("All done")
     end = time.time()

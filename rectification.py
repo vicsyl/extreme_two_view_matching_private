@@ -5,7 +5,10 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import glob
 import time
-from scene_info import read_cameras
+from utils import Timer
+from scene_info import SceneInfo, read_cameras
+from connected_components import show_components, read_img_normals_info, get_connected_components
+
 
 def get_rotation_matrix(unit_rotation_vector, theta):
 
@@ -52,7 +55,7 @@ def get_rectification_rotations(normals):
 
 # TODO the idea of this method was to define a bounding box and only this box could be transformed, however, warpPerspectife (AFAIK)
 # always transforms the whole image... so there is not easy way to do that
-def get_bounding_box(normals, normal_indices, index, img_remove):
+def get_bounding_box_old(normals, normal_indices, index, img_remove, zero_factor=0.0, max_factor=1.0):
 
     # rows, col = np.where(normal_indices == index)
     # min_row = min(rows)
@@ -61,22 +64,56 @@ def get_bounding_box(normals, normal_indices, index, img_remove):
     # max_col = max(col)
     # src = np.float32([[min_row, min_col], [min_row, max_col - 1], [max_row - 1, max_col - 1], [max_row - 1, min_col]]).reshape(-1, 1, 2)
 
-    h, w, _ = img_remove.shape
-    src = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
+    orig_h, orig_w, _ = img_remove.shape
+    #max_factor = 0.6
+    #zero_factor = 0.4
+    zero_w = 0 + zero_factor * orig_w
+    zero_h = 0 + zero_factor * orig_h
+    h = orig_h * max_factor
+    w = orig_w * max_factor
+
+    src = np.float32([[zero_w, zero_h], [zero_w, h - 1], [w - 1, h - 1], [w - 1, zero_h]]).reshape(-1, 1, 2)
 
     return src
 
 
-def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, show=False, out_dir=None):
+def get_bounding_box(normal_indices, index):
+
+    rows, col = np.where(normal_indices == index)
+    min_row = min(rows)
+    max_row = max(rows)
+    min_col = min(col)
+    max_col = max(col)
+    src = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]]).reshape(-1, 1, 2)
+    return src
+
+
+def get_rectified_keypoints_all(normals, normal_indices, img, K, descriptor, img_file, out_dir=None):
+    # NOTE this should handle the invalid normal index (=3) well
+    get_rectified_keypoints(normals, normal_indices, list(range(len(normals))), img, K, descriptor, img_file, out_dir)
+
+
+def get_rectified_keypoints(normals, normal_indices, valid_indices, img, K, descriptor, img_file, out_dir=None):
+
+    #TODO remove valid_indices
+
+    K_inv = np.linalg.inv(K)
 
     Rs = get_rectification_rotations(normals)
+
+    components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
+    components_in_colors = show_components(components_indices, valid_components_dict.keys())
 
     all_descs = None
     all_kps = []
 
-    for normal_index, R in enumerate(Rs):
+    for component_index in valid_components_dict:
 
-        src = get_bounding_box(normals, normal_indices, normal_index, img)
+        normal_index = valid_components_dict[component_index]
+        R = Rs[normal_index]
+
+        #src2 = get_bounding_box_old(normals, normal_indices, component_index, img)
+        src = get_bounding_box(components_indices, component_index)
 
         T = K @ R @ K_inv
         dst = cv.perspectiveTransform(src, T)
@@ -86,12 +123,16 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
             # t1 = max(0, -mins[1])
             t0 = -mins[0]
             t1 = -mins[1]
+            # t0 = 0
+            # t1 = 0
             translate = np.array([
                 [1, 0, t0],
                 [0, 1, t1],
                 [0, 0, 1],
             ])
             print("Translating by:\n{}".format(translate))
+            dst2 = cv.perspectiveTransform(src, T)
+            dst3 = cv.perspectiveTransform(dst2, translate)
             T = translate @ T
             dst = cv.perspectiveTransform(src, T)
 
@@ -108,8 +149,13 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         print("src: \n {}".format(src))
         print("dst: \n {}".format(dst))
 
+        print("bounding box: {}".format(bounding_box))
         rectified = cv.warpPerspective(img, T, bounding_box)
-        rectified_indices = cv.warpPerspective(normal_indices, T, bounding_box)
+
+        comp_to_rect = components_in_colors.astype(np.float32) / 255
+        rectified_comp = cv.warpPerspective(comp_to_rect, T, bounding_box)
+
+        #rectified_indices = cv.warpPerspective(normal_indices, T, bounding_box)
 
         kps, descs = descriptor.detectAndCompute(rectified, None)
 
@@ -129,7 +175,7 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         kps_int_coords[:, 0] = first
         kps_int_coords[:, 1] = seconds
 
-        cluster_mask_bool = np.array([normal_indices[kps_int_coord[1], [kps_int_coord[0]], 0] == normal_index for kps_int_coord in kps_int_coords])
+        cluster_mask_bool = np.array([components_indices[kps_int_coord[1], [kps_int_coord[0]]] == component_index for kps_int_coord in kps_int_coords])
         cluster_mask_bool = cluster_mask_bool.reshape(-1)
 
         descs = descs[cluster_mask_bool]
@@ -157,13 +203,15 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
         # plt.imshow(rectified_indices * 50)
         # plt.show()
 
-        #plt.figure()
-        plt.figure(dpi=600)
+        plt.figure()
+        #plt.figure(dpi=600)
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(rectified)
-        #plt.show()
+        plt.show()
+        plt.imshow(rectified_comp)
+        plt.show()
         if out_dir is not None:
-            plt.savefig("{}/rectified_{}.jpg".format(out_dir, normal_index))
+            plt.savefig("{}/rectified_{}_{}.jpg".format(out_dir, img_file, component_index))
 
         # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
         # plt.imshow(img_rectified)
@@ -171,51 +219,55 @@ def get_rectified_keypoints(normals, normal_indices, img, K, K_inv, descriptor, 
     return all_kps, all_descs
 
 
-# original_input_dir - to scene info
-def read_img_normals_info(parent_dir, img_name_dir):
+def show_rectifications(scene_info: SceneInfo, parent_dir, original_input_dir, limit, interesting_dirs=None):
 
-    if not os.path.isdir("{}/{}".format(parent_dir, img_name_dir)):
-        return None, None
+    if interesting_dirs is not None:
+        dirs = interesting_dirs
+    else:
+        dirs = [dirname for dirname in sorted(os.listdir(parent_dir)) if os.path.isdir("{}/{}".format(parent_dir, dirname))]
+        dirs = sorted(dirs)
+        if limit is not None:
+            dirs = dirs[0:limit]
 
-    paths_png = glob.glob("{}/{}/*.png".format(parent_dir, img_name_dir))
-    paths_txt = glob.glob("{}/{}/*.txt".format(parent_dir, img_name_dir))
+    for img_name in dirs:
 
-    if paths_png is None or paths_txt is None:
-        print(".txt or .png file doesn't exist in {}!".format(img_name_dir))
-        raise
+        K = scene_info.get_img_K(img_name)
 
-    normals = np.loadtxt(paths_txt[0], delimiter=',')
-    normal_indices = cv.imread(paths_png[0], None)
-    return normals, normal_indices
-
-
-def show_rectifications(parent_dir, original_input_dir, limit):
-
-    # TODO
-    cameras = read_cameras("scene1")
-    K = cameras[1801].get_K()
-    K_inv = np.linalg.inv(K)
-
-    # /Users/vaclav/ownCloud/SVP/project/work/scene1/normals/simple_diff_mask_sigma_5
-    dirs = [dirname for dirname in sorted(os.listdir(parent_dir)) if os.path.isdir("{}/{}".format(parent_dir, dirname))]
-    dirs = sorted(dirs)
-    if limit is not None:
-        dirs = dirs[0:limit]
-
-    for img_name_dir in dirs:
-
-        img_file_path = '{}/{}.jpg'.format(original_input_dir, img_name_dir)
+        img_file_path = '{}/{}.jpg'.format(original_input_dir, img_name)
         img = cv.imread(img_file_path, None)
-        normals, normal_indices = read_img_normals_info(parent_dir, img_name_dir)
-        get_rectified_keypoints(normals, normal_indices, img, K, K_inv, cv.SIFT_create(), True)
+        normals, normal_indices = read_img_normals_info(parent_dir, img_name)
+
+        show = True
+        if show:
+            show_components(normal_indices, range(len(normals)))
+
+        normals = np.array(
+            [[ 0.33717412, -0.30356583, -0.89115733],
+             [-0.68118596, -0.23305716, -0.6940245 ]]
+        )
+        # normals = np.array(
+        #     [
+        #     #[ 0.33717412, -0.30356583, -0.89115733],
+        #      [-0.48118596, -0.02, -0.6]]
+        # )
+
+        for i in range(len(normals)):
+            norm = np.linalg.norm(normals[i])
+            normals[i] /= norm
+            print("normalized: {}".format(normals[i]))
+
+        get_rectified_keypoints_all(normals, normal_indices, img, K, cv.SIFT_create(), img_name)
 
 
 if __name__ == "__main__":
 
-    start = time.time()
+    Timer.start()
 
-    show_rectifications("work/scene1/normals/simple_diff_mask_sigma_5", "original_dataset/scene1/images", limit=1)
+    interesting_dirs = ["frame_0000000145_2"]
 
-    print("All done")
-    end = time.time()
-    print("Time elapsed: {}".format(end - start))
+    scene_info = SceneInfo.read_scene("scene1")
+    Timer.check_point("scene info read")
+
+    show_rectifications(scene_info, "work/scene1/normals/simple_diff_mask_sigma_5", "original_dataset/scene1/images", limit=1, interesting_dirs=interesting_dirs)
+
+    Timer.check_point("All done")
