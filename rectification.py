@@ -115,26 +115,28 @@ def get_rectified_keypoints(normals, normal_indices, valid_indices, img, K, desc
         #src2 = get_bounding_box_old(normals, normal_indices, component_index, img)
         src = get_bounding_box(components_indices, component_index)
 
-        T = K @ R @ K_inv
+        scale = 1.0
+        scale_matrix = np.array([
+            [scale, 0, 0],
+            [0, scale, 0],
+            [0, 0, 1],
+        ])
+
+        T = K @ R @ K_inv @ scale_matrix
         dst = cv.perspectiveTransform(src, T)
         mins = (np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1]))
-        if mins[0] < 0 or mins[1] < 0:
-            # t0 = max(0, -mins[0])
-            # t1 = max(0, -mins[1])
-            t0 = -mins[0]
-            t1 = -mins[1]
-            # t0 = 0
-            # t1 = 0
-            translate = np.array([
-                [1, 0, t0],
-                [0, 1, t1],
-                [0, 0, 1],
-            ])
-            print("Translating by:\n{}".format(translate))
-            dst2 = cv.perspectiveTransform(src, T)
-            dst3 = cv.perspectiveTransform(dst2, translate)
-            T = translate @ T
-            dst = cv.perspectiveTransform(src, T)
+        t0 = -mins[0]
+        t1 = -mins[1]
+        translate = np.array([
+            [1, 0, t0],
+            [0, 1, t1],
+            [0, 0, 1],
+        ])
+        print("Translating by:\n{}".format(translate))
+        dst2 = cv.perspectiveTransform(src, T)
+        dst3 = cv.perspectiveTransform(dst2, translate)
+        T = translate @ T
+        dst = cv.perspectiveTransform(src, T)
 
         bounding_box = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
         # TODO this is too defensive (and wrong) I think, I can warp only the plane
@@ -247,8 +249,8 @@ def show_rectifications(scene_info: SceneInfo, parent_dir, original_input_dir, l
         )
         # normals = np.array(
         #     [
-        #     #[ 0.33717412, -0.30356583, -0.89115733],
-        #      [-0.48118596, -0.02, -0.6]]
+        #      [ 0.33717412, -0.30356583, -0.89115733],
+        #      [-0.78, -0.3, -0.55]]
         # )
 
         for i in range(len(normals)):
