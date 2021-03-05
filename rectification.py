@@ -70,14 +70,14 @@ def get_perspective_transform(R, K, K_inv, component_indices, index):
     max_col_or_new = max(coords[0])
     src_new_bb = np.float32([[min_col_or_new, min_row_or_new], [min_col_or_new, max_row_or_new - 1], [max_col_or_new - 1, max_row_or_new - 1], [max_col_or_new - 1, min_row_or_new]])
 
-    scale = 0.1
+    scale = 0.04
     scale_matrix = np.array([
         [scale, 0, 0],
         [0, scale, 0],
         [0, 0, 1],
     ])
 
-    T_new = K @ R @ K_inv @ scale_matrix
+    T_new = scale_matrix @ K @ R @ K_inv
     T_old = T_new
     print("second T: {}".format(T_new))
 
@@ -93,7 +93,7 @@ def get_perspective_transform(R, K, K_inv, component_indices, index):
     dst_new = np.transpose(dst_new)
     dst_new = add_third_row(dst_new)
 
-    src_old = get_bounding_box(component_indices, index)
+    src_old = get_bounding_box(component_indices, index, component_indices)
     # src_try = np.transpose(np.squeeze(src_old, axis=1))
     # src_try = add_third_row(src_try)
 
@@ -133,25 +133,27 @@ def get_perspective_transform(R, K, K_inv, component_indices, index):
     return T_new, bounding_box_new
 
 
-def get_bounding_box(normal_indices, index):
+def get_bounding_box(normal_indices, index, img):
 
-    rows, col = np.where(normal_indices == index)
-    min_row = min(rows)
-    max_row = max(rows)
-    min_col = min(col)
-    max_col = max(col)
-    src = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]]).reshape(-1, 1, 2)
+    zero_factor = 0.0
+    max_factor = 1.0
+    orig_h, orig_w = img.shape
+    zero_w = 0 + zero_factor * orig_w
+    zero_h = 0 + zero_factor * orig_h
+    h = orig_h * max_factor
+    w = orig_w * max_factor
+    src = np.float32([[zero_w, zero_h], [zero_w, h - 1], [w - 1, h - 1], [w - 1, zero_h]]).reshape(-1, 1, 2)
+    #
+    # rows, col = np.where(normal_indices == index)
+    # min_row = min(rows)
+    # max_row = max(rows)
+    # min_col = min(col)
+    # max_col = max(col)
+    # src = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]]).reshape(-1, 1, 2)
     return src
 
 
-def get_rectified_keypoints_all(normals, normal_indices, img, K, descriptor, img_file, out_dir=None):
-    # NOTE this should handle the invalid normal index (=3) well
-    get_rectified_keypoints(normals, normal_indices, list(range(len(normals))), img, K, descriptor, img_file, out_dir)
-
-
-def get_rectified_keypoints(normals, normal_indices, valid_indices, img, K, descriptor, img_file, out_dir=None):
-
-    #TODO remove valid_indices
+def get_rectified_keypoints(normals, normal_indices, img, K, descriptor, img_file, out_dir=None):
 
     K_inv = np.linalg.inv(K)
 
@@ -167,36 +169,9 @@ def get_rectified_keypoints(normals, normal_indices, valid_indices, img, K, desc
 
         normal_index = valid_components_dict[component_index]
         R = Rs[normal_index]
+        #R = np.linalg.inv(R)
 
         T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
-
-        # src = get_bounding_box(components_indices, component_index)
-        #
-        # scale = 1.0
-        # scale_matrix = np.array([
-        #     [scale, 0, 0],
-        #     [0, scale, 0],
-        #     [0, 0, 1],
-        # ])
-        #
-        # T = K @ R @ K_inv @ scale_matrix
-        # print("first T: {}".format(T))
-        # dst = cv.perspectiveTransform(src, T)
-        # mins = (np.min(dst[:, 0, 0]), np.min(dst[:, 0, 1]))
-        # t0 = -mins[0]
-        # t1 = -mins[1]
-        # translate = np.array([
-        #     [1, 0, t0],
-        #     [0, 1, t1],
-        #     [0, 0, 1],
-        # ])
-        # print("Translating by:\n{}".format(translate))
-        # dst2 = cv.perspectiveTransform(src, T)
-        # dst3 = cv.perspectiveTransform(dst2, translate)
-        # T = translate @ T
-        # dst = cv.perspectiveTransform(src, T)
-        #
-        # bounding_box = (np.max(dst[:, 0, 0]), np.max(dst[:, 0, 1]))
         #TODO this is too defensive (and wrong) I think, I can warp only the plane
         if bounding_box[0] * bounding_box[1] > 10**8:
             print("warping to an img that is too big, skipping")
@@ -204,21 +179,13 @@ def get_rectified_keypoints(normals, normal_indices, valid_indices, img, K, desc
 
         T_inv = np.linalg.inv(T)
 
-        print("rotation: \n {}".format(R))
-        print("transformation: \n {}".format(T))
-        #print("transformation2: \n {}".format(T2))
-
-        # print("src: \n {}".format(src))
-        # print("dst: \n {}".format(dst))
-
-        print("bounding box: {}".format(bounding_box))
-        #print("bounding box2: {}".format(bounding_box2))
+        # print("rotation: \n {}".format(R))
+        # print("transformation: \n {}".format(T))
+        # print("bounding box: {}".format(bounding_box))
         rectified = cv.warpPerspective(img, T, bounding_box)
 
-        comp_to_rect = components_in_colors.astype(np.float32) / 255
-        rectified_comp = cv.warpPerspective(comp_to_rect, T, bounding_box)
-
-        #rectified_indices = cv.warpPerspective(normal_indices, T, bounding_box)
+        rectified_components = components_in_colors.astype(np.float32) / 255
+        rectified_components = cv.warpPerspective(rectified_components, T, bounding_box)
 
         kps, descs = descriptor.detectAndCompute(rectified, None)
 
@@ -262,17 +229,12 @@ def get_rectified_keypoints(normals, normal_indices, valid_indices, img, K, desc
             else:
                 all_descs = np.vstack((all_descs, descs))
 
-        # plt.figure()
-        # plt.title("normal {}".format(normals[normal_index]))
-        # plt.imshow(rectified_indices * 50)
-        # plt.show()
-
         plt.figure()
         #plt.figure(dpi=600)
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(rectified)
         plt.show()
-        plt.imshow(rectified_comp)
+        plt.imshow(rectified_components)
         plt.show()
         if out_dir is not None:
             plt.savefig("{}/rectified_{}_{}.jpg".format(out_dir, img_file, component_index))
@@ -312,7 +274,7 @@ def show_rectifications(scene_info: SceneInfo, parent_dir, original_input_dir, l
         normals = np.array(
             [
              [ 0.33717412, -0.30356583, -0.89115733],
-             [-0.80, -0.1, -0.60]],
+             [-0.91, -0.25, -0.31]],
         )
 
         for i in range(len(normals)):
@@ -320,7 +282,7 @@ def show_rectifications(scene_info: SceneInfo, parent_dir, original_input_dir, l
             normals[i] /= norm
             print("normalized: {}".format(normals[i]))
 
-        get_rectified_keypoints_all(normals, normal_indices, img, K, cv.SIFT_create(), img_name)
+        get_rectified_keypoints(normals, normal_indices, img, K, cv.SIFT_create(), img_name)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import numpy as np
 import time
 import os
 
-from rectification import read_img_normals_info, get_rectified_keypoints_all
+from rectification import read_img_normals_info, get_rectified_keypoints
 from pathlib import Path
 
 """
@@ -210,8 +210,8 @@ def match_image_pair(img_pair,
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
     if rectify:
-        kps1, descs1 = get_rectified_keypoints_all(normals1, normal_indices1, img1, K_1, descriptor, img_pair.img1, out_dir=out_dir)
-        kps2, descs2 = get_rectified_keypoints_all(normals2, normal_indices2, img2, K_2, descriptor, img_pair.img2, out_dir=out_dir)
+        kps1, descs1 = get_rectified_keypoints(normals1, normal_indices1, img1, K_1, descriptor, img_pair.img1, out_dir=out_dir)
+        kps2, descs2 = get_rectified_keypoints(normals2, normal_indices2, img2, K_2, descriptor, img_pair.img2, out_dir=out_dir)
     else:
         kps1, descs1 = descriptor.detectAndCompute(img1, None)
         kps2, descs2 = descriptor.detectAndCompute(img2, None)
