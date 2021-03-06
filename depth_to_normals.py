@@ -237,83 +237,82 @@ def normal_from_sobel_and_depth_data(depth_data, size):
     return normals
 
 
-def show_and_save_normals(normals,
-                          title,
-                          clusters,
-                          file_name_prefix=None,
-                          save=False,
-                          cluster=False,
-                          angle_threshold=4*math.pi/9):
+def cluster_and_save_normals(normals,
+                             depth_data_file_name,
+                             output_directory,
+                             show=False,
+                             title=None,
+                             save=False,
+                             angle_threshold=4*math.pi/9):
 
+    file_name_prefix = '{}/{}'.format(output_directory, depth_data_file_name[:-4])
+    if clusters_map.__contains__(depth_data_file_name[:-4]):
+        clusters = clusters_map[depth_data_file_name[:-4]]
+    else:
+        clusters = 2
+        print("WARNING: number of clusters unknown for {}, defaulting to 2 ...".format(depth_data_file_name))
+
+    # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
         normals = normals.squeeze(dim=0).squeeze(dim=0)
         img = normals.numpy() * 255
     img[:, :, 2] = -img[:, :, 2]
 
-    img_to_show = np.absolute(img.astype(dtype=np.int8))
-    plt.figure()
-    plt.title(title)
-    plt.imshow(img_to_show)
-    plt.show()
+    if show:
+        plt.figure()
+        plt.title(title)
+        plt.imshow(img / 255)
+        plt.show()
     if save:
         cv.imwrite("{}.jpg".format(file_name_prefix), img)
-        cv.imwrite("{}_int.jpg".format(file_name_prefix), img_to_show)
 
-    if cluster:
+    minus_z_direction = torch.zeros(normals.shape)
+    minus_z_direction[:, :, 2] = -1.0
+    dot_product = torch.sum(normals * minus_z_direction, dim=-1)
+    threshold = math.cos(angle_threshold)
+    filtered = torch.where(dot_product >= threshold, 1, 0)
 
-        minus_z_direction = torch.zeros(normals.shape)
-        minus_z_direction[:, :, 2] = -1.0
-        dot_product = torch.sum(normals * minus_z_direction, dim=-1)
-        threshold = math.cos(angle_threshold)
-        filtered = torch.where(dot_product >= threshold, 1, 0)
-        #naive sky filtering
-        #filtered[0:960, 0:350] = 0
+    Timer.check_point("clustering normals")
+    clustered_normals, arg_mins = spherical_kmeans.kmeans(normals, filtered, clusters)
+    print("clustered normals: {}".format(clustered_normals))
 
-        Timer.check_point("clustering normals")
-        clustered_normals, arg_mins = spherical_kmeans.kmeans(normals, filtered, clusters)
-        print("clustered normals: {}".format(clustered_normals))
+    img[:, :, 0][arg_mins == 0] = 255
+    img[:, :, 0][arg_mins != 0] = 0
+    img[:, :, 1][arg_mins == 1] = 255
+    img[:, :, 1][arg_mins != 1] = 0
+    img[:, :, 2][arg_mins == 2] = 255
+    img[:, :, 2][arg_mins != 2] = 0
 
-        img[:, :, 0][arg_mins == 0] = 255
-        img[:, :, 0][arg_mins != 0] = 0
-        img[:, :, 1][arg_mins == 1] = 255
-        img[:, :, 1][arg_mins != 1] = 0
-        img[:, :, 2][arg_mins == 2] = 255
-        img[:, :, 2][arg_mins != 2] = 0
+    Timer.check_point("normals clustered")
 
-        Timer.check_point("normals clustered")
+    plt.figure()
+    colors = ["red", "green", "blue"]
+    desc = ""
+    import random
+    for i in range(clusters):
+        desc = "{},{}={} {}".format(desc, colors[i], clustered_normals[i], random.randint)
+    plt.title(desc)
+    plt.imshow(img)
+    plt.savefig("{}_clusters.jpg".format(file_name_prefix))
+    plt.show()
 
-        #TODO not consistent with the previous logic
-        #img_to_show = np.absolute(img.astype(dtype=np.int8))
-        img_to_show = img
-        plt.figure()
-        #plt.title("{}_clusters_{}".format(title, enabled_color))
-        colors = ["red", "green", "blue"]
-        desc = ""
-        import random
-        for i in range(clusters):
-            desc = "{},{}={} {}".format(desc, colors[i], clustered_normals[i], random.randint)
-        plt.title(desc)
-        plt.imshow(img_to_show)
-        plt.savefig("{}_clusters.jpg".format(file_name_prefix))
-        plt.show()
-
-        if save:
-            cv.imwrite("{}_clusters_indices.png".format(file_name_prefix), arg_mins.numpy().astype(dtype=np.int8))
-            np.savetxt('{}_clusters_normals.txt'.format(file_name_prefix), clustered_normals.numpy(), delimiter=',', fmt='%1.8f')
+    if save:
+        cv.imwrite("{}_clusters_indices.png".format(file_name_prefix), arg_mins.numpy().astype(dtype=np.int8))
+        np.savetxt('{}_clusters_normals.txt'.format(file_name_prefix), clustered_normals.numpy(), delimiter=',', fmt='%1.8f')
 
 
-def get_depth_data_file_names(directory, limit=None):
-    return get_files(directory, ".npy", limit)
+def get_megadepth_file_names_and_dir(scene, limit, interesting_files):
 
-
-def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, interesting_files=None, override_existing=True):
-
-    read_directory = "depth_data/mega_depth/{}".format(scene)
-
-    if limit is not None:
-        file_names = get_depth_data_file_names(read_directory, limit)
+    directory = "depth_data/mega_depth/{}".format(scene)
+    if interesting_files is not None:
+        return interesting_files, directory
     else:
-        file_names = interesting_files
+        return get_file_names(directory, ".npy", limit), directory
+
+
+def compute_normals_simple_diff_convolution(scene: str, save, limit=None, interesting_files=None, override_existing=True):
+
+    file_names, read_directory = get_megadepth_file_names_and_dir(scene, limit, interesting_files)
 
     cameras = read_cameras(scene)
     images = read_images(scene)
@@ -323,25 +322,6 @@ def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, i
     for depth_data_file_name in file_names:
 
         print("Processing: {}".format(depth_data_file_name))
-
-        fn = depth_data_file_name[:-4]
-        if not clusters_map.__contains__(fn) or clusters_map[fn] == '?':
-            print("{} is missing, skipping".format(fn))
-            continue
-        else:
-            print("{} is ok".format(fn))
-
-        camera_id = images[depth_data_file_name[0:-4]].camera_id
-        camera = cameras[camera_id]
-        focal_length = camera.focal_length
-        width = camera.height_width[1]
-        height = camera.height_width[0]
-        upsample = True
-        if not upsample:
-            width = None
-            height = None
-
-        depth_data = read_depth_data(depth_data_file_name, read_directory, height, width)
 
         # 3.75 upsample
         # -> sigma (5.0 -> 1.33)
@@ -359,49 +339,59 @@ def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, i
                               -0.5, -0.5, -0.5, -0.5, -0.5,
                               ]]).float()
 
+        upsample = False
+        if upsample:
+            mask = mask_21
+            sigma = 5.0
+            depth_factor = 1/30
+            # normals_params_list = [
+            #     (True, sigma, "sigma_5_{}".format(1/30), 1/30)
+            # ]
+        else:
+            mask = mask_5
+            sigma = 1.33
+            depth_factor = 1/6
+            # normals_params_list = []
+            # for depth_factor_inv in range(6, 7, 2):
+            #     normals_params_list.append((True, sigma, "sigma_5_{}".format(1/depth_factor_inv), 1/depth_factor_inv))
 
-        mask = mask_21 if upsample else mask_5
-        sigma = 5.0 if upsample else 1.33
+        output_directory = "work/{}/normals/simple_diff_mask/{}".format(scene, depth_data_file_name[:-4])
+        if os.path.isdir(output_directory) and not override_existing:
+            print("{} already exists, skipping".format(output_directory))
+            continue
+
+        stripped_file_name = depth_data_file_name[:-4]
+        if not clusters_map.__contains__(stripped_file_name):
+            print("{} is missing, skipping".format(stripped_file_name))
+            continue
+
+        camera_id = images[depth_data_file_name[0:-4]].camera_id
+        camera = cameras[camera_id]
+        focal_length = camera.focal_length
 
         if upsample:
-            normals_params_list = [
-                (True, sigma, "sigma_5_{}".format(1/30), 1/30)
-            ]
+            width = camera.height_width[1]
+            height = camera.height_width[0]
         else:
-            normals_params_list = []
-            for depth_factor_inv in range(6, 7, 2):
-                normals_params_list.append((True, sigma, "sigma_5_{}".format(1/depth_factor_inv), 1/depth_factor_inv))
+            width = None
+            height = None
 
-        for idx, params in enumerate(normals_params_list):
-            smoothed, sigma, param_str, depth_factor = params
+        depth_data = read_depth_data(depth_data_file_name, read_directory, height, width)
 
-            output_directory = "work/{}/normals/simple_diff_mask_{}/{}".format(scene, param_str, depth_data_file_name[:-4])
-            if os.path.isdir(output_directory) and not override_existing:
-                print("{} already exists, skipping".format(output_directory))
-                continue
+        normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=True, sigma=sigma, depth_factor=depth_factor)
+        Timer.check_point("normals computed")
 
-            normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma, depth_factor=depth_factor)
-            Timer.check_point("normals computed")
+        print("Creating dir (if not exists already): {}".format(output_directory))
+        Path(output_directory).mkdir(parents=True, exist_ok=True)
 
-            print("Creating dir (if not exists already): {}".format(output_directory))
-            Path(output_directory).mkdir(parents=True, exist_ok=True)
-
-            file_name_prefix = '{}/{}'.format(output_directory, depth_data_file_name[:-4])
-            import random
-            title = "normals big mask - {} - {} - {}".format(param_str, depth_data_file_name, random.randint)
-            if clusters_map.__contains__(depth_data_file_name[:-4]):
-                clusters = clusters_map[depth_data_file_name[:-4]]
-            else:
-                clusters = 2
-                print("WARNING: number of clusters unknown for {}, defaulting to 2 ...".format(depth_data_file_name))
-            show_and_save_normals(normals, title, clusters, file_name_prefix, save=save, cluster=cluster)
+        title = "normals with plain diff mask - {}".format(depth_data_file_name)
+        cluster_and_save_normals(normals, depth_data_file_name, output_directory, True, title, save)
 
 
-def sobel_normals_5x5(scene: str, limit, save, cluster):
+# TODO test this
+def sobel_normals_5x5(scene: str, limit, save):
 
-    directory = "depth_data/mega_depth/{}".format(scene)
-    file_names = get_depth_data_file_names(directory, limit)
-
+    file_names, directory = get_megadepth_file_names_and_dir(scene, limit, None)
     cameras = read_cameras(scene)
     images = read_images(scene)
 
@@ -418,48 +408,18 @@ def sobel_normals_5x5(scene: str, limit, save, cluster):
 
         file_name ='work/{}_normals_sobel_normals_colors_fixed.png'.format(file_name)
         title = "normals sobel {}x{} - {}".format(mask_size, mask_size, file_name[:-4])
-        show_and_save_normals(normals, title, clusters=2, file_name_prefix=file_name, save=save, cluster=cluster)
+
+        cluster_and_save_normals(normals, title, clusters=2, file_name_prefix=file_name, save=save)
 
 
 def main():
 
-    # interesting_imgs = [
-    #     "frame_0000001535_4.npy", "frame_0000000305_1.npy",
-    #     "frame_0000001135_4.npy", "frame_0000001150_4.npy",
-    #     "frame_0000000785_2.npy", "frame_0000000710_2.npy",
-    #     "frame_0000000155_4.npy", "frame_0000002375_1.npy",
-    #     "frame_0000000535_3.npy", "frame_0000000450_3.npy",
-    #     "frame_0000000895_4.npy", "frame_0000000610_2.npy",
-    #     "frame_0000000225_3.npy", "frame_0000000265_4.npy",
-    #     "frame_0000000105_2.npy", "frame_0000000365_3.npy",
-    #     "frame_0000001785_3.npy", "frame_0000000125_1.npy",
-    #     "frame_0000000910_3.npy", "frame_0000000870_4.npy",
-    #     "frame_0000002230_1.npy", "frame_0000000320_3.npy",
-    #     "frame_0000000315_3.npy", "frame_0000000085_4.npy",
-    #     "frame_0000002070_1.npy", "frame_0000000055_2.npy",
-    #     "frame_0000001670_1.npy", "frame_0000000705_3.npy",
-    #     "frame_0000000345_1.npy", "frame_0000001430_4.npy",
-    #     "frame_0000002185_1.npy", "frame_0000000460_4.npy",
-    #     "frame_0000001175_3.npy", "frame_0000001040_4.npy",
-    #     "frame_0000000165_1.npy", "frame_0000000335_1.npy",
-    #     "frame_0000001585_4.npy", "frame_0000001435_4.npy",
-    #     "frame_0000000110_4.npy", "frame_0000000130_3.npy",
-    # ]
-    #
-    # interesting_imgs = list(set(interesting_imgs))
-    #
-
     Timer.start()
 
     scene = "scene1"
-    scene_info = SceneInfo.read_scene(scene)
+    interesting_imgs = ["frame_0000000025_3.npy"]
 
-    interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
-    interesting_imgs = interesting_imgs[:1]
-    #interesting_imgs = interesting_imgs[:3]
-
-    save_diff_normals_different_windows(scene="scene1", save=True, cluster=True, interesting_files=interesting_imgs, limit=None, override_existing=True)
-    #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
+    compute_normals_simple_diff_convolution(scene, save=True, interesting_files=interesting_imgs, limit=None, override_existing=True)
 
     Timer.check_point("Done")
 
