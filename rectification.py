@@ -70,7 +70,7 @@ def get_perspective_transform(R, K, K_inv, component_indices, index):
     max_col_or_new = max(coords[0])
     src_new_bb = np.float32([[min_col_or_new, min_row_or_new], [min_col_or_new, max_row_or_new - 1], [max_col_or_new - 1, max_row_or_new - 1], [max_col_or_new - 1, min_row_or_new]])
 
-    scale = 0.04
+    scale = 1.00
     scale_matrix = np.array([
         [scale, 0, 0],
         [0, scale, 0],
@@ -271,11 +271,11 @@ def show_rectifications(scene_info: SceneInfo, parent_dir, original_input_dir, l
         #     [[ 0.33717412, -0.30356583, -0.89115733],
         #      [-0.68118596, -0.23305716, -0.6940245 ]]
         # )
-        normals = np.array(
-            [
-             [ 0.33717412, -0.30356583, -0.89115733],
-             [-0.91, -0.25, -0.31]],
-        )
+        # normals = np.array(
+        #     [
+        #      [ 0.33717412, -0.30356583, -0.89115733],
+        #      [-0.91, -0.25, -0.31]],
+        # )
 
         for i in range(len(normals)):
             norm = np.linalg.norm(normals[i])

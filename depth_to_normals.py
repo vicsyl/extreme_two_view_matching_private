@@ -1,5 +1,4 @@
 import cv2 as cv
-import time
 from scene_info import read_cameras, read_images, SceneInfo
 from image_processing import spatial_gradient_first_order
 from tests import *
@@ -202,12 +201,17 @@ def svd_normals():
 
 
 # TODO centralize the logic around the "factor"
-def diff_normal_from_depth_data(focal_length, depth_data, mask=torch.tensor([[0.5, 0, -0.5]]).float(), smoothed: bool=False, sigma: float=1.0):
+def diff_normal_from_depth_data(focal_length,
+                                depth_data,
+                                mask,
+                                smoothed: bool=False,
+                                sigma: float=1.0,
+                                depth_factor=1/30):
 
     # Could be also done from reprojected data, but this seems to be correct and more straightforward
     gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
-    gradient_dzdx = (gradient_dzdx * (focal_length / 30)).unsqueeze(dim=4)
-    gradient_dzdy = (gradient_dzdy * (focal_length / 30)).unsqueeze(dim=4)
+    gradient_dzdx = (gradient_dzdx * focal_length * depth_factor).unsqueeze(dim=4)
+    gradient_dzdy = (gradient_dzdy * focal_length * depth_factor).unsqueeze(dim=4)
     z_ones = torch.ones(gradient_dzdy.shape)
     normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
@@ -265,6 +269,7 @@ def show_and_save_normals(normals,
         #naive sky filtering
         #filtered[0:960, 0:350] = 0
 
+        Timer.check_point("clustering normals")
         clustered_normals, arg_mins = spherical_kmeans.kmeans(normals, filtered, clusters)
         print("clustered normals: {}".format(clustered_normals))
 
@@ -275,6 +280,8 @@ def show_and_save_normals(normals,
         img[:, :, 2][arg_mins == 2] = 255
         img[:, :, 2][arg_mins != 2] = 0
 
+        Timer.check_point("normals clustered")
+
         #TODO not consistent with the previous logic
         #img_to_show = np.absolute(img.astype(dtype=np.int8))
         img_to_show = img
@@ -282,8 +289,9 @@ def show_and_save_normals(normals,
         #plt.title("{}_clusters_{}".format(title, enabled_color))
         colors = ["red", "green", "blue"]
         desc = ""
+        import random
         for i in range(clusters):
-            desc = "{},{}={}".format(desc, colors[i], clustered_normals[i])
+            desc = "{},{}={} {}".format(desc, colors[i], clustered_normals[i], random.randint)
         plt.title(desc)
         plt.imshow(img_to_show)
         plt.savefig("{}_clusters.jpg".format(file_name_prefix))
@@ -310,6 +318,8 @@ def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, i
     cameras = read_cameras(scene)
     images = read_images(scene)
 
+    Timer.check_point("scene info read")
+
     for depth_data_file_name in file_names:
 
         print("Processing: {}".format(depth_data_file_name))
@@ -326,41 +336,52 @@ def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, i
         focal_length = camera.focal_length
         width = camera.height_width[1]
         height = camera.height_width[0]
+        upsample = True
+        if not upsample:
+            width = None
+            height = None
 
         depth_data = read_depth_data(depth_data_file_name, read_directory, height, width)
 
-        mask = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
+        mask_5 = torch.tensor([[0.5, 0.5, 0, -0.5, -0.5]]).float()
+
+        mask_21 = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
                               0.5, 0.5, 0.5, 0.5, 0.5,
                               0,
                               -0.5, -0.5, -0.5, -0.5, -0.5,
                               -0.5, -0.5, -0.5, -0.5, -0.5,
                               ]]).float()
 
-        normals_params_list = [
-            #(False, None, "unsmoothed"),
-            #(True, 1.0, "sigma_1"),
-            #(True, 3.0, "sigma_3"),
-            (True, 5.0, "sigma_5"),
-            #(True, 7.0, "sigma_7"),
-            #(True, 9.0, "sigma_9"),
-            #(True, 11.0, "sigma_11"),
+
+        mask = mask_21 if upsample else mask_5
+        sigma = 5.0 if upsample else 1.25
+
+        if upsample:
+            normals_params_list = [
+                (True, sigma, "sigma_5_{}".format(1/30), 1/30)
             ]
+        else:
+            normals_params_list = []
+            for depth_factor_inv in range(6, 7, 2):
+                normals_params_list.append((True, sigma, "sigma_5_{}".format(1/depth_factor_inv), 1/depth_factor_inv))
 
         for idx, params in enumerate(normals_params_list):
-            smoothed, sigma, param_str = params
+            smoothed, sigma, param_str, depth_factor = params
 
             output_directory = "work/{}/normals/simple_diff_mask_{}/{}".format(scene, param_str, depth_data_file_name[:-4])
             if os.path.isdir(output_directory) and not override_existing:
                 print("{} already exists, skipping".format(output_directory))
                 continue
 
-            normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
+            normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma, depth_factor=depth_factor)
+            Timer.check_point("normals computed")
 
             print("Creating dir (if not exists already): {}".format(output_directory))
             Path(output_directory).mkdir(parents=True, exist_ok=True)
 
             file_name_prefix = '{}/{}'.format(output_directory, depth_data_file_name[:-4])
-            title = "normals big mask - {} - {}".format(param_str, depth_data_file_name)
+            import random
+            title = "normals big mask - {} - {} - {}".format(param_str, depth_data_file_name, random.randint)
             if clusters_map.__contains__(depth_data_file_name[:-4]):
                 clusters = clusters_map[depth_data_file_name[:-4]]
             else:
@@ -420,8 +441,8 @@ def main():
     #
     # interesting_imgs = list(set(interesting_imgs))
     #
-    start_time = time.time()
-    print("clock started")
+
+    Timer.start()
 
     scene = "scene1"
     scene_info = SceneInfo.read_scene(scene)
@@ -433,8 +454,7 @@ def main():
     save_diff_normals_different_windows(scene="scene1", save=True, cluster=True, interesting_files=interesting_imgs, limit=None, override_existing=True)
     #sobel_normals_5x5(scene="scene1", limit=2, save=True, cluster=True)
 
-    end_time = time.time()
-    print("done. Elapsed time: {}".format(end_time - start_time))
+    Timer.check_point("Done")
 
 
 if __name__ == "__main__":
