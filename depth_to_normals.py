@@ -343,7 +343,14 @@ def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, i
 
         depth_data = read_depth_data(depth_data_file_name, read_directory, height, width)
 
+        # 3.75 upsample
+        # -> sigma (5.0 -> 1.33)
+        # -> mask_21 -> mask_5 (not exact)
+        # -> depth_factor (1/30 -> 1/6) (should be exactly 1/8 actually)
+
         mask_5 = torch.tensor([[0.5, 0.5, 0, -0.5, -0.5]]).float()
+        # this is interesting
+        #mask_7 = torch.tensor([[0.5, 0.5, 0.5, 0, -0.5, -0.5, -0.5]]).float()
 
         mask_21 = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
                               0.5, 0.5, 0.5, 0.5, 0.5,
@@ -354,7 +361,7 @@ def save_diff_normals_different_windows(scene: str, save, cluster, limit=None, i
 
 
         mask = mask_21 if upsample else mask_5
-        sigma = 5.0 if upsample else 1.25
+        sigma = 5.0 if upsample else 1.33
 
         if upsample:
             normals_params_list = [
