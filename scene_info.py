@@ -54,20 +54,28 @@ class CameraEntry:
 
 @dataclass
 class SceneInfo:
+
     img_pairs: list
     img_info_map: dict
     cameras: dict
+    name: str
+
+    def get_input_dir(self):
+        return "original_dataset/{}/images".format(self.name)
+
+    def get_img_file_path(self, img_name):
+        return '{}/{}.jpg'.format(self.get_input_dir(), img_name)
 
     def get_img_K(self, img_name):
         camera_id = self.img_info_map[img_name].camera_id
         return self.cameras[camera_id].get_K()
 
     @staticmethod
-    def read_scene(scene):
-        img_pairs = read_image_pairs(scene)
-        img_info_map = read_images(scene)
-        cameras = read_cameras(scene)
-        return SceneInfo(img_pairs, img_info_map, cameras)
+    def read_scene(scene_name):
+        img_pairs = read_image_pairs(scene_name)
+        img_info_map = read_images(scene_name)
+        cameras = read_cameras(scene_name)
+        return SceneInfo(img_pairs, img_info_map, cameras, scene_name)
 
     def get_camera1_from_img_pair(self, img_pair: ImagePairEntry):
         self.cameras[self.img_info_map[img_pair.img1].camera_id]

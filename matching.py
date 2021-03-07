@@ -4,8 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 import os
+from connected_components import get_connected_components
 
-from rectification import read_img_normals_info, get_rectified_keypoints
+from rectification import read_img_normals_info, get_rectified_keypoints, possibly_upsample_normals
 from pathlib import Path
 
 """
@@ -197,21 +198,17 @@ def match_image_pair(img_pair,
     camera_2 = cameras[camera_2_id]
     K_2 = camera_2.get_K()
 
-    if camera_1_id == camera_2_id:
-        print("the same camera used in a img pair")
-    else:
-        print("different cameras used in a img pair")
-        print("camera_1 props:\n{}".format(camera_1))
-        print("camera_1 (will use this) K:\n{}".format(K_1))
-        print("camera_2 props:\n{}".format(camera_2))
-        print("camera_2 K:\n{}".format(K_2))
-
     img1 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img1))
     img2 = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_pair.img2))
 
     if rectify:
-        kps1, descs1 = get_rectified_keypoints(normals1, normal_indices1, img1, K_1, descriptor, img_pair.img1, out_dir=out_dir)
-        kps2, descs2 = get_rectified_keypoints(normals2, normal_indices2, img2, K_2, descriptor, img_pair.img2, out_dir=out_dir)
+
+        normal_indices1 = possibly_upsample_normals(img1, normal_indices1)
+        components_indices1, valid_components_dict1 = get_connected_components(normal_indices1, range(len(normals1)), True)
+        kps1, descs1 = get_rectified_keypoints(normals1, components_indices1, valid_components_dict1, img1, K_1, descriptor, img_pair.img1, out_dir=out_dir)
+
+        components_indices2, valid_components_dict2 = get_connected_components(normal_indices2, range(len(normals2)), True)
+        kps2, descs2 = get_rectified_keypoints(normals2, components_indices2, valid_components_dict2, img2, K_2, descriptor, img_pair.img2, out_dir=out_dir)
     else:
         kps1, descs1 = descriptor.detectAndCompute(img1, None)
         kps2, descs2 = descriptor.detectAndCompute(img2, None)

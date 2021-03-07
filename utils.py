@@ -3,11 +3,12 @@ import numpy as np
 import os
 import math
 import time
-from resize import upsample
+from resize import upsample_bilinear
 
 
 def get_file_names(dir, suffix, limit=None):
     filenames = [filename for filename in sorted(os.listdir(dir)) if filename.endswith(suffix)]
+    filenames = sorted(filenames)
     if limit is not None:
         filenames = filenames[0:limit]
     return filenames
@@ -33,7 +34,7 @@ def read_depth_data(filename, directory, height=None, width=None):
     depth_data = torch.from_numpy(depth_data_np)
     depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
     if height is not None and width is not None:
-        depth_data = upsample(depth_data, height, width)
+        depth_data = upsample_bilinear(depth_data, height, width)
     return depth_data
 
 
@@ -80,6 +81,7 @@ def test_quaternions():
         R = quaternions_to_R(input)
         print("input:\n{}".format(input))
         print("R:\n{}".format(R))
+
 
 class Timer:
 

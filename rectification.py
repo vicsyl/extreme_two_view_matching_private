@@ -3,8 +3,8 @@ import numpy as np
 import os
 import cv2 as cv
 import matplotlib.pyplot as plt
-import glob
-import time
+import torch
+from resize import upsample_nearest_numpy
 from utils import Timer
 from scene_info import SceneInfo, read_cameras
 from connected_components import show_components, read_img_normals_info, get_connected_components
@@ -153,17 +153,16 @@ def get_bounding_box(normal_indices, index, img):
     return src
 
 
-def get_rectified_keypoints(normals, normal_indices, img, K, descriptor, img_file, out_dir=None):
+def get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_dir=None):
 
     K_inv = np.linalg.inv(K)
-
     Rs = get_rectification_rotations(normals)
-
-    components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
-    components_in_colors = show_components(components_indices, valid_components_dict.keys())
 
     all_descs = None
     all_kps = []
+
+    # TODO show
+    components_in_colors = show_components(components_indices, valid_components_dict.keys())
 
     for component_index in valid_components_dict:
 
@@ -237,7 +236,7 @@ def get_rectified_keypoints(normals, normal_indices, img, K, descriptor, img_fil
         plt.imshow(rectified_components)
         plt.show()
         if out_dir is not None:
-            plt.savefig("{}/rectified_{}_{}.jpg".format(out_dir, img_file, component_index))
+            plt.savefig("{}/rectified_{}_{}.jpg".format(out_dir, img_name, component_index))
 
         # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
         # plt.imshow(img_rectified)
@@ -245,28 +244,51 @@ def get_rectified_keypoints(normals, normal_indices, img, K, descriptor, img_fil
     return all_kps, all_descs
 
 
-def show_rectifications(scene_info: SceneInfo, parent_dir, original_input_dir, limit, interesting_dirs=None):
+def possibly_upsample_normals(img, normal_indices):
+
+    if img.shape[0] != normal_indices.shape[0]:
+        # needs upsampling
+        epsilon = 0.0001
+        if img.shape[0] < normal_indices.shape[0]:
+            raise Exception("img.shape[0] < normal_indices.shape[0] not expected")
+        elif abs(img.shape[0] / normal_indices.shape[0] - img.shape[1] / normal_indices.shape[1]) >= epsilon:
+            raise Exception("{} and {} not of the same aspect ratio".format(normal_indices.shape, img.shape))
+        else:
+            print("Will upsample the normals")
+            normal_indices = upsample_nearest_numpy(normal_indices, img.shape[0], img.shape[1])
+
+    return normal_indices
+
+
+def show_rectifications(scene_info: SceneInfo, normals_parent_dir, original_input_dir, limit, interesting_dirs=None):
 
     if interesting_dirs is not None:
         dirs = interesting_dirs
     else:
-        dirs = [dirname for dirname in sorted(os.listdir(parent_dir)) if os.path.isdir("{}/{}".format(parent_dir, dirname))]
+        dirs = [dirname for dirname in sorted(os.listdir(normals_parent_dir)) if os.path.isdir("{}/{}".format(normals_parent_dir, dirname))]
         dirs = sorted(dirs)
         if limit is not None:
             dirs = dirs[0:limit]
 
-    for img_name in dirs:
+    if len(dirs) == 0:
+        print("WARNING: no normals data!")
 
-        K = scene_info.get_img_K(img_name)
+    for img_name in dirs:
+        print("Processing: {}".format(img_name))
 
         img_file_path = '{}/{}.jpg'.format(original_input_dir, img_name)
         img = cv.imread(img_file_path, None)
-        normals, normal_indices = read_img_normals_info(parent_dir, img_name)
+
+        normals, normal_indices = read_img_normals_info(normals_parent_dir, img_name)
+        if normals is None:
+            print("depth data for img_name is probably missing, skipping")
+            continue
 
         show = True
         if show:
             show_components(normal_indices, range(len(normals)))
 
+        # manual "extension" point
         # normals = np.array(
         #     [[ 0.33717412, -0.30356583, -0.89115733],
         #      [-0.68118596, -0.23305716, -0.6940245 ]]
@@ -276,13 +298,16 @@ def show_rectifications(scene_info: SceneInfo, parent_dir, original_input_dir, l
         #      [ 0.33717412, -0.30356583, -0.89115733],
         #      [-0.91, -0.25, -0.31]],
         # )
+        # for i in range(len(normals)):
+        #     norm = np.linalg.norm(normals[i])
+        #     normals[i] /= norm
+        #     print("normalized: {}".format(normals[i]))
 
-        for i in range(len(normals)):
-            norm = np.linalg.norm(normals[i])
-            normals[i] /= norm
-            print("normalized: {}".format(normals[i]))
+        normal_indices = possibly_upsample_normals(img, normal_indices)
+        K = scene_info.get_img_K(img_name)
+        components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
 
-        get_rectified_keypoints(normals, normal_indices, img, K, cv.SIFT_create(), img_name)
+        get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor= cv.SIFT_create(), img_name=img_name)
 
 
 if __name__ == "__main__":
@@ -294,6 +319,6 @@ if __name__ == "__main__":
     scene_info = SceneInfo.read_scene("scene1")
     Timer.check_point("scene info read")
 
-    show_rectifications(scene_info, "work/scene1/normals/simple_diff_mask_sigma_5", "original_dataset/scene1/images", limit=1, interesting_dirs=interesting_dirs)
+    show_rectifications(scene_info, "work/scene1/normals/simple_diff_mask", "original_dataset/scene1/images", limit=1, interesting_dirs=None)
 
     Timer.check_point("All done")
