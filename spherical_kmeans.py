@@ -36,7 +36,6 @@ def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
 
         if old_arg_mins is not None:
             changes = old_arg_mins[old_arg_mins != filtered_arg_mins].shape[0]
-            print("changes: {}".format(changes))
             if changes == 0:
                 break
 

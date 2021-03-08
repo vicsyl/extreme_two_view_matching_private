@@ -61,96 +61,34 @@ def get_perspective_transform(R, K, K_inv, component_indices, index):
 
     coords = np.where(component_indices == index)
     coords = np.array([coords[1], coords[0]])
-    #coords = np.vstack((coords, np.ones(coords.shape[1])))
     coords = add_third_row(coords)
 
-    min_row_or_new = min(coords[1])
-    max_row_or_new = max(coords[1])
-    min_col_or_new = min(coords[0])
-    max_col_or_new = max(coords[0])
-    src_new_bb = np.float32([[min_col_or_new, min_row_or_new], [min_col_or_new, max_row_or_new - 1], [max_col_or_new - 1, max_row_or_new - 1], [max_col_or_new - 1, min_row_or_new]])
+    P = K @ R @ K_inv
 
-    scale = 1.00
-    scale_matrix = np.array([
-        [scale, 0, 0],
-        [0, scale, 0],
-        [0, 0, 1],
-    ])
-
-    T_new = scale_matrix @ K @ R @ K_inv
-    T_old = T_new
-    print("second T: {}".format(T_new))
-
-    new_coords = T_new @ coords
+    new_coords = P @ coords
     new_coords /= new_coords[2, :]
 
-    min_row_new = min(new_coords[1])
-    max_row_new = max(new_coords[1])
-    min_col_new = min(new_coords[0])
-    max_col_new = max(new_coords[0])
+    min_row = min(new_coords[1])
+    max_row = max(new_coords[1])
+    min_col = min(new_coords[0])
+    max_col = max(new_coords[0])
 
-    dst_new = np.float32([[min_col_new, min_row_new], [min_col_new, max_row_new - 1], [max_col_new - 1, max_row_new - 1], [max_col_new - 1, min_row_new]])
-    dst_new = np.transpose(dst_new)
-    dst_new = add_third_row(dst_new)
+    dst = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]])
+    dst = np.transpose(dst)
+    dst = add_third_row(dst)
 
-    src_old = get_bounding_box(component_indices, index, component_indices)
-    # src_try = np.transpose(np.squeeze(src_old, axis=1))
-    # src_try = add_third_row(src_try)
-
-    dst_old = cv.perspectiveTransform(src_old, T_old)
-    #dst_try = T_old @ src_try
-
-    mins_old = (np.min(dst_old[:, 0, 0]), np.min(dst_old[:, 0, 1]))
-    t0_old = -mins_old[0]
-    t1_old = -mins_old[1]
-    translate_matrix_old = np.array([
-        [1, 0, t0_old],
-        [0, 1, t1_old],
-        [0, 0, 1],
-    ])
-    print("Translating old by:\n{}".format(translate_matrix_old))
-    T_old = translate_matrix_old @ T_old
-    dst_old = cv.perspectiveTransform(src_old, T_old)
-    bounding_box_old = (np.max(dst_old[:, 0, 0]), np.max(dst_old[:, 0, 1]))
-    print("bounding_box_old: {}".format(bounding_box_old))
-
-
-    translate_vec_new = (-np.min(dst_new[0]), -np.min(dst_new[1]))
+    translate_vec_new = (-np.min(dst[0]), -np.min(dst[1]))
     translate_matrix_new = np.array([
         [1, 0, translate_vec_new[0]],
         [0, 1, translate_vec_new[1]],
         [0, 0, 1],
     ])
-    #translate_matrix_new = (translate_matrix_new + translate_matrix_old) / 2
 
-    print("Translating new by:\n{}".format(translate_matrix_new))
+    dst = translate_matrix_new @ dst
+    P = translate_matrix_new @ P
+    bounding_box_new = (math.ceil(np.max(dst[0])), math.ceil(np.max(dst[1])))
 
-    dst_new = translate_matrix_new @ dst_new
-    T_new = translate_matrix_new @ T_new
-    bounding_box_new = (math.ceil(np.max(dst_new[0])), math.ceil(np.max(dst_new[1])))
-    print("bounding_box_new: {}".format(bounding_box_new))
-
-    return T_new, bounding_box_new
-
-
-def get_bounding_box(normal_indices, index, img):
-
-    zero_factor = 0.0
-    max_factor = 1.0
-    orig_h, orig_w = img.shape
-    zero_w = 0 + zero_factor * orig_w
-    zero_h = 0 + zero_factor * orig_h
-    h = orig_h * max_factor
-    w = orig_w * max_factor
-    src = np.float32([[zero_w, zero_h], [zero_w, h - 1], [w - 1, h - 1], [w - 1, zero_h]]).reshape(-1, 1, 2)
-    #
-    # rows, col = np.where(normal_indices == index)
-    # min_row = min(rows)
-    # max_row = max(rows)
-    # min_col = min(col)
-    # max_col = max(col)
-    # src = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]]).reshape(-1, 1, 2)
-    return src
+    return P, bounding_box_new
 
 
 def get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_dir=None):
@@ -168,7 +106,6 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
 
         normal_index = valid_components_dict[component_index]
         R = Rs[normal_index]
-        #R = np.linalg.inv(R)
 
         T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
         #TODO this is too defensive (and wrong) I think, I can warp only the plane
@@ -178,9 +115,6 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
 
         T_inv = np.linalg.inv(T)
 
-        # print("rotation: \n {}".format(R))
-        # print("transformation: \n {}".format(T))
-        # print("bounding box: {}".format(bounding_box))
         rectified = cv.warpPerspective(img, T, bounding_box)
 
         rectified_components = components_in_colors.astype(np.float32) / 255
@@ -218,8 +152,6 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
 
             for kpi, kp in enumerate(kps):
                 kp.pt = tuple(new_kps[kpi, 0].tolist())
-
-            print("adding {} keypoints".format(len(kps)))
 
             all_kps.extend(kps)
 

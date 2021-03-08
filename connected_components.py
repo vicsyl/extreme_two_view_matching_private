@@ -70,15 +70,16 @@ def get_connected_components(normal_indices, valid_indices, show=False, fraction
         valid_labels = np.where(counts > component_size_threshold)[0]
         if valid_labels[0] == 0:
             valid_labels = valid_labels[1:]
-        max_valid_labels = np.max(valid_labels)
-        valid_labels = valid_labels + out_valid_indices_counter
-        labels = labels + out_valid_indices_counter
+        if len(valid_labels) != 0:
+            max_valid_labels = np.max(valid_labels)
+            valid_labels = valid_labels + out_valid_indices_counter
+            labels = labels + out_valid_indices_counter
 
-        for v_i_i in valid_labels:
-            out = np.where(labels == v_i_i, labels, out)
+            for v_i_i in valid_labels:
+                out = np.where(labels == v_i_i, labels, out)
 
-        out_valid_indices.update({v_i_i: v_i for v_i_i in valid_labels})
-        out_valid_indices_counter = out_valid_indices_counter + max_valid_labels
+            out_valid_indices.update({v_i_i: v_i for v_i_i in valid_labels})
+            out_valid_indices_counter = out_valid_indices_counter + max_valid_labels
 
     if show:
         show_components(out, out_valid_indices.keys(), "out after v_i={}".format(v_i))

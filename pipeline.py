@@ -20,12 +20,12 @@ class Pipeline:
     normals_dir: str
 
     def __post_init__(self):
+        Timer.start()
         self.scene_info = SceneInfo.read_scene(self.scene_name)
+        Timer.check_point("scene info read")
         self.show_clustered_components = True
 
     def run_pipeline(self):
-
-        Timer.start()
 
         self.scene_info = SceneInfo.read_scene(self.scene_name)
         file_names, depth_data_input_directory = get_megadepth_file_names_and_dir(self.scene_name, self.depth_files_limit, self.chosen_depth_files)
@@ -63,7 +63,7 @@ class Pipeline:
 
 def main():
     pipeline = Pipeline(scene_name="scene1",
-                         depth_files_limit=20,
+                         depth_files_limit=10,
                          chosen_depth_files=None,
                          save_normals=False,
                          normals_dir="work/scene1/normals/simple_diff_mask")

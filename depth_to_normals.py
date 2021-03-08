@@ -274,7 +274,6 @@ def cluster_and_save_normals(normals,
 
     Timer.check_point("clustering normals")
     clustered_normals, normal_indices = spherical_kmeans.kmeans(normals, filtered, clusters)
-    print("clustered normals: {}".format(clustered_normals))
 
     img[:, :, 0][normal_indices == 0] = 255
     img[:, :, 0][normal_indices != 0] = 0
