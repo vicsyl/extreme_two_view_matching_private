@@ -1,95 +1,89 @@
-# SVP Project
+# Two-view matching of image containing planar surface exploiting monodepth estimation
 
-## Paper
+... this is the whole title for the diploma thesis 
 
-* https://arxiv.org/pdf/2008.09497.pdf
+* based on a paper @ https://arxiv.org/pdf/2008.09497.pdf
 
-## Depth estimating CNNs
+## How to run it
 
-### MegaDepth
+* the easiest is to run the whole pipeline (pipeline.py)
+* the parameters are set programmatically in the code; I think they are quite self-descriptive and currently set reasonably
+* the inputs are the depth maps from megadepth - expected under ./depth_data/mega_depth/scene1
+  * one can use sample data from https://github.com/vicsyl/extreme_two_view_matching_data_samples/tree/master/megadepth_data
+* the pipeline will save results into ./work/scene1/matching/pipeline_with_rectification and 
+./work/scene1/normals/simple_diff_mask respectively
+
+## General overview
+
+### Depth estimating CNNs
+
+#### MegaDepth
 
 * https://github.com/zhengqili/MegaDepth
-* preprocessing: rescaling the images to have a maximum dimension of 512, with the other
+* preprocessing - rescaling the images to have a maximum dimension of 512, with the other
 dimension chosen as the multiple of 32 that best preserves the original aspect ratio (as in the original paper)
- (only now!!!)
-* poor estimation of sky depth
-* explore the range of the depth values!!! 
+* poor estimation of sky depth - however this also means that the normals are prety much random so sky gets filtered out pretty reliably in the end
 
-### MonoDepth2
+#### MonoDepth2
 
 * https://github.com/nianticlabs/monodepth2
 * rescales the image exactly according to the model (will be using 640x192 as it's closest to the resolution used in MegaDepth)
 * is supposed to be estimating sky better, but ... let's see
 * doesn't seem that good from the pictures
-* min/max depth bounds (not tight!!!)
-* TODO depth data generated, but they are still to be tried on the downstream processing 
+* min/max depth bounds (not very tight)
+* (TODO) depth data generated, but they are still to be tried in the rest of the processing 
 
-## Normals from depth
+### Normals from depth
 
-* PROBLEM - the depths are given up to a scale - which affects the normals, also the ranges differ across the CNNs
+* (PROBLEM, parameter to be tuned) the depth given up to the scale (at least for MegaDepth), which greatly affects the normals (see depth_factor in depth_to_normals.py/compute_normals_simple_diff_convolution)
+* (QUESTION/REQUEST) it would help me to have some scenes with known normals of the dominating planes. The normals computed I see are ok-ish, but I am not sure (e.g. cannot judge from the rectification, which itself may have some discrepancies) 
 
-## Normals through simple differential conv mask
+#### Normals through simple differential conv mask
 
-* improvement TODO - adjust according to the projecting rays 
+* (IMPROVEMENT, TODO) - adjustment counting with the exact direction of the projecting rays not done 
 * similar are normals through sobel conv mask
 
-## Normals through fitting a plane
+#### Normals through fitting a plane
 
-* PROBLEM - seems to be to slow, but I can still try torch.unfold to parallelize it and speed it up
+* (PROBLEM, TODO) - seems to be to slow, but I can still try torch.unfold to parallelize it and speed it up
 
+### Processing of the normals
 
-## Clustering normals
+#### Clustering normals
 
-* spherical k-means
-* GOOD filtering the normals which differ more than threshold angle (80 degrees according to the original paper) seems handle the sky pretty neatly
-* various possibilities, how to improve it / speed it up
-* TODO I think it would be beneficial to decide automatically on the number of the clusters (i.e. dominating planes), at least between 2 and 3
+* spherical k-means used for the clustering
+* filtering the normals under sharp angles (over the threshold of 80 degrees according to the original paper) seems handle the sky pretty neatly. 
+* I think there is a lot of room for a) improvement b) parameter tuning c) possibly a speed up
+* (PROBLEM, TODO) I think it would improve the results if I can estimate the number of the clusters (i.e. dominating planes). 
+So far I labeled some of the scenes manually with the expected number of dominating planes which seem to help the results
 
-(for clipping before warping...)
-https://docs.opencv.org/master/d2/de8/group__core__array.html#gad327659ac03e5fd6894b90025e6900a7
+#### Connected components
 
+...are found to 
+* define regions that can be rectified all at once to improve efficiency of the rectification
+* filter out components which are too small and most likely correspond to some clutter  
 
-## Rectification
+### Rectification
 
-* generally seems to be working well, but
-* PROBLEM: probably due to some rounding error the keypoints are back mapped to invalid positions 
-(it can also be the desriptor finding keypoints at/beyond the border of the original img when mapped with the homography)
-* PROBLEM: sometimes the homography warps the image to a much bigger image which makes the program hang
-* needs to be solved by restricting the area which need to be warped (I don't see how to do it via cv2.warpPerspective, though)
-* it really seems to be finding more inlier matches   
+* (PROBLEM, needs attention) probably due to some rounding error small fraction of the keypoints are back mapped to invalid positions 
+(it may also be the desriptor finding keypoints at/beyond the border of the original img when mapped with the rectification homography)
+* now done so that really the smallest possible area is mapped with the rectifying homography
 
+### Matching
 
-## Matching
+* pretty straight-forward
+* only SIFT is used so far as a descriptor 
 
-* pretty straight-forward, need to plug in different descriptors (don't spend time on it - just SIFT)
+### Evaluation
 
-
-## Evaluation
-
+* (TODO) not part of the whole pipeline, yet
 * adopted the evaluation of pose (essential matrix) estimation from https://github.com/ducha-aiki/ransac-tutorial-2020-data
-* I don't really get the translation error (it's again error between two translation directions (of a unit size)?)
-* also, it seems to me interesting that the papers only mentions the rotation error, not the translation error 
-* on first sight the estimation errors look reasonable
+* also, it seems interesting to me that the papers only mentions the rotation error, not the translation error 
 * I would still like to look at different metrics (e.g. number of correctly matched keypoints - according to the ground truth)
 
+## Speed performance
 
-# Others
-* next week - NOT NOW
-    ** cluster
-    ** speed up
-    ** activate conda
-    ** https://cw.felk.cvut.cz/w/cmp/grid/modules
-
-* the pipeline doesn't seem to be very fast
-* I think I also need to start computing on the CMP cluster 
-
-
-!!!* make it run out of the shelf
-
-
-Presentation - 6-8 slides (is able to match images)
-(other data)
-"interesting paper has been proposed"
-"get-in-line" data along with the repeatability
-report - Tex / Overleaf 
-"log your work" (!!!) 
+* depth estimation by megadepth: around 7 secs.(!) - this is quite surprising as it takes monodepth much less time   
+* the whole processing (depth -> normals -> clusters and components -> rectification -> matching) takes about 13 seconds 
+per an image pair
+* reading the scene info (once per execution) takes about 4-5 seconds 
