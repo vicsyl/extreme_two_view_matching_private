@@ -6,7 +6,9 @@ from connected_components import get_connected_components, show_components
 from utils import Timer
 from pathlib import Path
 from matching import match_images_and_keypoints
+from evaluation import compare_poses, Stats
 
+import numpy as np
 import cv2 as cv
 
 
@@ -98,7 +100,15 @@ class Pipeline:
 
                 Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-                E, inlier_mask, src_pts, dst_pts, kps1, kps2 = match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, self.scene_info.img_info_map, img_pair, out_dir, show=True, save=True)
+                E, inlier_mask, src_pts, dst_pts, kps1, kps2, tentative_matches = match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, self.scene_info.img_info_map, img_pair, out_dir, show=True, save=True)
+                error_R, error_T = compare_poses(E, img_pair, self.scene_info, src_pts, dst_pts)
+                inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
+                stats = Stats(error_R=error_R, error_T=error_T, tentative_matches=tentative_matches, inliers=inliers, all_features_1=len(src_pts), all_features_2=len(dst_pts))
+                stats.save("{}/stats.txt".format(out_dir))
+
+                #new_stats = Stats.read_from_file("{}/stats.txt".format(out_dir))
+                # I can now continue with processing stats over the iterated data
+
                 processed_pairs = processed_pairs + 1
 
         Timer.check_point("Done processing {} image pairs".format(processed_pairs))

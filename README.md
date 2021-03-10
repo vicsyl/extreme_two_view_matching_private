@@ -66,7 +66,7 @@ So far I labeled some of the scenes manually with the expected number of dominat
 ### Rectification
 
 * (PROBLEM, needs attention) probably due to some rounding error small fraction of the keypoints are back mapped to invalid positions 
-(it may also be the desriptor finding keypoints at/beyond the border of the original img when mapped with the rectification homography)
+(it may also be the descriptor finding keypoints at/beyond the border of the original img when mapped with the rectification homography)
 * now done so that really the smallest possible area is mapped with the rectifying homography
 
 ### Matching

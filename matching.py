@@ -2,7 +2,6 @@ from scene_info import *
 import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
-import time
 import os
 from connected_components import get_connected_components
 from utils import Timer
@@ -216,10 +215,8 @@ def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2,
     np.savetxt("{}/essential_matrix.txt".format(out_dir), E, delimiter=',', fmt='%1.8f')
     np.savetxt("{}/src_pts.txt".format(out_dir), src_pts_inliers, delimiter=',', fmt='%1.8f')
     np.savetxt("{}/dst_pts.txt".format(out_dir), dst_pts_inliers, delimiter=',', fmt='%1.8f')
-    stats = np.array([len(src_tentative), len(src_pts_inliers), len(kps1), len(kps2)], dtype=np.int32)
-    np.savetxt("{}/stats.txt".format(out_dir), stats, delimiter=',', fmt='%i')
 
-    return E, inlier_mask, src_pts, dst_pts, kps1, kps2
+    return E, inlier_mask, src_pts, dst_pts, kps1, kps2, len(tentative_matches)
 
 
 def prepare_data_for_keypoints_and_desc(scene_info, img_name, normal_indices, normals, descriptor, rectify, out_dir):

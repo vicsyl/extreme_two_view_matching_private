@@ -184,23 +184,39 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     # p1n = pts1
     # p2n = pts2
 
-    ang_errors = eval_essential_matrix(p1n, p2n, E, dR, dT)
-    ang_errors_max = max(ang_errors)
+    errors = eval_essential_matrix(p1n, p2n, E, dR, dT)
+    errors_max = max(errors)
 
-    print("errors: {}".format(ang_errors))
-    print("max error: {}".format(ang_errors_max))
+    print("errors: {}".format(errors))
+    print("max error: {}".format(errors_max))
 
-    return ang_errors
+    return errors
 
 
 @dataclass
 class Stats:
-    ang_error_R: float
-    ang_error_T: float
+    error_R: float
+    error_T: float
     tentative_matches: int
     inliers: int
     all_features_1: int
     all_features_2: int
+
+    @staticmethod
+    def read_from_file(file_path):
+        np_array = np.loadtxt(file_path, delimiter=",")
+        return Stats(np_array[0], np_array[1], int(np_array[2]), int(np_array[3]), int(np_array[4]), int(np_array[5]))
+
+    @staticmethod
+    def get_field_descs():
+        l = ["error in R", "error in T", "tentative matches", "inliers", "all features in 1st", "all features in 2nd"]
+        return ", ".join(l)
+
+    def to_numpy(self):
+        return np.array([self.error_R, self.error_T, self.tentative_matches, self.inliers, self.all_features_1, self.all_features_2])
+
+    def save(self, file_path: str):
+        np.savetxt(file_path, self.to_numpy(), delimiter=',', fmt='%1.8f', header=Stats.get_field_descs())
 
 
 def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
@@ -234,33 +250,13 @@ def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
         all_features_2 = stats[3]
 
         print("Evaluating: {}".format(dir))
-        ang_errors = compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
-        result_map[dir] = Stats(ang_errors[0], ang_errors[1], tentative_matches, inliers, all_features_1, all_features_2)
+        errors = compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
+        result_map[dir] = Stats(errors[0], errors[1], tentative_matches, inliers, all_features_1, all_features_2)
 
     return result_map
 
-# def test_compare_poses():
-#
-#     # E = np.array([
-#     #     [0.02992817, 0.56223836, -0.18380981],
-#     #     [-0.47956285, 0.02913080, -0.46642550],
-#     #     [0.22033274, 0.38495511, 0.06393313],
-#     # ])
-#
-#     scene = "scene1"
-#     scene_info = SceneInfo.read_scene(scene)
-#     img_pair = scene_info.img_pairs[0][0]
-#     print("img pair: {}".format(img_pair))
-#
-#     template = "frame_0000001535_4_frame_0000000305_1"
-#     E = np.loadtxt("work/{}/{}_essential_matrices.txt".format(scene, template), delimiter=',')
-#     dst_pts = np.loadtxt("work/{}/{}_dst_pts.txt".format(scene, template), delimiter=',')
-#     src_pts = np.loadtxt("work/{}/{}_src_pts.txt".format(scene, template), delimiter=',')
-#     compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
 
-
-if __name__ == "__main__":
-
+def main():
     start = time.time()
 
     scene = "scene1"
@@ -276,7 +272,6 @@ if __name__ == "__main__":
     diff_r = []
     diff_t = []
 
-
     with_inlier_ratio = 0.0
     without_inlier_ratio = 0.0
 
@@ -289,12 +284,12 @@ if __name__ == "__main__":
         if not without_map.__contains__(key):
             continue
         common_enties += 1
-        with_r_err += with_map[key].ang_error_R
-        with_t_err += with_map[key].ang_error_T
-        without_r_err += without_map[key].ang_error_R
-        without_t_err += without_map[key].ang_error_T
-        diff_r.append((with_map[key].ang_error_R - without_map[key].ang_error_R, key))
-        diff_t.append((with_map[key].ang_error_T - without_map[key].ang_error_T, key))
+        with_r_err += with_map[key].error_R
+        with_t_err += with_map[key].error_T
+        without_r_err += without_map[key].error_R
+        without_t_err += without_map[key].error_T
+        diff_r.append((with_map[key].error_R - without_map[key].error_R, key))
+        diff_t.append((with_map[key].error_T - without_map[key].error_T, key))
 
         with_tentative_matches_p = with_map[key].tentative_matches
         without_tentative_matches_p = without_map[key].tentative_matches
@@ -341,3 +336,7 @@ if __name__ == "__main__":
     print("All done")
     end = time.time()
     print("Time elapsed: {}".format(end - start))
+
+
+if __name__ == "__main__":
+    main()
