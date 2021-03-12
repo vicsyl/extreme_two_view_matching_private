@@ -249,8 +249,7 @@ if __name__ == "__main__":
     interesting_dirs = ["frame_0000000145_2"]
 
     scene_info = SceneInfo.read_scene("scene1")
-    Timer.check_point("scene info read")
 
     show_rectifications(scene_info, "work/scene1/normals/simple_diff_mask", "original_dataset/scene1/images", limit=1, interesting_dirs=None)
 
-    Timer.check_point("All done")
+    Timer.end()

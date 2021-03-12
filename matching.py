@@ -5,6 +5,7 @@ import numpy as np
 import os
 from connected_components import get_connected_components
 from utils import Timer
+from config import Config
 
 from rectification import read_img_normals_info, get_rectified_keypoints, possibly_upsample_normals
 from pathlib import Path
@@ -76,7 +77,13 @@ def find_homography(tentative_matches, kps1, kps2, img1, img2, show=True):
 
 def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, ratio_thresh=0.8, show=True, save=True):
 
-    matcher = cv.BFMatcher()
+    if Config.do_flann():
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=4)
+        search_params = dict(checks=128)
+        matcher = cv.FlannBasedMatcher(index_params, search_params)
+    else:
+        matcher = cv.BFMatcher()
 
     knn_matches = matcher.knnMatch(descs1, descs2, 2)
 
@@ -183,6 +190,8 @@ def get_features(descriptor, img):
 
 def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, images_info, img_pair, out_dir, show, save):
 
+    Timer.start_check_point("matching")
+
     tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, ratio_thresh=0.75, show=show, save=save)
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
@@ -216,15 +225,16 @@ def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2,
     np.savetxt("{}/src_pts.txt".format(out_dir), src_pts_inliers, delimiter=',', fmt='%1.8f')
     np.savetxt("{}/dst_pts.txt".format(out_dir), dst_pts_inliers, delimiter=',', fmt='%1.8f')
 
+    Timer.end_check_point("matching")
     return E, inlier_mask, src_pts, dst_pts, kps1, kps2, len(tentative_matches)
 
 
-def prepare_data_for_keypoints_and_desc(scene_info, img_name, normal_indices, normals, descriptor, rectify, out_dir):
+def prepare_data_for_keypoints_and_desc(scene_info, img_name, normal_indices, normals, descriptor, out_dir):
 
     K = scene_info.get_img_K(img_name)
     img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_name))
 
-    if rectify:
+    if Config.rectify():
         normal_indices = possibly_upsample_normals(img, normal_indices)
         components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
         kps, descs = get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_dir=out_dir)
@@ -266,8 +276,8 @@ def img_correspondences(scene_info: SceneInfo, output_dir, descriptor, normals_d
 
             Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-            img1, K_1, kps1, descs1 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img1, normal_indices1, normals1, descriptor, rectify, out_dir)
-            img2, K_2, kps2, descs2 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img2, normal_indices2, normals2, descriptor, rectify, out_dir)
+            img1, K_1, kps1, descs1 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img1, normal_indices1, normals1, descriptor, out_dir)
+            img2, K_2, kps2, descs2 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img2, normal_indices2, normals2, descriptor, out_dir)
 
             return match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True)
 
@@ -286,7 +296,7 @@ def main():
     difficulties = [1]
     img_correspondences(scene_info, "with_rectification_foo", sift_descriptor, normals_dir, difficulties, rectify=True, limit=limit, override_existing=False)
 
-    Timer.check_point("All done")
+    Timer.end()
 
 
 if __name__ == "__main__":

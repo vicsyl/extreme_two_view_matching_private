@@ -86,19 +86,50 @@ def test_quaternions():
 class Timer:
 
     start_time = None
-    last_time = None
+
+    stats_times = {}
+    stats_counts = {}
+    stats_start_times = {}
 
     @staticmethod
     def start():
         print("Starting the timer")
         Timer.start_time = time.time()
-        Timer.last_time = Timer.start_time
 
     @staticmethod
-    def check_point(label="Unknown label"):
+    def start_check_point(label):
+        assert label is not None
+        print("{} starting".format(label))
+        start = Timer.stats_start_times.get(label)
+        if start is not None:
+            print("WARNING: missing call of end_check_point for label '{}'".format(label))
+        Timer.stats_start_times[label] = time.time()
+
+    @staticmethod
+    def end_check_point(label):
+        assert label is not None
         end = time.time()
-        print("{}: time elapsed from start: {}. Time elapsed from the last measurement: {}, ".format(label, end - Timer.start_time, end - Timer.last_time))
-        Timer.last_time = end
+        start = Timer.stats_start_times.get(label)
+        if start is None:
+            print("WARNING: missing call of start_check_point for label '{}'".format(label))
+        else:
+            duration = end - start
+            print("{} finished. It took {}".format(label, duration))
+            Timer.stats_start_times[label] = None
+            if Timer.stats_counts.get(label) is None:
+                Timer.stats_counts[label] = 0
+            Timer.stats_counts[label] += 1
+            if Timer.stats_times.get(label) is None:
+                Timer.stats_times[label] = 0
+            Timer.stats_times[label] += duration
+
+    @staticmethod
+    def end():
+        end = time.time()
+        print("Done. Time elapsed from start: {:.4f}., ".format(end - Timer.start_time))
+        print("Statistics: ")
+        for key in Timer.stats_times:
+            print("{} called {} times and it took {:.4f} secs. on average".format(key, Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))
 
 
 if __name__ == "__main__":

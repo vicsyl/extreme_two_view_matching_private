@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
-
+from utils import Timer
 
 """
 Classes to read info about the data sets (info about matching pairs of images, cameras and points in the images)
@@ -72,9 +72,11 @@ class SceneInfo:
 
     @staticmethod
     def read_scene(scene_name):
+        Timer.start_check_point("reading scene info")
         img_pairs = read_image_pairs(scene_name)
         img_info_map = read_images(scene_name)
         cameras = read_cameras(scene_name)
+        Timer.end_check_point("reading scene info")
         return SceneInfo(img_pairs, img_info_map, cameras, scene_name)
 
     def get_camera1_from_img_pair(self, img_pair: ImagePairEntry):

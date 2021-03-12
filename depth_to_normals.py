@@ -272,8 +272,9 @@ def cluster_and_save_normals(normals,
     threshold = math.cos(angle_threshold)
     filtered = torch.where(dot_product >= threshold, 1, 0)
 
-    Timer.check_point("clustering normals")
+    Timer.start_check_point("clustering normals")
     clustered_normals, normal_indices = spherical_kmeans.kmeans(normals, filtered, clusters)
+    Timer.end_check_point("clustering normals")
 
     img[:, :, 0][normal_indices == 0] = 255
     img[:, :, 0][normal_indices != 0] = 0
@@ -281,8 +282,6 @@ def cluster_and_save_normals(normals,
     img[:, :, 1][normal_indices != 1] = 0
     img[:, :, 2][normal_indices == 2] = 255
     img[:, :, 2][normal_indices != 2] = 0
-
-    Timer.check_point("normals clustered")
 
     plt.figure()
     colors = ["red", "green", "blue"]
@@ -372,8 +371,6 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
 
     normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=True, sigma=sigma,
                                           depth_factor=depth_factor)
-    Timer.check_point("normals computed")
-
     print("Creating dir (if not exists already): {}".format(output_directory))
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
@@ -425,8 +422,6 @@ def main():
 
     scene_name = "scene1"
     scene_info = SceneInfo.read_scene(scene_name)
-
-    Timer.check_point("scene info read")
     interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
     #interesting_imgs = ["frame_0000000025_3.npy"]
 
@@ -436,7 +431,7 @@ def main():
 
     compute_normals_simple_diff_convolution_all(scene_info, file_names, input_directory, save=True, output_parent_dir=output_parent_dir, skip_existing=False)
 
-    Timer.check_point("Done")
+    Timer.end()
 
 
 if __name__ == "__main__":

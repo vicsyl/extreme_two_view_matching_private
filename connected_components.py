@@ -173,10 +173,10 @@ def find_and_show_clusters(parent_dir, limit, interesting_dirs=None):
         normals, normal_indices = read_img_normals_info(parent_dir, img_name)
         show_components(normal_indices, range(len(normals)))
 
-    Timer.check_point("get_connected_components start")
+    Timer.start_check_point("get_connected_components")
     clusters, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
     print("valid components mapping: {}".format(valid_components_dict))
-    Timer.check_point("get_connected_components end")
+    Timer.end_check_point("get_connected_components")
 
 
 if __name__ == "__main__":
@@ -186,4 +186,4 @@ if __name__ == "__main__":
     interesting_dirs = ["frame_0000000145_2"]
     find_and_show_clusters("work/scene1/normals/simple_diff_mask_sigma_5", limit=1, interesting_dirs=interesting_dirs)
 
-    Timer.check_point("All done")
+    Timer.end()
