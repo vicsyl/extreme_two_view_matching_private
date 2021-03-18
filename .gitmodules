@@ -1,0 +1,3 @@
+[submodule "megadepth"]
+	path = megadepth
+	url = git@github.com:vicsyl/megadepth_clone.git

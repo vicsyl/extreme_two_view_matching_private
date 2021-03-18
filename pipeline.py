@@ -118,7 +118,7 @@ def main():
 
     Timer.start()
 
-    pipeline = Pipeline(scene_name="scene1",
+    pipeline = Pipeline(scene_name="scene2",
                         sequential_files_limit=10,
                         chosen_depth_files=None,
                         save_normals=True,
@@ -126,7 +126,7 @@ def main():
                         matching_difficulties=[0],
                         matching_limit=1,
                         feature_descriptor=cv.SIFT_create(),
-                        normals_dir="work/scene1/normals/simple_diff_mask")
+                        normals_dir="scene2/normals/simple_diff_mask")
 
     #pipeline.run_sequential_pipeline()
     pipeline.run_matching_pipeline()
