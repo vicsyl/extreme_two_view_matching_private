@@ -6,6 +6,8 @@ import os
 from connected_components import get_connected_components
 from utils import Timer
 from config import Config
+from image_data import ImageData
+import itertools
 
 from rectification import read_img_normals_info, get_rectified_keypoints, possibly_upsample_normals
 from pathlib import Path
@@ -59,8 +61,8 @@ def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
 
 
 def split_points(tentative_matches, kps1, kps2):
-    src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1,2)
-    dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1,2)
+    src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
+    dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1, 2)
     return src_pts, dst_pts
 
 
@@ -187,6 +189,111 @@ def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_cre
 def get_features(descriptor, img):
     return descriptor.detectAndCompute(img, None)
 
+def lists_from_keys(d: dict):
+    return {[k]: v for k, v in d.items()}
+
+def merge_dict(d: dict):
+    inverted_dict = {}
+    for k, v in d.items():
+        l = inverted_dict.get(v, [])
+        l.append(k)
+        inverted_dict[v] = l
+
+    merged_dict = {}
+    for k, v in inverted_dict.items():
+        merged_dict[tuple(v)] = k
+
+    return merged_dict
+
+
+def get_kts_desc_normal_list(image_data: ImageData, merge_components: bool):
+
+    # kpts, desc, components, normal_ix
+    if merge_components:
+        valid_components_dict = merge_dict(image_data.valid_components_dict)
+    else:
+        valid_components_dict = {[k]: v for k, v in image_data.valid_components_dict.items()}
+
+    int_raw_kps = [[round(kpt.pt[0]), round(kpt.pt[1])] for kpt in image_data.key_points]
+    int_raw_kps_np = np.array(int_raw_kps)
+
+    kpts_desc_list = []
+    sh0 = image_data.components_indices.shape[0]
+    sh1 = image_data.components_indices.shape[1]
+    for cur_components, normal_index in valid_components_dict.items():
+        kps = []
+        dscrs = []
+        for ix, int_raw_kp in enumerate(int_raw_kps):
+            x = int_raw_kp[0]
+            y = int_raw_kp[1]
+            if 0 <= x <= sh1 and 0 <= y <= sh0 and image_data.components_indices[int_raw_kp[1], int_raw_kp[0]] in cur_components:
+                kps.append(image_data.key_points[ix])
+                dscrs.append(image_data.descriptions[ix])
+        kpts_desc_list.append((kps, np.array(dscrs), cur_components, normal_index))
+
+    return kpts_desc_list
+
+
+# TODO see def find_homography
+def find_and_draw_homography(img1, kps1, descs1, img2, kps2, descs2):
+
+    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, None, show=True, save=False)
+    src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
+
+    H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 1.0)
+
+    if True:
+        img = draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
+        plt.imshow(img)
+        plt.show()
+
+    return H, inlier_mask
+
+def match_images_with_dominant_planes(image_data1: ImageData, image_data2: ImageData, merge_components: bool, images_info, img_pair, out_dir, show: bool, save: bool):
+
+    kpts_desc_list1 = get_kts_desc_normal_list(image_data1, merge_components)
+    kpts_desc_list2 = get_kts_desc_normal_list(image_data2, merge_components)
+
+    # len1 = len(kpts_desc_list1)
+    # len2 = len(kpts_desc_list1)
+
+    swap = False
+    if len(kpts_desc_list1) > len(kpts_desc_list2):
+        foo = kpts_desc_list1
+        kpts_desc_list1 = kpts_desc_list2
+        kpts_desc_list2 = foo
+        swap = True
+
+    # H, inlier_mask, ix1, ix2
+    all_matching_homographies = []
+    for general_perm in itertools.permutations(range(len(kpts_desc_list2)), len(kpts_desc_list1)):
+
+        # H1, inlier_mask1, ix1, H2, inlier_mask2, ix2
+        cur_matching_homographies = []
+        # now len(general_perm) matches:
+        for i in range(len(general_perm)):
+            if swap:
+                ix1 = i
+                ix2 = general_perm[i]
+            else:
+                ix1 = general_perm[i]
+                ix2 = i
+
+            kps1, desc1, components1, normal_index1 = kpts_desc_list1[ix1]
+            kps2, desc2, components2, normal_index2 = kpts_desc_list2[ix2]
+
+            # CONTINUE
+            ret = find_and_draw_homography(image_data1.img, kps1, desc1, image_data2.img, kps2, desc2)
+            if ret is not None:
+                H, inlier_mask = ret
+            else:
+                raise Exception("hey")
+            cur_matching_homographies.append((H, inlier_mask, ix1, ix2))
+
+        all_matching_homographies.append(cur_matching_homographies)
+
+    return all_matching_homographies
+
 
 def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, images_info, img_pair, out_dir, show, save):
 
@@ -195,6 +302,14 @@ def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2,
     tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, ratio_thresh=0.75, show=show, save=save)
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
+
+    # H2, inlier_mask2 = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 1.0)
+    #
+    # if True:
+    #     img = draw_matches(kps1, kps2, tentative_matches, H2, inlier_mask2, img1, img2)
+    #     plt.imshow(img)
+    #     plt.show()
+    #    print()
 
     # TODO threshold and prob params left to default values
     E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K_1, None, K_2, None, cv.RANSAC)

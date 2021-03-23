@@ -144,6 +144,7 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
 
             descs = descs[cluster_mask_bool]
 
+            # TODO new_kps[:, 0, 0/1] still out of bounds (i.e. negative)
             new_kps = new_kps[cluster_mask_bool]
 
             kps = [kp for i, kp in enumerate(kps) if cluster_mask_bool[i]]

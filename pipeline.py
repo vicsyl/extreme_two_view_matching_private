@@ -5,9 +5,10 @@ from rectification import possibly_upsample_normals, get_rectified_keypoints
 from connected_components import get_connected_components, show_components
 from utils import Timer
 from pathlib import Path
-from matching import match_images_and_keypoints
+from matching import match_images_and_keypoints, match_images_with_dominant_planes
 from evaluation import compare_poses, Stats
 from config import Config
+from image_data import ImageData
 
 import numpy as np
 import cv2 as cv
@@ -30,12 +31,14 @@ class Pipeline:
     matching_difficulties: list
     matching_limit: str
 
+    planes_based_matching: bool
+
     def __post_init__(self):
         self.scene_info = SceneInfo.read_scene(self.scene_name)
         self.show_clustered_components = True
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
 
-    def process_file(self, img_name):
+    def process_image(self, img_name):
 
         Timer.start_check_point("processing img")
         print("Processing: {}".format(img_name))
@@ -63,15 +66,16 @@ class Pipeline:
             kps, descs = get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor=self.feature_descriptor, img_name=img_name)
         else:
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
+            normals = components_indices = valid_components_dict = None
 
         Timer.end_check_point("processing img")
-        return img, K, kps, descs
+        return ImageData(img=img, calibration_matrix=K, key_points=kps, descriptions=descs, normals=normals, components_indices=components_indices, valid_components_dict=valid_components_dict)
 
     def run_sequential_pipeline(self):
 
         file_names, _ = get_megadepth_file_names_and_dir(self.scene_name, self.sequential_files_limit, self.chosen_depth_files)
         for depth_data_file_name in file_names:
-            self.process_file(depth_data_file_name[:-4])
+            self.process_image(depth_data_file_name[:-4])
 
     def run_matching_pipeline(self):
 
@@ -89,29 +93,60 @@ class Pipeline:
 
                 out_dir = "work/{}/matching/{}/{}_{}".format(self.scene_info.name, self.matching_dir, img_pair.img1, img_pair.img2)
 
-                img1, K_1, kps1, descs1 = self.process_file(img_pair.img1)
-                if img1 is None:
+                # I might not need normals yet
+                # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
+                image_data1 = self.process_image(img_pair.img1)
+                # TODO when does this happen?
+                if image_data1 is None:
                     print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img1, img_pair.img1, img_pair.img2))
                     continue
 
-                img2, K_2, kps2, descs2 = self.process_file(img_pair.img2)
-                if img2 is None:
+                image_data2 = self.process_image(img_pair.img2)
+                # TODO when does this happen?
+                if image_data2 is None:
                     print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img2, img_pair.img1, img_pair.img2))
                     continue
 
                 Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-                E, inlier_mask, src_pts, dst_pts, kps1, kps2, tentative_matches = match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, self.scene_info.img_info_map, img_pair, out_dir, show=True, save=True)
-                error_R, error_T = compare_poses(E, img_pair, self.scene_info, src_pts, dst_pts)
-                inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
-                stats = Stats(error_R=error_R, error_T=error_T, tentative_matches=tentative_matches, inliers=inliers, all_features_1=len(src_pts), all_features_2=len(dst_pts))
-                stats.save("{}/stats.txt".format(out_dir))
+                if self.planes_based_matching:
+                    # E, inlier_mask, src_pts, dst_pts, kps1, kps2, tentative_matches =
+                    match_images_with_dominant_planes(
+                        image_data1,
+                        image_data2,
+                        merge_components=True,
+                        images_info=self.scene_info.img_info_map,
+                        img_pair=img_pair,
+                        out_dir=out_dir,
+                        show=True,
+                        save=True)
 
-                #new_stats = Stats.read_from_file("{}/stats.txt".format(out_dir))
-                # I can now continue with processing stats over the iterated data
+                else:
+                    E, inlier_mask, src_pts, dst_pts, kps1, kps2, tentative_matches = match_images_and_keypoints(
+                        image_data1.img,
+                        image_data1.key_points,
+                        image_data1.descriptions,
+                        image_data1.calibration_matrix,
+                        image_data2.img,
+                        image_data2.key_points,
+                        image_data2.descriptions,
+                        image_data2.calibration_matrix,
+                        self.scene_info.img_info_map,
+                        img_pair,
+                        out_dir,
+                        show=True,
+                        save=True)
 
-                processed_pairs = processed_pairs + 1
-                Timer.end_check_point("complete image pair matching")
+                    error_R, error_T = compare_poses(E, img_pair, self.scene_info, src_pts, dst_pts)
+                    inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
+                    stats = Stats(error_R=error_R, error_T=error_T, tentative_matches=tentative_matches, inliers=inliers, all_features_1=len(src_pts), all_features_2=len(dst_pts))
+                    stats.save("{}/stats.txt".format(out_dir))
+
+                    #new_stats = Stats.read_from_file("{}/stats.txt".format(out_dir))
+                    # I can now continue with processing stats over the iterated data
+
+                    processed_pairs = processed_pairs + 1
+                    Timer.end_check_point("complete image pair matching")
 
 
 def main():
@@ -125,6 +160,7 @@ def main():
                         matching_dir="pipeline_with_rectification_foo",
                         matching_difficulties=[0],
                         matching_limit=1,
+                        planes_based_matching=True,
                         feature_descriptor=cv.SIFT_create(),
                         normals_dir="work/scene1/normals/simple_diff_mask")
 
