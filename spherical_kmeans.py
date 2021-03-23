@@ -32,7 +32,7 @@ def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
         diff_norm = torch.norm(diffs, dim=3)
         mins = torch.min(diff_norm, dim=0, keepdim=True)
         arg_mins = mins[1].squeeze(0)
-        filtered_arg_mins = torch.where(filter == 1, arg_mins, 3)
+        filtered_arg_mins = torch.where(filter == 1, arg_mins, torch.tensor(3))
 
         if old_arg_mins is not None:
             changes = old_arg_mins[old_arg_mins != filtered_arg_mins].shape[0]
@@ -51,10 +51,10 @@ def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
     diff_norm = torch.norm(diffs, dim=3)
     mins = torch.min(diff_norm, dim=0, keepdim=True)
     arg_mins = mins[1].squeeze(0)
-    filtered_arg_mins = torch.where(filter == 1, arg_mins, 3)
+    filtered_arg_mins = torch.where(filter == 1, arg_mins, torch.tensor(3))
     mins = mins[0].squeeze(0)
 
-    arg_mins = torch.where(mins < distance_threshold, filtered_arg_mins, 3)
+    arg_mins = torch.where(mins < distance_threshold, filtered_arg_mins, torch.tensor(3))
 
     ret = cluster_centers[:, 0, 0, :], arg_mins
     return ret

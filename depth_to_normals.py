@@ -270,7 +270,10 @@ def cluster_and_save_normals(normals,
     minus_z_direction[:, :, 2] = -1.0
     dot_product = torch.sum(normals * minus_z_direction, dim=-1)
     threshold = math.cos(angle_threshold)
-    filtered = torch.where(dot_product >= threshold, 1, 0)
+    
+    filtered = (dot_product >=threshold).to(dot_product.dtype)
+    
+    #filtered = torch.where(dot_product >= threshold, 1, 0)
 
     Timer.start_check_point("clustering normals")
     clustered_normals, normal_indices = spherical_kmeans.kmeans(normals, filtered, clusters)
@@ -353,12 +356,14 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
         # normals_params_list = []
         # for depth_factor_inv in range(6, 7, 2):
         #     normals_params_list.append((True, sigma, "sigma_5_{}".format(1/depth_factor_inv), 1/depth_factor_inv))
-
-    cameras = scene.cameras
-    images = scene.img_info_map
-    camera_id = images[depth_data_file_name[0:-4]].camera_id
-    camera = cameras[camera_id]
-    focal_length = camera.focal_length
+    if not isinstance(scene, float):
+        cameras = scene.cameras
+        images = scene.img_info_map
+        camera_id = images[depth_data_file_name[0:-4]].camera_id
+        camera = cameras[camera_id]
+        focal_length = camera.focal_length
+    else:
+        focal_length = scene
 
     if upsample:
         width = camera.height_width[1]
