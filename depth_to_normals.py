@@ -273,6 +273,7 @@ def cluster_and_save_normals(normals,
     filtered = torch.where(dot_product >= threshold, 1, 0)
 
     Timer.start_check_point("clustering normals")
+    # TODO consider to return clustered_normals.numpy()
     clustered_normals, normal_indices = spherical_kmeans.kmeans(normals, filtered, clusters)
     Timer.end_check_point("clustering normals")
 
@@ -283,17 +284,18 @@ def cluster_and_save_normals(normals,
     img[:, :, 2][normal_indices == 2] = 255
     img[:, :, 2][normal_indices != 2] = 0
 
-    plt.figure()
-    colors = ["red", "green", "blue"]
-    desc = ""
-    import random
-    for i in range(clusters):
-        desc = "{},{}={} {}".format(desc, colors[i], clustered_normals[i], random.randint)
-    plt.title(desc)
-    plt.imshow(img)
-    if save:
-        plt.savefig("{}_clusters.jpg".format(file_name_prefix))
-    plt.show()
+    if show or save:
+        #plt.figure()
+        color_names = ["red", "green", "blue"]
+        desc = ""
+        for i in range(clusters):
+            desc = "{}{}={},\n".format(desc, color_names[i], clustered_normals[i].numpy())
+        plt.title(desc)
+        plt.imshow(img)
+        if save:
+            plt.savefig("{}_clusters.jpg".format(file_name_prefix))
+        if show:
+            plt.show()
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
     clustered_normals_np = clustered_normals.numpy()
@@ -375,7 +377,8 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
     title = "normals with plain diff mask - {}".format(depth_data_file_name)
-    return cluster_and_save_normals(normals, depth_data_file_name, output_directory, True, title, save)
+    show_normals = False
+    return cluster_and_save_normals(normals, depth_data_file_name, output_directory, show_normals, title, save)
 
 
 def compute_normals_simple_diff_convolution_all(scene: SceneInfo, file_names, read_directory, save, output_parent_dir, skip_existing=True):

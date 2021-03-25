@@ -25,6 +25,9 @@ class Pipeline:
     save_normals: bool
     normals_dir: str
 
+    show_clustered_components = True
+    show_rectification = False
+
     #matching
     feature_descriptor: cv.Feature2D
     matching_dir: str
@@ -33,9 +36,10 @@ class Pipeline:
 
     planes_based_matching: bool
 
+
     def __post_init__(self):
         self.scene_info = SceneInfo.read_scene(self.scene_name)
-        self.show_clustered_components = True
+
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
 
     def process_image(self, img_name):
@@ -49,24 +53,31 @@ class Pipeline:
         img = cv.imread(img_file_path, None)
         K = self.scene_info.get_img_K(img_name)
 
+        # depth => indices
+        output_directory = "{}/{}".format(self.normals_dir, img_name)
+        normals, normal_indices = compute_normals_simple_diff_convolution(self.scene_info, self.depth_input_dir, "{}.npy".format(img_name), self.save_normals, output_directory)
+        # TODO - shouldn't the normals be persisted already with the connected components?
+
+        # normal indices => cluster indices (maybe safe here?)
+        normal_indices = possibly_upsample_normals(img, normal_indices)
+        components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)))
+        if self.show_clustered_components:
+            show_components(components_indices, valid_components_dict, normals=normals)
+
         if Config.rectify():
 
-            # depth => indices
-            output_directory = "{}/{}".format(self.normals_dir, img_name)
-            normals, normal_indices = compute_normals_simple_diff_convolution(self.scene_info, self.depth_input_dir, "{}.npy".format(img_name), self.save_normals, output_directory)
-            # TODO - shouldn't the normals be persisted already with the connected components?
-
-            # normal indices => cluster indices (maybe safe here?)
-            normal_indices = possibly_upsample_normals(img, normal_indices)
-            components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
-            if self.show_clustered_components:
-                show_components(components_indices, valid_components_dict.keys())
-
             # get rectification
-            kps, descs = get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor=self.feature_descriptor, img_name=img_name)
+            kps, descs = get_rectified_keypoints(normals,
+                                                 components_indices,
+                                                 valid_components_dict,
+                                                 img,
+                                                 K,
+                                                 descriptor=self.feature_descriptor,
+                                                 img_name=img_name,
+                                                 show=self.show_rectification)
+
         else:
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
-            normals = components_indices = valid_components_dict = None
 
         Timer.end_check_point("processing img")
         return ImageData(img=img, calibration_matrix=K, key_points=kps, descriptions=descs, normals=normals, components_indices=components_indices, valid_components_dict=valid_components_dict)
@@ -114,7 +125,6 @@ class Pipeline:
                     match_images_with_dominant_planes(
                         image_data1,
                         image_data2,
-                        merge_components=True,
                         images_info=self.scene_info.img_info_map,
                         img_pair=img_pair,
                         out_dir=out_dir,
@@ -145,13 +155,16 @@ class Pipeline:
                     #new_stats = Stats.read_from_file("{}/stats.txt".format(out_dir))
                     # I can now continue with processing stats over the iterated data
 
-                    processed_pairs = processed_pairs + 1
-                    Timer.end_check_point("complete image pair matching")
+                processed_pairs = processed_pairs + 1
+                Timer.end_check_point("complete image pair matching")
 
 
 def main():
 
     Timer.start()
+
+    Config.set_rectify(False)
+    Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
     pipeline = Pipeline(scene_name="scene1",
                         sequential_files_limit=10,

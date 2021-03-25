@@ -6,6 +6,28 @@ import time
 from resize import upsample_bilinear
 
 
+def identity_map(_iterable):
+    return {i: i for i in _iterable}
+
+
+def identity_map_from_range_of_iter(_iterable):
+    return identity_map(range(len(_iterable)))
+
+
+def merge_keys_for_same_value(d: dict):
+    inverted_dict = {}
+    for k, v in d.items():
+        l = inverted_dict.get(v, [])
+        l.append(k)
+        inverted_dict[v] = l
+
+    merged_dict = {}
+    for k, v in inverted_dict.items():
+        merged_dict[tuple(v)] = k
+
+    return merged_dict
+
+
 def get_file_names(dir, suffix, limit=None):
     filenames = [filename for filename in sorted(os.listdir(dir)) if filename.endswith(suffix)]
     filenames = sorted(filenames)

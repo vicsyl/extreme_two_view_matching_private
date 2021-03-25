@@ -3,11 +3,13 @@ class Config:
 
     key_rectify = "rectify"
     key_do_flann = "do_flann"
+    key_planes_based_matching_merge_components = "key_planes_based_matching_merge_components"
 
     # init the map and set the default values
     config_map = {}
     config_map[key_rectify] = True
     config_map[key_do_flann] = True
+    config_map[key_planes_based_matching_merge_components] = True
 
     @staticmethod
     def do_flann():
@@ -16,3 +18,7 @@ class Config:
     @staticmethod
     def rectify():
         return Config.config_map[Config.key_rectify]
+
+    @staticmethod
+    def set_rectify(bool_val):
+        Config.config_map[Config.key_rectify] = bool_val

@@ -5,7 +5,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import torch
 from resize import upsample_nearest_numpy
-from utils import Timer
+from utils import Timer, identity_map_from_range_of_iter
 from scene_info import SceneInfo, read_cameras
 from connected_components import show_components, read_img_normals_info, get_connected_components
 
@@ -91,7 +91,7 @@ def get_perspective_transform(R, K, K_inv, component_indices, index):
     return P, bounding_box_new
 
 
-def get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_dir=None):
+def get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_dir=None, show=False):
 
     K_inv = np.linalg.inv(K)
     Rs = get_rectification_rotations(normals)
@@ -99,8 +99,7 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
     all_descs = None
     all_kps = []
 
-    # TODO show
-    components_in_colors = show_components(components_indices, valid_components_dict.keys())
+    components_in_colors = show_components(components_indices, valid_components_dict, actually_show=False)
 
     for component_index in valid_components_dict:
 
@@ -161,13 +160,15 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
             else:
                 all_descs = np.vstack((all_descs, descs))
 
-        plt.figure()
+        #plt.figure()
         #plt.figure(dpi=600)
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(rectified)
-        plt.show()
+        if show:
+            plt.show()
         plt.imshow(rectified_components)
-        plt.show()
+        if show:
+            plt.show()
         if out_dir is not None:
             plt.savefig("{}/rectified_{}_{}.jpg".format(out_dir, img_name, component_index))
 
@@ -219,7 +220,7 @@ def show_rectifications(scene_info: SceneInfo, normals_parent_dir, original_inpu
 
         show = True
         if show:
-            show_components(normal_indices, range(len(normals)))
+            show_components(normal_indices, identity_map_from_range_of_iter(normals), normals)
 
         # manual "extension" point
         # normals = np.array(
