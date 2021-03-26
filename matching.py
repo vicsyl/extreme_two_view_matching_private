@@ -67,6 +67,19 @@ def split_points(tentative_matches, kps1, kps2):
     return src_pts, dst_pts
 
 
+def rich_split_points(tentative_matches, kps1, dsc1, kps2, dsc2):
+
+    src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
+    src_kps = [kps1[m.queryIdx] for m in tentative_matches]
+    src_dsc = [dsc1[m.queryIdx] for m in tentative_matches]
+
+    dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1, 2)
+    dst_kps = [kps2[m.trainIdx] for m in tentative_matches]
+    dst_dsc = [dsc2[m.trainIdx] for m in tentative_matches]
+
+    return src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc
+
+
 def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, ratio_thresh=0.8, show=True, save=True):
 
     if Config.do_flann():
@@ -216,10 +229,14 @@ def get_kts_desc_normal_list(image_data: ImageData, merge_components: bool):
     return kpts_desc_list
 
 
+def apply_inliers_on_list(l: list, inlier_mask):
+    return [i for idx, i in enumerate(l) if inlier_mask[idx, 0] == 0]
+
+
 def find_and_draw_homography(img1, kps1, descs1, img2, kps2, descs2):
 
     tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, None, show=False, save=False)
-    src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
+    src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc = rich_split_points(tentative_matches, kps1, descs1, kps2, descs2)
 
     H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransacReprojThreshold=3.0, confidence=0.999)
 
@@ -228,7 +245,13 @@ def find_and_draw_homography(img1, kps1, descs1, img2, kps2, descs2):
         plt.imshow(img)
         plt.show()
 
-    return H, inlier_mask
+    src_kps = apply_inliers_on_list(src_kps, inlier_mask)
+    src_dsc = apply_inliers_on_list(src_dsc, inlier_mask)
+    dst_kps = apply_inliers_on_list(dst_kps, inlier_mask)
+    dst_dsc = apply_inliers_on_list(dst_dsc, inlier_mask)
+    tentative_matches = apply_inliers_on_list(tentative_matches, inlier_mask)
+
+    return H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc
 
 
 def match_images_with_dominant_planes(image_data1: ImageData, image_data2: ImageData, images_info, img_pair, out_dir, show: bool, save: bool):
@@ -236,6 +259,17 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
     merge_components = Config.config_map[Config.key_planes_based_matching_merge_components]
     kpts_desc_list1 = get_kts_desc_normal_list(image_data1, merge_components)
     kpts_desc_list2 = get_kts_desc_normal_list(image_data2, merge_components)
+
+    # (id1, id2) => (homography, inlier_kps1, inlier_dsc1, inlier_kps2, inlier_dsc2)
+    homography_matching_dict = {}
+
+    for ix1 in range(len(kpts_desc_list1)):
+        for ix2 in range(len(kpts_desc_list2)):
+            kps1, desc1, components1, normal_index1 = kpts_desc_list1[ix1]
+            kps2, desc2, components2, normal_index2 = kpts_desc_list2[ix2]
+            print("matching component/normal {} from 1st image against component/normal from 2nd image {}".format(ix1, ix2))
+            H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc = find_and_draw_homography(image_data1.img, kps1, desc1, image_data2.img, kps2, desc2)
+            homography_matching_dict[(ix1, ix2)] = (H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc)
 
     if len(kpts_desc_list1) <= len(kpts_desc_list2):
         less_planes = 1
@@ -250,15 +284,26 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
         permutation_items = range(len(kpts_desc_list1))
         swap = True
 
-    # H, inlier_mask, ix1, ix2
-    all_matching_homographies = []
+    max_inliers = None
+    best_idxs_1 = None
+    best_idxs_2 = None
     for cur_permutation in itertools.permutations(permutation_items, perm_length):
 
         print("matching permutation of {} against {}: {} <=> {}".format(cur_permutation, list(range(perm_length)), more_planes, less_planes))
 
-        # H1, inlier_mask1, ix1, H2, inlier_mask2, ix2
-        cur_matching_homographies = []
-        # now len(general_perm) matches:
+        kps1_l = []
+        dsc1_l = []
+        kps2_l = []
+        dsc2_l = []
+        #tentative_matches_l = []
+
+        if swap:
+            all_idxs_1 = cur_permutation
+            all_idxs_2 = range(perm_length)
+        else:
+            all_idxs_1 = range(perm_length)
+            all_idxs_2 = cur_permutation
+
         for i in range(perm_length):
             if swap:
                 ix1 = cur_permutation[i]
@@ -267,24 +312,47 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                 ix1 = i
                 ix2 = cur_permutation[i]
 
-            print("matching {} against {}: 1 <=> 2".format(ix1, ix2))
+            _, tentative_matches, cur_kps1, cur_dsc1, cur_kps2, cur_dsc2 = homography_matching_dict[(ix1, ix2)]
+            kps1_l.extend(cur_kps1)
+            kps2_l.extend(cur_kps2)
+            dsc1_l.extend(cur_dsc1)
+            dsc2_l.extend(cur_dsc2)
+            #tentative_matches_l.extend(tentative_matches)
 
-            kps1, desc1, components1, normal_index1 = kpts_desc_list1[ix1]
-            kps2, desc2, components2, normal_index2 = kpts_desc_list2[ix2]
+        cur_tentative_matches = find_correspondences(image_data1.img,
+                                                     kps1_l,
+                                                     np.array(dsc1_l),
+                                                     image_data2.img,
+                                                     kps2_l,
+                                                     np.array(dsc2_l),
+                                                     out_dir,
+                                                     ratio_thresh=0.75,
+                                                     show=True,
+                                                     save=save)
 
-            print("{} : {}: 1 <=> 2".format(len(kps1), len(kps2)))
+        src_pts, dst_pts = split_points(cur_tentative_matches, kps1_l, kps2_l)
+        # TODO use the same parameters as with the normal matching
+        #ransacReprojThreshold = 3.0, confidence = 0.999
+        E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, image_data1.K, None, image_data2.K, None, cv.RANSAC, prob=0.999, threshold=3.0)
+        inliers = inlier_mask[inlier_mask == [0]].shape[0]
 
-            # kps1_b = copy(kps1)
-            # desc1_b = deepcopy(desc1)
-            # kps2_b = copy(kps2)
-            # desc2_b = deepcopy(desc2)
+        if max_inliers is None or max_inliers < inliers:
+            best_idxs_1 = all_idxs_1
+            best_idxs_2 = all_idxs_2
 
-            H, inlier_mask = find_and_draw_homography(image_data1.img, kps1, desc1, image_data2.img, kps2, desc2)
-            cur_matching_homographies.append((H, inlier_mask, ix1, ix2))
+        if show or save:
+            # tentative_matches = []
+            img_matches = draw_matches(kps1_l, kps2_l, cur_tentative_matches, None, inlier_mask, image_data1.img, image_data2.img)
+            plt.figure()
+            plt.title("({} <=> {}) - {} inliers".format(all_idxs_1, all_idxs_2, inliers))
+            plt.imshow(img_matches)
+            # if save:
+            #     plt.savefig("{}/matches.jpg".format(out_dir))
+            if show:
+                plt.show()
 
-        all_matching_homographies.append(cur_matching_homographies)
-
-    return all_matching_homographies
+    print("best indices: {} <=> {}".format(best_idxs_1, best_idxs_2))
+    return None #E, inlier_mask, src_pts, dst_pts, kps1, kps2, len(tentative_matches)
 
 
 def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, images_info, img_pair, out_dir, show, save):

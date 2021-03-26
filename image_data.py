@@ -8,7 +8,7 @@ class ImageData:
     img: np.ndarray
     key_points: List[cv.KeyPoint]
     descriptions: object
-    calibration_matrix: np.ndarray
+    K: np.ndarray
     normals: np.ndarray
     components_indices: np.ndarray
     valid_components_dict: dict

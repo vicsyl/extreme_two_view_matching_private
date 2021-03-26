@@ -80,7 +80,7 @@ class Pipeline:
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
         Timer.end_check_point("processing img")
-        return ImageData(img=img, calibration_matrix=K, key_points=kps, descriptions=descs, normals=normals, components_indices=components_indices, valid_components_dict=valid_components_dict)
+        return ImageData(img=img, K=K, key_points=kps, descriptions=descs, normals=normals, components_indices=components_indices, valid_components_dict=valid_components_dict)
 
     def run_sequential_pipeline(self):
 
@@ -136,11 +136,11 @@ class Pipeline:
                         image_data1.img,
                         image_data1.key_points,
                         image_data1.descriptions,
-                        image_data1.calibration_matrix,
+                        image_data1.K,
                         image_data2.img,
                         image_data2.key_points,
                         image_data2.descriptions,
-                        image_data2.calibration_matrix,
+                        image_data2.K,
                         self.scene_info.img_info_map,
                         img_pair,
                         out_dir,
