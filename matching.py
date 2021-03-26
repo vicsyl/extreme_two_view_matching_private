@@ -238,7 +238,7 @@ def find_and_draw_homography(img1, kps1, descs1, img2, kps2, descs2):
     tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, None, show=False, save=False)
     src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc = rich_split_points(tentative_matches, kps1, descs1, kps2, descs2)
 
-    H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransacReprojThreshold=3.0, confidence=0.999)
+    H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransacReprojThreshold=2.0, confidence=0.9999)
 
     if True:
         img = draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
@@ -267,7 +267,7 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
         for ix2 in range(len(kpts_desc_list2)):
             kps1, desc1, components1, normal_index1 = kpts_desc_list1[ix1]
             kps2, desc2, components2, normal_index2 = kpts_desc_list2[ix2]
-            print("matching component/normal {} from 1st image against component/normal from 2nd image {}".format(ix1, ix2))
+            print("matching component/normal {} from 1st image against {} component/normal from 2nd image".format(ix1, ix2))
             H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc = find_and_draw_homography(image_data1.img, kps1, desc1, image_data2.img, kps2, desc2)
             homography_matching_dict[(ix1, ix2)] = (H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc)
 
@@ -327,16 +327,17 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                                                      np.array(dsc2_l),
                                                      out_dir,
                                                      ratio_thresh=0.75,
-                                                     show=True,
-                                                     save=save)
+                                                     show=False,
+                                                     save=False)
 
         src_pts, dst_pts = split_points(cur_tentative_matches, kps1_l, kps2_l)
         # TODO use the same parameters as with the normal matching
         #ransacReprojThreshold = 3.0, confidence = 0.999
-        E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, image_data1.K, None, image_data2.K, None, cv.RANSAC, prob=0.999, threshold=3.0)
+        E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, image_data1.K, None, image_data2.K, None, cv.RANSAC) #, prob=0.999, threshold=3.0)
         inliers = inlier_mask[inlier_mask == [0]].shape[0]
 
         if max_inliers is None or max_inliers < inliers:
+            max_inliers = inliers
             best_idxs_1 = all_idxs_1
             best_idxs_2 = all_idxs_2
 

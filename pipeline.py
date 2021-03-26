@@ -39,7 +39,6 @@ class Pipeline:
 
     def __post_init__(self):
         self.scene_info = SceneInfo.read_scene(self.scene_name)
-
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
 
     def process_image(self, img_name):

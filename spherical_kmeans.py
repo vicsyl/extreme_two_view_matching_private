@@ -10,8 +10,9 @@ initial_cluster_centers = torch.Tensor([
 distance_threshold = 0.6
 angle_distance = 2 * math.asin(distance_threshold / 2)
 
-print("angle distance in rad used for k_means in radians: {}".format(angle_distance))
-print("the same in degrees: {}".format(angle_distance / math.pi * 180.0))
+# just an informative message about angle distance threshold for keeping a normal in a cluster
+#print("angle distance in rad used for k_means in radians: {}".format(angle_distance))
+#print("the same in degrees: {}".format(angle_distance / math.pi * 180.0))
 
 def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
     """
