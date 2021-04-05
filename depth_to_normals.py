@@ -256,12 +256,15 @@ def cluster_and_save_normals(normals,
     if len(normals.shape) == 5:
         normals = normals.squeeze(dim=0).squeeze(dim=0)
         img = normals.numpy() * 255
-    img[:, :, 2] = -img[:, :, 2]
+    img[:, :, 2] = -img[:, :, 2] / 255
 
     if show:
-        plt.figure()
+        fig = plt.figure()
         plt.title(title)
-        plt.imshow(img / 255)
+        for index in range(3):
+            # row, columns, index
+            ax = fig.add_subplot(131 + index)
+            ax.imshow(img[:, :, index])
         plt.show()
     if save:
         cv.imwrite("{}.jpg".format(file_name_prefix), img)
