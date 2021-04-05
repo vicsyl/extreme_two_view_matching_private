@@ -324,6 +324,32 @@ def get_megadepth_file_names_and_dir(scene_name, limit, interesting_files):
 
 
 def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample=False):
+    """
+    Currently the standard way to compute the normals and cluster them. This is called from other modules
+    (extension point) on a per file basis
+
+    :param scene:
+    :param depth_data_read_directory:
+    :param depth_data_file_name:
+    :param save:
+    :param output_directory:
+    :param upsample:
+    :return: (normals, normal_indices)
+    """
+
+    cameras = scene.cameras
+    images = scene.img_info_map
+    camera_id = images[depth_data_file_name[0:-4]].camera_id
+    camera = cameras[camera_id]
+    h = camera.height_width[0]
+    w = camera.height_width[1]
+    f = camera.focal_length
+
+    return compute_normals_simple_diff_convolution_simple(h, w, f, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample)
+
+
+def compute_normals_simple_diff_convolution_simple(height, width, focal_length, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample=False):
+    """see :func:`compute_normals_simple_diff_convolution`"""
 
     # 3.75 upsample
     # -> sigma (5.0 -> 1.33)
@@ -356,16 +382,7 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
         # for depth_factor_inv in range(6, 7, 2):
         #     normals_params_list.append((True, sigma, "sigma_5_{}".format(1/depth_factor_inv), 1/depth_factor_inv))
 
-    cameras = scene.cameras
-    images = scene.img_info_map
-    camera_id = images[depth_data_file_name[0:-4]].camera_id
-    camera = cameras[camera_id]
-    focal_length = camera.focal_length
-
-    if upsample:
-        width = camera.height_width[1]
-        height = camera.height_width[0]
-    else:
+    if not upsample:
         width = None
         height = None
 
@@ -377,7 +394,8 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
     title = "normals with plain diff mask - {}".format(depth_data_file_name)
-    return cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save)
+    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save)
+    return clustered_normals_np, normal_indices_np
 
 
 def compute_normals_simple_diff_convolution_all(scene: SceneInfo, file_names, read_directory, save, output_parent_dir, skip_existing=True):
