@@ -348,7 +348,8 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
     w = camera.height_width[1]
     f = camera.focal_length
 
-    return compute_normals_simple_diff_convolution_simple(h, w, f, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample)
+    depth_data, normals, clustered_normals_np, normal_indices_np = compute_normals_simple_diff_convolution_simple(h, w, f, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample)
+    return clustered_normals_np, normal_indices_np
 
 
 def compute_normals_simple_diff_convolution_simple(height, width, focal_length, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample=False):
@@ -391,14 +392,13 @@ def compute_normals_simple_diff_convolution_simple(height, width, focal_length, 
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory, height, width)
 
-    normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=True, sigma=sigma,
-                                          depth_factor=depth_factor)
+    normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=True, sigma=sigma, depth_factor=depth_factor)
     print("Creating dir (if not exists already): {}".format(output_directory))
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
     title = "normals with plain diff mask - {}".format(depth_data_file_name)
     clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save)
-    return clustered_normals_np, normal_indices_np
+    return depth_data, normals, clustered_normals_np, normal_indices_np
 
 
 def compute_normals_simple_diff_convolution_all(scene: SceneInfo, file_names, read_directory, save, output_parent_dir, skip_existing=True):
