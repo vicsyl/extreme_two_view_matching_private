@@ -3,6 +3,7 @@ import numpy as np
 import os
 import math
 import time
+import cv2 as cv
 from resize import upsample_bilinear
 
 
@@ -103,6 +104,20 @@ def test_quaternions():
         R = quaternions_to_R(input)
         print("input:\n{}".format(input))
         print("R:\n{}".format(R))
+
+
+def save_img_with_timestamp_png(path_prefix, np_img):
+
+    t = time.time()
+    # TODO add trailing zeros
+    timestamp = str(round(t * 1000) / 1000).replace(".", "_")
+    cv.imwrite("{}_{}.png".format(path_prefix, timestamp), np_img)
+
+
+def save_img_with_timestamp_jpg(path_prefix, np_img):
+    t = time.time()
+    timestamp = str(round(t * 1000) / 1000).replace(".", "_")
+    cv.imwrite("{}_{}.jpg".format(path_prefix, timestamp), np_img)
 
 
 class Timer:

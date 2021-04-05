@@ -377,8 +377,7 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
     title = "normals with plain diff mask - {}".format(depth_data_file_name)
-    show_normals = False
-    return cluster_and_save_normals(normals, depth_data_file_name, output_directory, show_normals, title, save)
+    return cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save)
 
 
 def compute_normals_simple_diff_convolution_all(scene: SceneInfo, file_names, read_directory, save, output_parent_dir, skip_existing=True):
@@ -428,7 +427,7 @@ def main():
     interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
     #interesting_imgs = ["frame_0000000025_3.npy"]
 
-    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=20, interesting_files=None)
+    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=2, interesting_files=None)
 
     output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
 
