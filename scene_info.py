@@ -43,6 +43,12 @@ class CameraEntry:
     principal_point_x_y: (int, int)
     distortion: float
 
+    def height(self):
+        return self.height_width[0]
+
+    def width(self):
+        return self.height_width[1]
+
     def get_K(self):
         K = np.array([
             [self.focal_length,                 0, self.principal_point_x_y[0]],

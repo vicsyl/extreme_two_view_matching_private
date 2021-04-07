@@ -67,8 +67,8 @@ def get_file_dir_and_name(plane):
 def get_depth_synthetic_data():
 
     planes = np.array([
-        [0, 0, 1, -100],
         [0, 0, 1, -1],
+        # [0, 0, 1, -100],
         # [1, 0, 1, -1],
         # [1, 0, 1, -100000],
         # [0, 1, 1, -1],
@@ -94,21 +94,21 @@ def generate_depth_info():
 
 def test_depth_to_normals():
 
-    normals = None
-    normals_old = None
+    data = None
+    data_old = None
     for dsd in get_depth_synthetic_data():
         depth_map_of_plane(dsd, False)
 
-        h = dsd.camera.height_width[0]
-        w = dsd.camera.height_width[1]
-        f = dsd.camera.focal_length
+        if data is not None:
+            data_old = data
+        data = compute_normals_simple_diff_convolution_simple(dsd.camera, dsd.file_dir_and_name[0], dsd.file_dir_and_name[1], save=True, output_directory=dsd.file_dir_and_name[0])
+        depth, normals, clustered_normals, normal_indices = data
 
-        if normals is not None:
-            normals_old = normals
-        depth, normals, clustered_normals, normal_indices = compute_normals_simple_diff_convolution_simple(h, w, f, dsd.file_dir_and_name[0], dsd.file_dir_and_name[1], save=True, output_directory=dsd.file_dir_and_name[0])
+        if data_old is not None:
+            depth_old, normals_old, _, _ = data_old
+            diff_normals = normals - normals_old
+            diff_depth = depth * 100 - depth_old
 
-        if normals_old is not None:
-            diff = normals - normals_old
             print()
         print()
         # assert np.all(normal_indices == 0.0)

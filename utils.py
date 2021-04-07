@@ -7,6 +7,77 @@ import cv2 as cv
 from resize import upsample_bilinear
 
 
+def get_rotation_matrix(unit_rotation_vector, theta):
+
+    # Rodrigues formula
+    # R = I + sin(theta) . K + (1 - cos(theta)).K**2
+
+    K = np.array([
+        [0.0, -unit_rotation_vector[2], unit_rotation_vector[1]],
+        [unit_rotation_vector[2], 0.0, -unit_rotation_vector[0]],
+        [-unit_rotation_vector[1], unit_rotation_vector[0], 0.0],
+    ])
+    a = np.eye(3)
+    b = math.sin(theta) * K
+    c = (1.0 - math.cos(theta)) * K @ K
+
+    print("{}\n, {}\n, {}".format(a, b, c))
+    R = a + b + c
+    return R
+
+
+def get_rotation_matrices(unit_rotation_vector, theta):
+
+    h, w, three = unit_rotation_vector.shape
+    h2, w2 = theta.shape
+    assert three == 3
+    assert h == h2
+    assert w == w2
+
+    K = np.zeros((h, w, 3, 3))
+    a = np.ndarray((h, w, 3, 3))
+    #b = np.ndarray((h, w, 3, 3))
+    c = np.ndarray((h, w, 3, 3))
+
+    zer = np.zeros((h, w))
+
+    # Rodrigues formula
+    # R = I + sin(theta) . K + (1 - cos(theta)).K**2
+
+    K[:, :, 0, 0] = 0
+    K[:, :, 0, 1] = -unit_rotation_vector[:, :, 2]
+    K[:, :, 0, 2] = unit_rotation_vector[:, :, 1]
+    K[:, :, 1, 0] = unit_rotation_vector[:, :, 2]
+    K[:, :, 1, 1] = 0
+    K[:, :, 1, 2] = -unit_rotation_vector[:, :, 0]
+    K[:, :, 2, 0] = -unit_rotation_vector[:, :, 1]
+    K[:, :, 2, 1] = unit_rotation_vector[:, :, 0]
+    K[:, :, 2, 2] = 0
+
+    # K[:, :] = np.array([
+    #     [zer, -unit_rotation_vector[:, :, 2], unit_rotation_vector[:, :, 1]],
+    #     [unit_rotation_vector[:, :, 2], zer, -unit_rotation_vector[:, :, 0]],
+    #     [-unit_rotation_vector[:, :, 1], unit_rotation_vector[:, :, 0], zer],
+    # ])
+    a[:, :] = np.eye(3)
+    sins = np.sin(theta[:, :])
+    sins = np.expand_dims(sins, axis=(2, 3))
+    b = sins * K
+    one_m_cos_theta = np.expand_dims(-(np.cos(theta) - 1.0), axis=(2, 3))
+    c[:, :] = one_m_cos_theta * K[:, :] @ K[:, :]
+
+    # R = get_rotation_matrix(unit_rotation_vector[0, 0], theta[0, 0])
+    # det = np.linalg.det(R)
+
+    # a_0 = a[0, 0]
+    # b_0 = b[0, 0]
+    # c_0 = c[0, 0]
+    # print("{},\n {},\n {}".format(a_0, b_0, c_0))
+
+    Rs = a + b + c
+    return Rs
+
+
 def identity_map(_iterable):
     return {i: i for i in _iterable}
 

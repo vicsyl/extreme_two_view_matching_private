@@ -5,25 +5,9 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import torch
 from resize import upsample_nearest_numpy
-from utils import Timer, identity_map_from_range_of_iter
+from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix
 from scene_info import SceneInfo, read_cameras
 from connected_components import show_components, read_img_normals_info, get_connected_components
-
-
-def get_rotation_matrix(unit_rotation_vector, theta):
-
-    # Rodrigues formula
-    # R = I + sin(theta) . K + (1 - cos(theta)).K**2
-
-    K = np.array([
-        [0.0, -unit_rotation_vector[2], unit_rotation_vector[1]],
-        [unit_rotation_vector[2], 0.0, -unit_rotation_vector[0]],
-        [-unit_rotation_vector[1], unit_rotation_vector[0], 0.0],
-    ])
-    a = np.eye(3)
-    b = math.sin(theta) * K
-    c = (1.0 - math.cos(theta)) * K @ K
-    return a + b + c
 
 
 # refactor: just one

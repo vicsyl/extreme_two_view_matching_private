@@ -1,5 +1,5 @@
 import cv2 as cv
-from scene_info import read_cameras, read_images, SceneInfo
+from scene_info import read_cameras, read_images, SceneInfo, CameraEntry
 from image_processing import spatial_gradient_first_order
 from tests import *
 from utils import *
@@ -200,8 +200,107 @@ def svd_normals():
             cv.imwrite('work/{}_normals_svd_window_size_{}.jpg'.format(file_name, window_size), img)
 
 
+# TODO handle downsampling
+# TODO centralize
+def get_rotation_matrices_across_img(camera: CameraEntry):
+
+    Q_inv = np.linalg.inv(camera.get_K())
+
+    height = camera.height()
+    width = camera.width()
+
+    m = np.mgrid[0:width, 0:height]
+    m = np.moveaxis(m, 0, -1)
+    m_line = np.ndarray((width, height, 3, 1))
+    m_line[:, :, :2, 0] = m
+    m_line[:, :, 2, 0] = 1.0
+
+    d = Q_inv @ m_line
+
+    f_norms = np.expand_dims(np.linalg.norm(d, axis=2), axis=2)
+    d_unit = d / f_norms
+    d_unit_t = np.moveaxis(d_unit, -1, -2)
+
+    z = np.array([0.0, 0.0, 1.0])
+
+    rotation_vector2 = np.cross(z, d_unit_t)
+    rotation_vector = np.cross(d_unit_t, z)
+
+    #rotation_vector2 = np.cross(np.squeeze(d_unit), np.squeeze(z))
+    #diff = np.squeeze(rotation_vector) - rotation_vector2
+
+    rotation_vector_norm = np.linalg.norm(rotation_vector, axis=3)
+    sin_theta = np.linalg.norm(rotation_vector, axis=3)
+    factor = 1.0
+    sin_theta = sin_theta.copy() * factor
+    unit_rotation_vector = rotation_vector[:, :, 0, :] / rotation_vector_norm
+    theta = np.arcsin(sin_theta[:, :, 0])
+
+    Rs = get_rotation_matrices(unit_rotation_vector, theta)
+    det = np.linalg.det(Rs)
+    assert np.all(np.abs(det - 1.0) < 0.0001)
+    check = Rs @ d_unit
+    check = np.squeeze(check)
+    check2 = Rs @ z
+    check3 = Rs @ -d_unit
+    check3 = np.squeeze(check3)
+
+    # check should be (w, h, [0, 0, 1], 0)
+
+    return Rs
+
+
+
+# TODO handle downsampling
+def diff_normal_from_depth_data(camera: CameraEntry,
+                                depth_data,
+                                mask,
+                                smoothed: bool=False,
+                                sigma: float=1.0):
+
+    focal_length = camera.focal_length
+
+    Rs = get_rotation_matrices_across_img(camera)
+    Rs = torch.from_numpy(Rs)
+
+    # Could be also done from reprojected data, but this seems to be correct and more straightforward
+    gradient_dzdx_o, gradient_dzdy_o = spatial_gradient_first_order(depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
+
+    gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
+    gradient_dzdx = (gradient_dzdx * focal_length / depth_data).unsqueeze(dim=4)
+    gradient_dzdy = (gradient_dzdy * focal_length / depth_data).unsqueeze(dim=4)
+    z_ones = torch.ones(gradient_dzdy.shape)
+    #z_ones = torch.zeros(gradient_dzdy.shape)
+    normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
+    normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
+    normals = normals / normals_norms
+    normals = normals.squeeze(dim=0).squeeze(dim=0)
+    normals = normals.unsqueeze(3)
+
+    normals2 = torch.cat((gradient_dzdx, gradient_dzdy, -z_ones), dim=4)
+    normals_norms2 = torch.norm(normals2, dim=4).unsqueeze(dim=4)
+    normals2 = normals2 / normals_norms2
+    normals2 = normals2.squeeze(dim=0).squeeze(dim=0)
+    normals2 = normals2.unsqueeze(3)
+
+    diff = normals - normals2
+    normals = normals2
+
+    Rs = Rs.permute((1, 0, 2, 3))
+
+    print("give me")
+    normals_orig = normals
+    normals = Rs @ normals
+    normals = normals.squeeze()
+    normals_norms = torch.norm(normals, dim=2).unsqueeze(dim=2)
+    normals = normals / normals_norms
+    return normals
+    #return normals_orig.squeeze()
+
+
+
 # TODO centralize the logic around the "factor"
-def diff_normal_from_depth_data(focal_length,
+def diff_normal_from_depth_data_old(focal_length,
                                 depth_data,
                                 mask,
                                 smoothed: bool=False,
@@ -253,9 +352,10 @@ def cluster_and_save_normals(normals,
         print("WARNING: number of clusters unknown for {}, defaulting to 2 ...".format(depth_data_file_name))
 
     # TODO just confirm if this happens for monodepth
-    if len(normals.shape) == 5:
-        normals = normals.squeeze(dim=0).squeeze(dim=0)
-        img = normals.numpy() * 255
+    # if len(normals.shape) == 5:
+    #     normals = normals.squeeze(dim=0).squeeze(dim=0)
+
+    img = normals.numpy() * 255
     img[:, :, 2] = -img[:, :, 2] / 255
 
     if show:
@@ -352,15 +452,23 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
     return clustered_normals_np, normal_indices_np
 
 
-def compute_normals_simple_diff_convolution_simple(height, width, focal_length, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample=False):
+def compute_normals_simple_diff_convolution_simple(camera, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample=False):
     """see :func:`compute_normals_simple_diff_convolution`"""
+
+    height = camera.height_width[0]
+    width = camera.height_width[1]
 
     # 3.75 upsample
     # -> sigma (5.0 -> 1.33)
     # -> mask_21 -> mask_5 (not exact)
     # -> depth_factor (1/30 -> 1/6) (should be exactly 1/8 actually)
 
-    mask_5 = torch.tensor([[0.5, 0.5, 0, -0.5, -0.5]]).float()
+    #mask_5 = torch.tensor([[0.5, 0.5, 0, -0.5, -0.5]]).float()
+    #mask_5 = torch.tensor([[0.25, 0.25, 0, -0.25, -0.25]]).float()
+
+    mask_5 = torch.tensor([[1, -1, 0]]).float()
+
+    #mask_5 = torch.tensor([[0.5, 0, -0.5]]).float()
     # this is interesting
     # mask_7 = torch.tensor([[0.5, 0.5, 0.5, 0, -0.5, -0.5, -0.5]]).float()
 
@@ -371,20 +479,32 @@ def compute_normals_simple_diff_convolution_simple(height, width, focal_length, 
                              -0.5, -0.5, -0.5, -0.5, -0.5,
                              ]]).float()
 
+
     if upsample:
         mask = mask_21
         sigma = 5.0
-        depth_factor = 1 / 30
+        #depth_factor = 1 / 30
         # normals_params_list = [
         #     (True, sigma, "sigma_5_{}".format(1/30), 1/30)
         # ]
     else:
         mask = mask_5
         sigma = 1.33
-        depth_factor = 1 / 6
+        #depth_factor = 1 / 6
         # normals_params_list = []
         # for depth_factor_inv in range(6, 7, 2):
         #     normals_params_list.append((True, sigma, "sigma_5_{}".format(1/depth_factor_inv), 1/depth_factor_inv))
+
+
+    mask = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
+                          0.5, 0.5, 0.5, 0.5, 0.5,
+                          0,
+                         -0.5, -0.5, -0.5, -0.5, -0.5,
+                         -0.5, -0.5, -0.5, -0.5, -0.5,
+                         ]]).float() / 10
+    #mask = torch.tensor([[0.5, 0.5, 0, -0.5, -0.5]]).float() / 2
+    sigma = 5
+    smoothed = True
 
     if not upsample:
         width = None
@@ -392,7 +512,7 @@ def compute_normals_simple_diff_convolution_simple(height, width, focal_length, 
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory, height, width)
 
-    normals = diff_normal_from_depth_data(focal_length, depth_data, mask=mask, smoothed=True, sigma=sigma, depth_factor=depth_factor)
+    normals = diff_normal_from_depth_data(camera, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
     print("Creating dir (if not exists already): {}".format(output_directory))
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
