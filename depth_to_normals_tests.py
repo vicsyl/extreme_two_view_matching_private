@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 import cv2 as cv
 
@@ -5,6 +6,7 @@ from scene_info import read_cameras, CameraEntry
 from dataclasses import dataclass
 from depth_to_normals import compute_normals_simple_diff_convolution_simple
 
+from img_utils import show_normals_components
 
 @dataclass
 class DepthSyntheticData:
@@ -57,6 +59,8 @@ def depth_map_of_plane(dsd: DepthSyntheticData, allow_and_nullify_negative_depth
     if save:
         np.save("{}/{}".format(dsd.file_dir_and_name[0], dsd.file_dir_and_name[1]), depth)
 
+    return depth
+
 
 def get_file_dir_and_name(plane):
     #plane = plane[:3]
@@ -64,57 +68,71 @@ def get_file_dir_and_name(plane):
     return "work/tests/", "depth_map_{}.npy".format(file_name_fuffix)
 
 
-def get_depth_synthetic_data():
+def test_depth_to_normals(old_implementation=True):
 
-    planes = np.array([
+    planes_coeffs = np.array([
         [0, 0, 1, -1],
-        # [0, 0, 1, -100],
-        # [1, 0, 1, -1],
-        # [1, 0, 1, -100000],
-        # [0, 1, 1, -1],
-        # [1, 2, 2, -1],
-        # [1, 3, 3, -1],
-        # [1, 1, 1, -1],
-        # [2, 1, 2, -1],
-        # [3, 1, 3, -1],
+        [0, 0, 1, -100],
+        [1, 0, 1, -1],
+        [1, 0, 1, -100000],
+        [0, 1, 1, -1],
+        [1, 2, 2, -1],
+        [1, 3, 3, -1],
+        [1, 1, 1, -1],
+        [2, 1, 2, -1],
+        [3, 1, 3, -1],
     ])
 
     cameras = read_cameras("scene1")
     first_camera = next(iter(cameras.values()))
 
-    return [DepthSyntheticData(plane=plane,
-                               camera=first_camera,
-                               file_dir_and_name=get_file_dir_and_name(plane))
-            for plane in planes]
+    for plane in planes_coeffs:
+
+        #plane = -plane
+
+        exact = plane[:3].copy()
+        exact = -exact / np.linalg.norm(exact)
+        print("\n\n\n\nTesting synthetic depth map for plane coeffs (ax + by + cz + d = 0): {}".format(plane))
+
+        dsd = DepthSyntheticData(plane=plane, camera=first_camera, file_dir_and_name=get_file_dir_and_name(plane))
+        depth_map_of_plane(dsd, allow_and_nullify_negative_depths=False, save=True)
+
+        mask = torch.tensor([[0.5, 0, -0.5]]).float()
+        depth, normals, clustered_normals, normal_indices = \
+            compute_normals_simple_diff_convolution_simple(dsd.camera,
+                                                           dsd.file_dir_and_name[0],
+                                                           dsd.file_dir_and_name[1],
+                                                           save=True,
+                                                           output_directory=dsd.file_dir_and_name[0],
+                                                           override_mask=mask,
+                                                           old_implementation=old_implementation
+                                                           )
+        normals_diff = normals - dsd.plane[:3]
+        show_normals_components(normals_diff, "difference from exact result", (30.0, 20.0))
+
+        if len(normals.shape) == 5:
+            normals = normals.squeeze(dim=0).squeeze(dim=0)
+
+        normals_np = normals.numpy()[5:-5, 5:-5]
+        diff = normals_np - exact
 
 
-def generate_depth_info():
-    return [depth_map_of_plane(dsd, False) for dsd in get_depth_synthetic_data()]
+        maxima = np.max(normals_np, axis=(0, 1))
+        minima = np.min(normals_np, axis=(0, 1))
+        max_dev = maxima - exact
+        min_dev = minima - exact
 
+        print("exact normal of the plane (x, y, y): {}".format(exact))
+        print("normal component maxima (x, y, y): {}".format(maxima))
+        print("normal component minima (x, y, y): {}".format(minima))
+        print("difference of normal component maxima from the exact values (x, y, y): {}".format(max_dev))
+        print("difference of normal component minima from the exact values (x, y, y): {}".format(min_dev))
 
-def test_depth_to_normals():
-
-    data = None
-    data_old = None
-    for dsd in get_depth_synthetic_data():
-        depth_map_of_plane(dsd, False)
-
-        if data is not None:
-            data_old = data
-        data = compute_normals_simple_diff_convolution_simple(dsd.camera, dsd.file_dir_and_name[0], dsd.file_dir_and_name[1], save=True, output_directory=dsd.file_dir_and_name[0])
-        depth, normals, clustered_normals, normal_indices = data
-
-        if data_old is not None:
-            depth_old, normals_old, _, _ = data_old
-            diff_normals = normals - normals_old
-            diff_depth = depth * 100 - depth_old
-
-            print()
-        print()
         # assert np.all(normal_indices == 0.0)
         # assert normals.shape[0] == 1
         # assert np.equal(normals[0], dsd.plane[:3])
 
 
 if __name__ == "__main__":
-    test_depth_to_normals()
+    test_depth_to_normals(old_implementation=False)
+    #test_depth_to_normals(old_implementation=False)

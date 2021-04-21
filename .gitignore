@@ -3,6 +3,7 @@ original_dataset
 work
 depth_data
 sent
+ignore
 .DS_Store
 *.pyc
 poc.py
