@@ -85,8 +85,8 @@ class SceneInfo:
         Timer.end_check_point("reading scene info")
         return SceneInfo(img_pairs, img_info_map, cameras, scene_name)
 
-    def get_camera1_from_img_pair(self, img_pair: ImagePairEntry):
-        self.cameras[self.img_info_map[img_pair.img1].camera_id]
+    def get_camera_from_img(self, img: str):
+        return self.cameras[self.img_info_map[img].camera_id]
 
     def imgs_for_comparing_difficulty(self, difficulty, suffix=".npy"):
         interesting_imgs = set()

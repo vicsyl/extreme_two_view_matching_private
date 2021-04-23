@@ -124,7 +124,7 @@ def read_depth_data_np(directory, limit=None):
 
 def read_depth_data(filename, directory, height=None, width=None):
 
-    depth_data_np = np.load('{}/{}'.format(directory, filename))
+    depth_data_np = np.load('{}/{}'.format(directory, filename)).astype(np.float64)
     depth_data = torch.from_numpy(depth_data_np)
     depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
     if height is not None and width is not None:

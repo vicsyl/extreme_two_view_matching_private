@@ -7,6 +7,7 @@ initial_cluster_centers = torch.Tensor([
         [-math.sqrt(3) / 4, -0.75, -0.5]
     ])
 
+# TWEAK
 distance_threshold = 0.6
 angle_distance = 2 * math.asin(distance_threshold / 2)
 
@@ -56,6 +57,15 @@ def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
     mins = mins[0].squeeze(0)
 
     arg_mins = torch.where(mins < distance_threshold, filtered_arg_mins, 3)
+    #print_and_get_stats(arg_mins)
 
     ret = cluster_centers[:, 0, 0, :], arg_mins
     return ret
+
+
+def print_and_get_stats(arg_mins):
+    stats = [None] * 4
+    for i in range(4):
+        stats[i] = torch.where(arg_mins == i, 1, 0).sum().item()
+    print("stats: {}".format(stats))
+    return stats

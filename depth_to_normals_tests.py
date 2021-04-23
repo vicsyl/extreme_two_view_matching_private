@@ -54,7 +54,7 @@ def depth_map_of_plane(dsd: DepthSyntheticData, allow_and_nullify_negative_depth
             raise Exception("depth < 0")
 
     #depth = depth / np.max(depth) * 255.0
-    depth = np.swapaxes(depth, 0, 1)
+    depth = np.swapaxes(depth, 0, 1).astype(np.float32)
 
     if save:
         np.save("{}/{}".format(dsd.file_dir_and_name[0], dsd.file_dir_and_name[1]), depth)

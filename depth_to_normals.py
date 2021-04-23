@@ -1,8 +1,13 @@
+import time
+
 import cv2 as cv
+import numpy as np
+
 from scene_info import read_cameras, read_images, SceneInfo, CameraEntry
 from image_processing import spatial_gradient_first_order
 from tests import *
 from utils import *
+from img_utils import show_and_save_normal_clusters
 import matplotlib.pyplot as plt
 
 import spherical_kmeans
@@ -200,14 +205,19 @@ def svd_normals():
             cv.imwrite('work/{}_normals_svd_window_size_{}.jpg'.format(file_name, window_size), img)
 
 
-# TODO handle downsampling
-# TODO centralize
-def get_rotation_matrices_across_img(camera: CameraEntry):
+def get_rotation_matrices_across_img(camera: CameraEntry, depth_data: np.ndarray):
 
-    Q_inv = np.linalg.inv(camera.get_K())
+    K = camera.get_K()
+    down_sample_factor_x = depth_data.shape[3] / camera.height_width[1]
+    down_sample_factor_y = depth_data.shape[2] / camera.height_width[0]
 
-    height = camera.height()
-    width = camera.width()
+    K[0] = K[0] * down_sample_factor_x
+    K[1] = K[1] * down_sample_factor_y
+
+    Q_inv = np.linalg.inv(K)
+
+    height = depth_data.shape[2]
+    width = depth_data.shape[3]
 
     m = np.mgrid[0:width, 0:height]
     m = np.moveaxis(m, 0, -1)
@@ -232,6 +242,7 @@ def get_rotation_matrices_across_img(camera: CameraEntry):
     factor = 1.0
     sin_theta = sin_theta.copy() * factor
     unit_rotation_vector = rotation_vector[:, :, 0, :] / rotation_vector_norm
+    unit_rotation_vector = np.where(rotation_vector_norm >= 0.0001, unit_rotation_vector, [0.0, 0.0, 0.0])
     theta = np.arcsin(sin_theta[:, :, 0])
 
     Rs = get_rotation_matrices(unit_rotation_vector, theta)
@@ -241,8 +252,6 @@ def get_rotation_matrices_across_img(camera: CameraEntry):
     return Rs
 
 
-
-# TODO handle downsampling
 def diff_normal_from_depth_data(camera: CameraEntry,
                                 depth_data,
                                 mask,
@@ -251,12 +260,13 @@ def diff_normal_from_depth_data(camera: CameraEntry,
 
     focal_length = camera.focal_length
 
-    Rs = get_rotation_matrices_across_img(camera)
+    Rs = get_rotation_matrices_across_img(camera, depth_data)
     Rs = torch.from_numpy(Rs)
     # (x, y) -> (y, x)
     Rs = Rs.permute((1, 0, 2, 3))
 
     # Could be also done from reprojected data, but this seems to be correct and more straightforward
+
     gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
     gradient_dzdx = (gradient_dzdx * focal_length / depth_data).unsqueeze(dim=4)
     gradient_dzdy = (gradient_dzdy * focal_length / depth_data).unsqueeze(dim=4)
@@ -265,8 +275,8 @@ def diff_normal_from_depth_data(camera: CameraEntry,
     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
     normals = normals / normals_norms
     normals = normals.squeeze(dim=0).squeeze(dim=0)
-    normals = normals.unsqueeze(3)
 
+    normals = normals.unsqueeze(3)
     normals = Rs @ normals
     normals = normals.squeeze()
     normals_norms = torch.norm(normals, dim=2).unsqueeze(dim=2)
@@ -274,7 +284,6 @@ def diff_normal_from_depth_data(camera: CameraEntry,
     return normals
 
 
-# TODO centralize the logic around the "factor"
 def diff_normal_from_depth_data_old(focal_length,
                                 depth_data,
                                 mask,
@@ -323,7 +332,7 @@ def cluster_and_save_normals(normals,
     if clusters_map.__contains__(depth_data_file_name[:-4]):
         clusters = clusters_map[depth_data_file_name[:-4]]
     else:
-        clusters = 1
+        clusters = 2
         print("WARNING: number of clusters unknown for {}, defaulting to {} ...".format(depth_data_file_name, clusters))
 
     # TODO just confirm if this happens for monodepth
@@ -348,7 +357,9 @@ def cluster_and_save_normals(normals,
     minus_z_direction[:, :, 2] = -1.0
     dot_product = torch.sum(normals * minus_z_direction, dim=-1)
     threshold = math.cos(angle_threshold)
-    filtered = torch.where(dot_product >= threshold, 1, 0)
+    # TWEAK
+    #filtered = torch.where(dot_product >= threshold, 1, 0)
+    filtered = torch.where(dot_product >= -100, 1, 0)
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
@@ -368,7 +379,7 @@ def cluster_and_save_normals(normals,
         desc = ""
         for i in range(clusters):
             desc = "{}{}={},\n".format(desc, color_names[i], clustered_normals[i].numpy())
-        plt.title(desc)
+        plt.title(desc + str(time.time()))
         plt.imshow(img)
         if save:
             plt.savefig("{}_clusters.jpg".format(file_name_prefix))
@@ -380,6 +391,9 @@ def cluster_and_save_normals(normals,
     if save:
         cv.imwrite("{}_clusters_indices.png".format(file_name_prefix), normal_indices_np)
         np.savetxt('{}_clusters_normals.txt'.format(file_name_prefix), clustered_normals_np, delimiter=',', fmt='%1.8f')
+
+    if show or save:
+        show_and_save_normal_clusters(normals, clustered_normals, normal_indices)
 
     return clustered_normals_np, normal_indices_np
 
@@ -401,7 +415,7 @@ def get_megadepth_file_names_and_dir(scene_name, limit, interesting_files):
     return file_names, directory
 
 
-def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample=False):
+def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_directory, depth_data_file_name, save, output_directory):
     """
     Currently the standard way to compute the normals and cluster them. This is called from other modules
     (extension point) on a per file basis
@@ -415,15 +429,16 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
     :return: (normals, normal_indices)
     """
 
-    cameras = scene.cameras
-    images = scene.img_info_map
-    camera_id = images[depth_data_file_name[0:-4]].camera_id
-    camera = cameras[camera_id]
-    h = camera.height_width[0]
-    w = camera.height_width[1]
-    f = camera.focal_length
+    img_name = depth_data_file_name[0:-4]
+    camera = scene.get_camera_from_img(img_name)
 
-    depth_data, normals, clustered_normals_np, normal_indices_np = compute_normals_simple_diff_convolution_simple(h, w, f, depth_data_read_directory, depth_data_file_name, save, output_directory, upsample)
+    depth_data, normals, clustered_normals_np, normal_indices_np = \
+        compute_normals_simple_diff_convolution_simple(camera,
+                                                       depth_data_read_directory,
+                                                       depth_data_file_name,
+                                                       save,
+                                                       output_directory,
+                                                       old_implementation=False)
     return clustered_normals_np, normal_indices_np
 
 
@@ -433,64 +448,25 @@ def compute_normals_simple_diff_convolution_simple(
         depth_data_file_name,
         save,
         output_directory,
-        upsample=False,
         override_mask=None,
         old_implementation=False):
     """see :func:`compute_normals_simple_diff_convolution`"""
 
-    height = camera.height_width[0]
-    width = camera.height_width[1]
-
-    # 3.75 upsample
-    # -> sigma (5.0 -> 1.33)
-    # -> mask_21 -> mask_5 (not exact)
-    # -> depth_factor (1/30 -> 1/6) (should be exactly 1/8 actually)
-
-    #mask_5 = torch.tensor([[0.5, 0.5, 0, -0.5, -0.5]]).float()
-    #mask_5 = torch.tensor([[0.25, 0.25, 0, -0.25, -0.25]]).float()
-
-    mask_5 = torch.tensor([[1, -1, 0]]).float()
-
-    #mask_5 = torch.tensor([[0.5, 0, -0.5]]).float()
-    # this is interesting
-    # mask_7 = torch.tensor([[0.5, 0.5, 0.5, 0, -0.5, -0.5, -0.5]]).float()
-
-    mask_21 = torch.tensor([[0.5, 0.5, 0.5, 0.5, 0.5,
-                             0.5, 0.5, 0.5, 0.5, 0.5,
-                             0,
-                             -0.5, -0.5, -0.5, -0.5, -0.5,
-                             -0.5, -0.5, -0.5, -0.5, -0.5,
-                             ]]).float()
-
-
-    if upsample:
-        mask = mask_21
-        sigma = 5.0
-        #depth_factor = 1 / 30
-        # normals_params_list = [
-        #     (True, sigma, "sigma_5_{}".format(1/30), 1/30)
-        # ]
-    else:
-        mask = mask_5
-        sigma = 1.33
-        #depth_factor = 1 / 6
-        # normals_params_list = []
-        # for depth_factor_inv in range(6, 7, 2):
-        #     normals_params_list.append((True, sigma, "sigma_5_{}".format(1/depth_factor_inv), 1/depth_factor_inv))
+    default_mask = torch.tensor([[0.25, 0.25, 0, -0.25, -0.25]]).float()
+    #mask = torch.tensor([[0.5, 0, -0.5]]).float()
 
     if override_mask is not None:
         mask = override_mask
+    else:
+        mask = default_mask
+    smoothed = True
+    sigma = 1.33
+    #sigma = 3
 
-    smoothed = False
-
-    if not upsample:
-        width = None
-        height = None
-
-    depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory, height, width)
+    depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
 
     if old_implementation:
-        normals = diff_normal_from_depth_data_old(camera.focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
+        normals = diff_normal_from_depth_data_old(camera.focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma, depth_factor=1/6)
     else:
         normals = diff_normal_from_depth_data(camera, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
     print("Creating dir (if not exists already): {}".format(output_directory))
@@ -545,10 +521,10 @@ def main():
 
     scene_name = "scene1"
     scene_info = SceneInfo.read_scene(scene_name)
-    interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
-    #interesting_imgs = ["frame_0000000025_3.npy"]
+    #interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
+    interesting_imgs = ["frame_0000000030_2.npy"]
 
-    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=2, interesting_files=None)
+    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=1, interesting_files=None)
 
     output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
 
