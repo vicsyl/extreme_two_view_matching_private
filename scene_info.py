@@ -77,10 +77,11 @@ class SceneInfo:
         return self.cameras[camera_id].get_K()
 
     @staticmethod
-    def read_scene(scene_name):
+    def read_scene(scene_name, lazy=False):
         Timer.start_check_point("reading scene info")
+        print("scene={}, lazy={}".format(scene_name, lazy))
         img_pairs = read_image_pairs(scene_name)
-        img_info_map = read_images(scene_name)
+        img_info_map = read_images(scene_name, lazy=lazy)
         cameras = read_cameras(scene_name)
         Timer.end_check_point("reading scene info")
         return SceneInfo(img_pairs, img_info_map, cameras, scene_name)
@@ -116,7 +117,7 @@ def read_image_pairs(scene):
     return ret
 
 
-def read_images(scene):
+def read_images(scene, lazy=False):
 
     file_name = "original_dataset/{}/0/images.txt".format(scene)
     f = open(file_name, "r")
@@ -155,7 +156,9 @@ def read_images(scene):
             # data = np.fromstring(line.strip(), dtype=float, sep=" ")
             # data = data.reshape((data.shape[0]//3, 3))
             # ["data"] = data
-            image_map[name].read_data_from_line(line.strip())
+
+            if not lazy:
+                image_map[name].read_data_from_line(line.strip())
 
     f.close()
     return image_map

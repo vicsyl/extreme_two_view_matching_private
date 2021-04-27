@@ -7,7 +7,7 @@ import torch
 from config import Config
 
 from scene_info import read_cameras, read_images, SceneInfo, CameraEntry
-from image_processing import spatial_gradient_first_order
+from image_processing import *
 from tests import *
 from utils import *
 from img_utils import show_and_save_normal_clusters, show_point_cloud
@@ -39,9 +39,25 @@ Problems:
   - there are other details that may influence the result, as upsampling the depth map to the original size of the image before doing anything else, 
     however I don't think this particular one would have any significant effect
   - actually maybe I should have tested with other (e.g. by the real monodepth) CNN's depth maps         
-    
- 
 """
+
+
+def get_gauss_weighted_coeffs_for_window(window_size=5, sigma=1.33):
+
+    x = torch.linspace(-float(window_size//2), float(window_size//2), window_size)
+    x, y = torch.meshgrid(x, x)
+
+    normalizing_gauss_coeffs = 1.0 / (2.0 * math.pi * sigma ** 2)
+    gauss_coeffs = normalizing_gauss_coeffs * torch.exp(-(x ** 2 + y ** 2) / (2.0 * sigma**2))
+
+    gauss_weighted_coeffs = gauss_coeffs.flatten()
+    gauss_weighted_coeffs_normalized = window_size ** 2 * gauss_weighted_coeffs / gauss_weighted_coeffs.sum()
+
+    assert math.fabs(gauss_weighted_coeffs_normalized.sum() - window_size ** 2) < 0.0001
+
+    return gauss_weighted_coeffs_normalized
+
+
 def svd_normal_from_reprojected_test(reprojected_data, coord, window_size=5):
 
     assert window_size % 2 == 1
@@ -360,18 +376,17 @@ def cluster_and_save_normals(normals,
         img[:, :, 2][normal_indices == 2] = 255
         img[:, :, 2][normal_indices != 2] = 0
 
-        #plt.figure()
+        plt.figure()
         color_names = ["red", "green", "blue"]
         desc = ""
+        np.set_printoptions(suppress=True, precision=3)
         for i in range(clusters):
             desc = "{}{}={},\n".format(desc, color_names[i], clustered_normals[i].numpy())
-        plt.title(desc + str(time.time()))
-        print("showing")
+        plt.title(desc) #  + str(time.time())
         plt.imshow(img)
         if save:
             plt.savefig("{}_clusters.jpg".format(file_name_prefix))
         if show_loc:
-            print("showing 2")
             plt.show()
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
@@ -454,9 +469,17 @@ def compute_normals_from_svd(
         save,
         output_directory,
 ):
-    print()
+
+    # smoothed = False
+    # sigma_smoothing = 1.33
+    # impl = "weighted_svd" # "weighted_svd", "foo"
+    # print("compute_normals_from_svd impl: {}".format(impl))
+    # print("compute_normals_from_svd smoothed: {}".format(smoothed))
+    # print("compute_normals_from_svd sigma_smoothing: {}".format(sigma_smoothing))
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
+    if Config.svd_smoothing:
+        depth_data = gaussian_filter2d(depth_data, Config.svd_smoothing_sigma)
 
     # depth_data shapes
     f_factor_x = depth_data.shape[3] / camera.height_width[1]
@@ -512,10 +535,15 @@ def compute_normals_from_svd(
 
     centered = centered.permute(2, 1, 0)
 
-    U, S, V = torch.svd(centered)
-
-    # w_diag = torch.diag_embed(weights)
-    # X = X.transpose(-2, -1) @ w_diag @ X
+    if Config.svd_weighted:
+        # the understanding of how the input to SVD becomes 3x3 instead of 25x3
+        # https://www.cs.auckland.ac.nz/courses/compsci369s1c/lectures/GG-notes/CS369-LeastSquares.pdf
+        # slides 29 and 36
+        w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=5, sigma=Config.svd_weighted_sigma))
+        c2 = centered.transpose(-2, -1) @ w_diag @ centered
+        U, S, V = torch.svd(c2)
+    else:
+        U, S, V = torch.svd(centered)
 
     normals = V[:, :, 2]
     normals = normals.reshape(508, 284, 3)
@@ -606,6 +634,10 @@ def compute_normals_all(scene: SceneInfo,
                         impl="svd",
                         old_impl=False):
 
+
+    print("file names:\n{}".format(file_names))
+    print("input dir:\n{}".format(read_directory))
+
     for depth_data_file_name in file_names:
 
         print("Processing: {}".format(depth_data_file_name))
@@ -651,19 +683,16 @@ def sobel_normals_5x5(scene: str, limit, save):
 def main():
 
     Timer.start()
+    Config.log()
 
     scene_name = "scene1"
-    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=10, interesting_files=None)
+    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=2, interesting_files=None)
 
-    print("file names:\n{}".format(file_names))
-    print("input dir:\n{}".format(input_directory))
-
-    scene_info = SceneInfo.read_scene(scene_name)
+    scene_info = SceneInfo.read_scene(scene_name, lazy=True)
     #interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
     interesting_imgs = ["frame_0000000030_2.npy"]
 
-
-    impl = "old"
+    impl = "svd"
     if impl == "svd":
         output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
     else:

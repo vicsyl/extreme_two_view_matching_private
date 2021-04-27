@@ -4,12 +4,12 @@ import math
 
 """
 DISCLAIMER: most of these functions were implemented by me (Vaclav Vavra)
-during the MPV course in spring semester 2020, mostly with the help
+during the MPV course in the Spring semester of 2020, mostly with the help
 of the provided template.
 """
 def get_gausskernel_size(sigma, force_odd = True):
     ksize = 2 * math.ceil(sigma * 3.0) + 1
-    if ksize % 2  == 0 and force_odd:
+    if ksize % 2 == 0 and force_odd:
         ksize +=1
     return int(ksize)
 
@@ -53,7 +53,8 @@ def gaussian1d(x: torch.Tensor, sigma: float) -> torch.Tensor:
     out = coef*torch.exp(-(x**2)/(2.0*sigma**2))
     return out
 
-def spatial_gradient_first_order(x: torch.Tensor, mask=torch.tensor([[0.5, 0, -0.5]]).float(), smoothed: bool=False, sigma: float=1.0) -> torch.Tensor:
+
+def spatial_gradient_first_order(x: torch.Tensor, mask=torch.tensor([[0.5, 0, -0.5]]).float(), smoothed: bool = False, sigma: float = 1.0) -> torch.Tensor:
     r"""
     DISCLAIMER: this is a function implemented by me (Vaclav Vavra)
     during the MPV course in spring semester 2020 with the help of the provided
