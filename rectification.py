@@ -225,7 +225,14 @@ def show_rectifications(scene_info: SceneInfo, normals_parent_dir, original_inpu
         K = scene_info.get_img_K(img_name)
         components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
 
-        get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor= cv.SIFT_create(), img_name=img_name)
+        get_rectified_keypoints(normals,
+                                components_indices,
+                                valid_components_dict,
+                                img,
+                                K,
+                                descriptor= cv.SIFT_create(),
+                                img_name=img_name,
+                                show=True)
 
 
 if __name__ == "__main__":

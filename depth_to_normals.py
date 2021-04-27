@@ -1,5 +1,3 @@
-import time
-
 import cv2 as cv
 import numpy as np
 import torch
@@ -8,10 +6,11 @@ from config import Config
 
 from scene_info import read_cameras, read_images, SceneInfo, CameraEntry
 from image_processing import *
-from tests import *
 from utils import *
 from img_utils import show_and_save_normal_clusters, show_point_cloud
 import matplotlib.pyplot as plt
+
+import torch.nn.functional as F
 
 import spherical_kmeans
 from pathlib import Path
@@ -56,145 +55,6 @@ def get_gauss_weighted_coeffs_for_window(window_size=5, sigma=1.33):
     assert math.fabs(gauss_weighted_coeffs_normalized.sum() - window_size ** 2) < 0.0001
 
     return gauss_weighted_coeffs_normalized
-
-
-def svd_normal_from_reprojected_test(reprojected_data, coord, window_size=5):
-
-    assert window_size % 2 == 1
-
-    pixel_count = window_size ** 2
-
-    xs2 = torch.zeros((window_size, window_size))
-    ys2 = torch.zeros((window_size, window_size))
-    zs2 = torch.zeros((window_size, window_size))
-
-    for x_i in range(window_size):
-        for y_i in range(window_size):
-            xs2[x_i, y_i] = x_i
-            ys2[x_i, y_i] = y_i
-            zs2[x_i, y_i] = x_i
-
-    xs = xs2.reshape(pixel_count)
-    ys = ys2.reshape(pixel_count)
-    zs = zs2.reshape(pixel_count)
-
-    centered_xs = xs - torch.sum(xs) / float(pixel_count)
-    centered_ys = ys - torch.sum(ys) / float(pixel_count)
-    centered_zs = zs - torch.sum(zs) / float(pixel_count)
-    to_decompose = torch.stack((centered_xs, centered_ys, centered_zs), dim=1)
-    U, S, V = torch.svd(to_decompose)
-    normal = -V[2, :]
-
-    norm = torch.norm(normal)
-    #print("norm: {}".format(norm))
-    normal = normal / norm
-
-    return normal
-
-
-#TODO remove - logic moved to resize.upsample
-def upsample_depth_data(depth_data, shape_h_w):
-
-    (height, width) = shape_h_w
-    depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
-    upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
-    depth_data = upsampling(depth_data)
-    return depth_data
-
-
-def reproject(depth_data_map, cameras, images):
-    """
-    :param depth_data_map:
-    :param cameras:
-    :param images:
-    :return: torch.tensor (B, 3, H, W) - be aware it is in the order of x, y, z
-    """
-    ret = None
-
-    for dict_idx, depth_data_file in enumerate(depth_data_map):
-
-        camera_id = images[depth_data_file].camera_id
-        camera = cameras[camera_id]
-        focal_point_length = camera.focal_length
-        width = camera.height_width[1]
-        height = camera.height_width[0]
-        principal_point_x = camera.principal_point_x_y[0]
-        principal_point_y = camera.principal_point_x_y[1]
-
-        if ret is None:
-            ret = torch.zeros(len(depth_data_map), 3, height, width)
-
-        depth_data = depth_data_map[depth_data_file]
-        depth_data = upsample_depth_data(depth_data, (height, width))
-        # depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
-        # upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
-        # depth_data = upsampling(depth_data)
-
-        width_linspace = torch.linspace(0 - principal_point_x, width - 1 - principal_point_x, steps=width)
-        height_linspace = torch.linspace(0 - principal_point_y, height - 1 - principal_point_y, steps=height)
-
-        grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
-
-        projection_distances_from_origin = torch.sqrt(1 + torch.sqrt((grid_x / focal_point_length) ** 2 + (grid_y / focal_point_length) ** 2))
-        zs = depth_data / projection_distances_from_origin
-        xs = grid_x * zs / focal_point_length
-        ys = grid_y * zs / focal_point_length
-
-        ret[dict_idx, 0] = xs
-        ret[dict_idx, 1] = ys
-        ret[dict_idx, 2] = zs
-
-    return ret
-
-
-def svd_normals():
-
-    depth_data_map = read_depth_data_np("depth_data/mega_depth/scene1", limit=3)
-    cameras = read_cameras("scene1")
-    images = read_images("scene1")
-    reprojected_data = reproject(depth_data_map, cameras, images)
-    #reprojected_data = reproject_test_simple_planes(depth_data_map, cameras, images)
-    test_reproject_project_old(depth_data_map, cameras, images, reprojected_data)
-
-    for file_name in depth_data_map:
-
-        #single_file = next(iter(depth_data_map))
-        camera_id = images[file_name].camera_id
-        camera = cameras[camera_id]
-        focal_length = camera.focal_length
-        principal_point_x = camera.principal_point_x_y[0]
-        principal_point_y = camera.principal_point_x_y[1]
-
-        window_sizes = [5] #, 7, 9, 11, 13]
-        counter = 0
-
-        for window_size in window_sizes:
-            img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(file_name))
-            for y in range(window_size + 2, 1920 - window_size, 1):
-                for x in range(window_size + 3, 1080 - window_size, 1):
-
-                    counter = counter + 1
-                    normal = svd_normal_from_reprojected(reprojected_data[0], (y, x), window_size=window_size)
-
-                    X = reprojected_data[0, :, y, x]
-                    #print(X)
-                    to_project = X + normal / focal_length * 35
-                    u = (to_project[0] / to_project[2]).item() * focal_length + principal_point_x
-                    v = (to_project[1] / to_project[2]).item() * focal_length + principal_point_y
-                    #cv.line(img, (x, y), (int(u), int(v)), color=(255, 255, 255), thickness=2)
-
-                    if counter % 1000 == 0:
-                        print("Drawing {}, {} for window size: {}".format(y, x, window_size))
-
-                    norm = torch.norm(normal)
-                    rgb_from_normal = [
-                        int(255 * (normal[0] / norm).item()),
-                        int(255 * (normal[1] / norm).item()),
-                        int(255 * (normal[2] / norm).item()),
-                    ]
-                    img[y, x] = rgb_from_normal
-
-            cv.imwrite('work/{}_normals_svd_window_size_{}.jpg'.format(file_name, window_size), img)
 
 
 def get_rotation_matrices_across_img(camera: CameraEntry, depth_data: np.ndarray):
@@ -300,23 +160,6 @@ def diff_normal_from_depth_data_old(focal_length,
     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
     normals = normals / normals_norms
 
-    return normals
-
-
-# TODO centralize the logic around the "factor"
-def normal_from_sobel_and_depth_data(depth_data, size):
-
-    # sobel size x size - imput numpy, output numpy, mask unknown
-    # normals: (u, v, n_x, n_y, n_z)
-    cv_img = depth_data.squeeze(dim=0).squeeze(0).unsqueeze(2).numpy()
-    sobelx = cv.Sobel(cv_img, cv.CV_64F, 1, 0, ksize=size)
-    sobely = cv.Sobel(cv_img, cv.CV_64F, 0, 1, ksize=size)
-    sobelx = (torch.from_numpy(sobelx) * 50).unsqueeze(2)
-    sobely = (torch.from_numpy(sobely) * 50).unsqueeze(2)
-    z_ones = torch.ones(sobelx.shape)
-    normals = torch.cat((-sobelx, -sobely, -z_ones), dim=2)
-    normals_norms = torch.norm(normals, dim=2).unsqueeze(dim=2)
-    normals = normals / normals_norms
     return normals
 
 
@@ -462,6 +305,23 @@ def compute_normals(scene: SceneInfo,
     return clustered_normals_np, normal_indices_np
 
 
+def padd_normals(normals, window_size, mode="replicate"):
+    """
+    :param normals: (h, w, 3)
+    :return:
+    """
+    normals = normals.unsqueeze(dim=0)
+    normals = normals.permute(0, 3, 1, 2)
+
+    pad = (window_size//2, window_size//2, window_size//2, window_size//2)  # pad last dim by 1 on each side
+    normals = F.pad(normals, pad, mode=mode)
+
+    normals = normals.squeeze(dim=0)
+    normals = normals.permute(1, 2, 0)
+
+    return normals
+
+
 def compute_normals_from_svd(
         camera: CameraEntry,
         depth_data_read_directory,
@@ -470,83 +330,82 @@ def compute_normals_from_svd(
         output_directory,
 ):
 
-    # smoothed = False
-    # sigma_smoothing = 1.33
-    # impl = "weighted_svd" # "weighted_svd", "foo"
-    # print("compute_normals_from_svd impl: {}".format(impl))
-    # print("compute_normals_from_svd smoothed: {}".format(smoothed))
-    # print("compute_normals_from_svd sigma_smoothing: {}".format(sigma_smoothing))
+    window_size = 5
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
     if Config.svd_smoothing:
         depth_data = gaussian_filter2d(depth_data, Config.svd_smoothing_sigma)
 
+    depth_height = depth_data.shape[2]
+    depth_width = depth_data.shape[3]
+
     # depth_data shapes
-    f_factor_x = depth_data.shape[3] / camera.height_width[1]
-    f_factor_y = depth_data.shape[2] / camera.height_width[0]
+    f_factor_x = depth_width / camera.height_width[1]
+    f_factor_y = depth_height / camera.height_width[0]
     if abs(f_factor_y - f_factor_x) > 0.001:
         print("WARNING: downsampled anisotropically")
     f_factor = (f_factor_x + f_factor_y) / 2
-    real_focal_length = camera.focal_length * f_factor
     real_focal_length_x = camera.focal_length * f_factor_x
     real_focal_length_y = camera.focal_length * f_factor_y
 
-    # K[0] = K[0] * down_sample_factor_x
-    # K[1] = K[1] * down_sample_factor_y
-
-    height = depth_data.shape[2]
-    width = depth_data.shape[3]
     # or I need to handle odd numbers (see linspace)
-    assert height % 2 == 0
-    assert width % 2 == 0
+    assert depth_height % 2 == 0
+    assert depth_width % 2 == 0
 
-    # princ_x = camera.principal_point_x_y[0]
-    # princ_y = camera.principal_point_x_y[1]
-
-    width_linspace = torch.linspace(-width/2, width/2 - 1, steps=width) # / real_focal_length_x
-    height_linspace = torch.linspace(-height/2, height/2 - 1, steps=height) # / real_focal_length_y
+    # TODO this can be done only once #performance
+    width_linspace = torch.linspace(-depth_width/2, depth_width/2 - 1, steps=depth_width) # / real_focal_length_x
+    height_linspace = torch.linspace(-depth_height/2, depth_height/2 - 1, steps=depth_height) # / real_focal_length_y
 
     grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
 
     origin_to_z1 = torch.sqrt(1 + (grid_x / real_focal_length_x) ** 2 + (grid_y / real_focal_length_y) ** 2)
 
-    point_cloud = torch.Tensor(depth_data.shape + (3,))
-    point_cloud[:, :, :, :, 2] = depth_data / origin_to_z1
-    point_cloud[:, :, :, :, 0] = point_cloud[:, :, :, :, 2] * grid_x / real_focal_length_x
-    point_cloud[:, :, :, :, 1] = point_cloud[:, :, :, :, 2] * grid_y / real_focal_length_y
-
-    point_cloud = torch.squeeze(point_cloud, dim=0)
+    # (1, h, w, 3)
+    point_cloud = torch.Tensor(depth_data.shape[1:] + (3,))
+    point_cloud[:, :, :, 2] = depth_data[0] / origin_to_z1
+    point_cloud[:, :, :, 0] = point_cloud[:, :, :, 2] * grid_x / real_focal_length_x
+    point_cloud[:, :, :, 1] = point_cloud[:, :, :, 2] * grid_y / real_focal_length_y
 
     show = False
     if show:
-        x = point_cloud[0, ::5, ::, 0].flatten()
-        y = point_cloud[0, ::5, ::, 1].flatten()
-        z = point_cloud[0, ::5, ::, 2].flatten()
+        x = point_cloud[::5, ::, 0].flatten()
+        y = point_cloud[::5, ::, 1].flatten()
+        z = point_cloud[::5, ::, 2].flatten()
         show_point_cloud(x, y, z)
 
     #point_cloud = torch.squeeze(point_cloud, dim=0)
+
+    # (1, h, w, 3) -> (3, 1, h, w)
     point_cloud = point_cloud.permute(3, 0, 1, 2)
 
-    unfold = torch.nn.Unfold(kernel_size=(5, 5))
+    unfold = torch.nn.Unfold(kernel_size=(window_size, window_size))
+
+    # (3, window_size ** 2, (h - window_size//2) * (w - window_size//2))
     unfolded = unfold(point_cloud)
 
-    window_pixels = 25
-    centered = unfolded[:, :, :] - (torch.sum(unfolded, dim=1) / window_pixels).unsqueeze(dim=1)
+    new_depth_height = depth_height - (window_size//2 * 2)
+    new_depth_width = depth_width - (window_size//2 * 2)
+    assert unfolded.shape[2] == new_depth_height * new_depth_width
 
+    window_pixels = window_size ** 2
+    centered = unfolded - (torch.sum(unfolded, dim=1) / window_pixels).unsqueeze(dim=1)
+
+    # (-1, -1, -1) -> ((h - window_size // 2) * (w - window_size // 2), window_size ** 2, 3)
     centered = centered.permute(2, 1, 0)
 
     if Config.svd_weighted:
         # the understanding of how the input to SVD becomes 3x3 instead of 25x3
         # https://www.cs.auckland.ac.nz/courses/compsci369s1c/lectures/GG-notes/CS369-LeastSquares.pdf
         # slides 29 and 36
-        w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=5, sigma=Config.svd_weighted_sigma))
+        w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
         c2 = centered.transpose(-2, -1) @ w_diag @ centered
         U, S, V = torch.svd(c2)
     else:
         U, S, V = torch.svd(centered)
 
     normals = V[:, :, 2]
-    normals = normals.reshape(508, 284, 3)
+
+    normals = normals.reshape(new_depth_height, new_depth_width, 3)
 
     # flip if z > 0
     where = torch.where(normals[:, :, 2] > 0)
@@ -555,36 +414,13 @@ def compute_normals_from_svd(
     # is this necessary?
     normals = normals / torch.norm(normals, dim=2).unsqueeze(dim=2)
 
+    normals = padd_normals(normals, window_size=window_size)
+    assert normals.shape[0] == depth_height
+    assert normals.shape[1] == depth_width
+
     title = "normals via svd - {}".format(depth_data_file_name)
     clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save)
     return depth_data, normals, clustered_normals_np, normal_indices_np
-
-
-def svd_normal_from_reprojected(reprojected_data, coord, window_size=5):
-
-    (u, v) = coord
-
-    assert window_size % 2 == 1
-
-    pixel_count = window_size ** 2
-    from_minus = int((window_size - 1) / 2)
-    to_plus = int((window_size - 1) / 2 + 1)
-    xs = reprojected_data[0, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
-    ys = reprojected_data[1, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
-    zs = reprojected_data[2, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
-
-    centered_xs = xs - torch.sum(xs) / float(pixel_count)
-    centered_ys = ys - torch.sum(ys) / float(pixel_count)
-    centered_zs = zs - torch.sum(zs) / float(pixel_count)
-    to_decompose = torch.stack((centered_xs, centered_ys, centered_zs), dim=1)
-    U, S, V = torch.svd(to_decompose)
-    normal = -V[2, :]
-
-    norm = torch.norm(normal)
-    #print("norm: {}".format(norm))
-    normal = normal / norm
-
-    return normal
 
 
 def compute_normals_simple_diff_convolution_simple(
@@ -656,30 +492,6 @@ def compute_normals_all(scene: SceneInfo,
                         old_impl=old_impl)
 
 
-# TODO test this
-def sobel_normals_5x5(scene: str, limit, save):
-
-    file_names, directory = get_megadepth_file_names_and_dir(scene, limit, None)
-    cameras = read_cameras(scene)
-    images = read_images(scene)
-
-    for file_name in file_names:
-        camera_id = images[file_name[:-4]].camera_id
-        camera = cameras[camera_id]
-        width = camera.height_width[1]
-        height = camera.height_width[0]
-
-        depth_data = read_depth_data(file_name, directory, height, width)
-
-        mask_size = 5
-        normals = normal_from_sobel_and_depth_data(depth_data, size=mask_size)
-
-        file_name ='work/{}_normals_sobel_normals_colors_fixed.png'.format(file_name)
-        title = "normals sobel {}x{} - {}".format(mask_size, mask_size, file_name[:-4])
-
-        cluster_and_save_normals(normals, title, clusters=2, file_name_prefix=file_name, save=save)
-
-
 def main():
 
     Timer.start()
@@ -693,6 +505,7 @@ def main():
     interesting_imgs = ["frame_0000000030_2.npy"]
 
     impl = "svd"
+    #impl = "not svd"
     if impl == "svd":
         output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
     else:

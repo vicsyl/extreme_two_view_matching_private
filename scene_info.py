@@ -194,6 +194,3 @@ def test():
     images = read_images("scene1")
     img_pairs = read_image_pairs("scene1")
     print("cameras and images read")
-
-if __name__ == "__main__":
-    test()
