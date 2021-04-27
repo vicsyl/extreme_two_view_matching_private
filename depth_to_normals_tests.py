@@ -2,11 +2,14 @@ import torch
 import numpy as np
 import cv2 as cv
 
+from config import Config
+
 from scene_info import read_cameras, CameraEntry
 from dataclasses import dataclass
-from depth_to_normals import compute_normals_simple_diff_convolution_simple
+from depth_to_normals import compute_normals_simple_diff_convolution_simple, compute_normals_from_svd
 
 from img_utils import show_normals_components
+from utils import read_depth_data
 
 @dataclass
 class DepthSyntheticData:
@@ -25,10 +28,16 @@ def depth_map_of_plane(dsd: DepthSyntheticData, allow_and_nullify_negative_depth
     # TODO count with C != 0
     C = np.array([0, 0, 0, 1])
 
-    Q_inv = np.linalg.inv(dsd.camera.get_K())
+    height = 512
+    width = 288
 
-    height = dsd.camera.height_width[0]
-    width = dsd.camera.height_width[1]
+    K = dsd.camera.get_K()
+    down_sample_factor_x = width / dsd.camera.height_width[1]
+    down_sample_factor_y = height / dsd.camera.height_width[0]
+    K[0] = K[0] * down_sample_factor_x
+    K[1] = K[1] * down_sample_factor_y
+
+    Q_inv = np.linalg.inv(K)
 
     m = np.mgrid[0:width, 0:height]
     m = np.moveaxis(m, 0, -1)
@@ -68,7 +77,9 @@ def get_file_dir_and_name(plane):
     return "work/tests/", "depth_map_{}.npy".format(file_name_fuffix)
 
 
-def test_depth_to_normals(old_implementation=True):
+def test_depth_to_normals(old_implementation=True, impl="svd"):
+
+    Config.config_map[Config.show_normals_in_img] = False
 
     planes_coeffs = np.array([
         [0, 0, 1, -1],
@@ -98,15 +109,28 @@ def test_depth_to_normals(old_implementation=True):
         depth_map_of_plane(dsd, allow_and_nullify_negative_depths=False, save=True)
 
         mask = torch.tensor([[0.5, 0, -0.5]]).float()
-        depth, normals, clustered_normals, normal_indices = \
-            compute_normals_simple_diff_convolution_simple(dsd.camera,
-                                                           dsd.file_dir_and_name[0],
-                                                           dsd.file_dir_and_name[1],
-                                                           save=True,
-                                                           output_directory=dsd.file_dir_and_name[0],
-                                                           override_mask=mask,
-                                                           old_implementation=old_implementation
-                                                           )
+
+        if impl == "svd":
+            depth, normals, clustered_normals, normal_indices = \
+                compute_normals_from_svd(dsd.camera,
+                                         dsd.file_dir_and_name[0],
+                                         dsd.file_dir_and_name[1],
+                                         save=True,
+                                         output_directory=dsd.file_dir_and_name[0],
+                                         )
+
+        else:
+            depth, normals, clustered_normals, normal_indices = \
+                compute_normals_simple_diff_convolution_simple(dsd.camera,
+                                                               dsd.file_dir_and_name[0],
+                                                               dsd.file_dir_and_name[1],
+                                                               save=True,
+                                                               output_directory=dsd.file_dir_and_name[0],
+                                                               override_mask=mask,
+                                                               old_implementation=old_implementation
+                                                               )
+
+
         normals_diff = normals - dsd.plane[:3]
         show_normals_components(normals_diff, "difference from exact result", (30.0, 20.0))
 

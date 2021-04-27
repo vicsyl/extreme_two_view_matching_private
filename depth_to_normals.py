@@ -2,12 +2,15 @@ import time
 
 import cv2 as cv
 import numpy as np
+import torch
+
+from config import Config
 
 from scene_info import read_cameras, read_images, SceneInfo, CameraEntry
 from image_processing import spatial_gradient_first_order
 from tests import *
 from utils import *
-from img_utils import show_and_save_normal_clusters
+from img_utils import show_and_save_normal_clusters, show_point_cloud
 import matplotlib.pyplot as plt
 
 import spherical_kmeans
@@ -58,33 +61,6 @@ def svd_normal_from_reprojected_test(reprojected_data, coord, window_size=5):
     xs = xs2.reshape(pixel_count)
     ys = ys2.reshape(pixel_count)
     zs = zs2.reshape(pixel_count)
-
-    centered_xs = xs - torch.sum(xs) / float(pixel_count)
-    centered_ys = ys - torch.sum(ys) / float(pixel_count)
-    centered_zs = zs - torch.sum(zs) / float(pixel_count)
-    to_decompose = torch.stack((centered_xs, centered_ys, centered_zs), dim=1)
-    U, S, V = torch.svd(to_decompose)
-    normal = -V[2, :]
-
-    norm = torch.norm(normal)
-    #print("norm: {}".format(norm))
-    normal = normal / norm
-
-    return normal
-
-
-def svd_normal_from_reprojected(reprojected_data, coord, window_size=5):
-
-    (u, v) = coord
-
-    assert window_size % 2 == 1
-
-    pixel_count = window_size ** 2
-    from_minus = int((window_size - 1) / 2)
-    to_plus = int((window_size - 1) / 2 + 1)
-    xs = reprojected_data[0, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
-    ys = reprojected_data[1, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
-    zs = reprojected_data[2, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
 
     centered_xs = xs - torch.sum(xs) / float(pixel_count)
     centered_ys = ys - torch.sum(ys) / float(pixel_count)
@@ -260,6 +236,14 @@ def diff_normal_from_depth_data(camera: CameraEntry,
 
     focal_length = camera.focal_length
 
+    # FIXME !!! test this
+    down_sample_factor_x = depth_data.shape[3] / camera.height_width[1]
+    down_sample_factor_y = depth_data.shape[2] / camera.height_width[0]
+    down_sample_factor = (down_sample_factor_x + down_sample_factor_y) / 2.0
+    # TWEAK - this fix seems to work (default value is 0.26666)
+    real_focal_length = focal_length * down_sample_factor
+    #real_focal_length = focal_length
+
     Rs = get_rotation_matrices_across_img(camera, depth_data)
     Rs = torch.from_numpy(Rs)
     # (x, y) -> (y, x)
@@ -268,8 +252,8 @@ def diff_normal_from_depth_data(camera: CameraEntry,
     # Could be also done from reprojected data, but this seems to be correct and more straightforward
 
     gradient_dzdx, gradient_dzdy = spatial_gradient_first_order(depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
-    gradient_dzdx = (gradient_dzdx * focal_length / depth_data).unsqueeze(dim=4)
-    gradient_dzdy = (gradient_dzdy * focal_length / depth_data).unsqueeze(dim=4)
+    gradient_dzdx = (gradient_dzdx * real_focal_length / depth_data).unsqueeze(dim=4)
+    gradient_dzdy = (gradient_dzdy * real_focal_length / depth_data).unsqueeze(dim=4)
     z_ones = torch.ones(gradient_dzdy.shape)
     normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
@@ -366,7 +350,9 @@ def cluster_and_save_normals(normals,
     clustered_normals, normal_indices = spherical_kmeans.kmeans(normals, filtered, clusters)
     Timer.end_check_point("clustering normals")
 
-    if show or save:
+    show_loc = Config.config_map[Config.show_normals_in_img]
+    print("show loc: {}".format(show_loc))
+    if show_loc or save:
         img[:, :, 0][normal_indices == 0] = 255
         img[:, :, 0][normal_indices != 0] = 0
         img[:, :, 1][normal_indices == 1] = 255
@@ -380,10 +366,12 @@ def cluster_and_save_normals(normals,
         for i in range(clusters):
             desc = "{}{}={},\n".format(desc, color_names[i], clustered_normals[i].numpy())
         plt.title(desc + str(time.time()))
+        print("showing")
         plt.imshow(img)
         if save:
             plt.savefig("{}_clusters.jpg".format(file_name_prefix))
-        if show:
+        if show_loc:
+            print("showing 2")
             plt.show()
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
@@ -415,7 +403,14 @@ def get_megadepth_file_names_and_dir(scene_name, limit, interesting_files):
     return file_names, directory
 
 
-def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_directory, depth_data_file_name, save, output_directory):
+def compute_normals(scene: SceneInfo,
+                    depth_data_read_directory,
+                    depth_data_file_name,
+                    save,
+                    output_directory,
+                    impl="svd",
+                    old_impl=False,
+                    ):
     """
     Currently the standard way to compute the normals and cluster them. This is called from other modules
     (extension point) on a per file basis
@@ -432,14 +427,136 @@ def compute_normals_simple_diff_convolution(scene: SceneInfo, depth_data_read_di
     img_name = depth_data_file_name[0:-4]
     camera = scene.get_camera_from_img(img_name)
 
-    depth_data, normals, clustered_normals_np, normal_indices_np = \
-        compute_normals_simple_diff_convolution_simple(camera,
-                                                       depth_data_read_directory,
-                                                       depth_data_file_name,
-                                                       save,
-                                                       output_directory,
-                                                       old_implementation=False)
+    if impl=="svd":
+        print("using svd")
+        depth_data, normals, clustered_normals_np, normal_indices_np = \
+            compute_normals_from_svd(camera,
+                                     depth_data_read_directory,
+                                     depth_data_file_name,
+                                     save,
+                                     output_directory)
+    else:
+        print("using conv mask")
+        depth_data, normals, clustered_normals_np, normal_indices_np = \
+            compute_normals_simple_diff_convolution_simple(camera,
+                                                           depth_data_read_directory,
+                                                           depth_data_file_name,
+                                                           save,
+                                                           output_directory,
+                                                           old_implementation=old_impl)
     return clustered_normals_np, normal_indices_np
+
+
+def compute_normals_from_svd(
+        camera: CameraEntry,
+        depth_data_read_directory,
+        depth_data_file_name,
+        save,
+        output_directory,
+):
+    print()
+
+    depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
+
+    # depth_data shapes
+    f_factor_x = depth_data.shape[3] / camera.height_width[1]
+    f_factor_y = depth_data.shape[2] / camera.height_width[0]
+    if abs(f_factor_y - f_factor_x) > 0.001:
+        print("WARNING: downsampled anisotropically")
+    f_factor = (f_factor_x + f_factor_y) / 2
+    real_focal_length = camera.focal_length * f_factor
+    real_focal_length_x = camera.focal_length * f_factor_x
+    real_focal_length_y = camera.focal_length * f_factor_y
+
+    # K[0] = K[0] * down_sample_factor_x
+    # K[1] = K[1] * down_sample_factor_y
+
+    height = depth_data.shape[2]
+    width = depth_data.shape[3]
+    # or I need to handle odd numbers (see linspace)
+    assert height % 2 == 0
+    assert width % 2 == 0
+
+    # princ_x = camera.principal_point_x_y[0]
+    # princ_y = camera.principal_point_x_y[1]
+
+    width_linspace = torch.linspace(-width/2, width/2 - 1, steps=width) # / real_focal_length_x
+    height_linspace = torch.linspace(-height/2, height/2 - 1, steps=height) # / real_focal_length_y
+
+    grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
+
+    origin_to_z1 = torch.sqrt(1 + (grid_x / real_focal_length_x) ** 2 + (grid_y / real_focal_length_y) ** 2)
+
+    point_cloud = torch.Tensor(depth_data.shape + (3,))
+    point_cloud[:, :, :, :, 2] = depth_data / origin_to_z1
+    point_cloud[:, :, :, :, 0] = point_cloud[:, :, :, :, 2] * grid_x / real_focal_length_x
+    point_cloud[:, :, :, :, 1] = point_cloud[:, :, :, :, 2] * grid_y / real_focal_length_y
+
+    point_cloud = torch.squeeze(point_cloud, dim=0)
+
+    show = False
+    if show:
+        x = point_cloud[0, ::5, ::, 0].flatten()
+        y = point_cloud[0, ::5, ::, 1].flatten()
+        z = point_cloud[0, ::5, ::, 2].flatten()
+        show_point_cloud(x, y, z)
+
+    #point_cloud = torch.squeeze(point_cloud, dim=0)
+    point_cloud = point_cloud.permute(3, 0, 1, 2)
+
+    unfold = torch.nn.Unfold(kernel_size=(5, 5))
+    unfolded = unfold(point_cloud)
+
+    window_pixels = 25
+    centered = unfolded[:, :, :] - (torch.sum(unfolded, dim=1) / window_pixels).unsqueeze(dim=1)
+
+    centered = centered.permute(2, 1, 0)
+
+    U, S, V = torch.svd(centered)
+
+    # w_diag = torch.diag_embed(weights)
+    # X = X.transpose(-2, -1) @ w_diag @ X
+
+    normals = V[:, :, 2]
+    normals = normals.reshape(508, 284, 3)
+
+    # flip if z > 0
+    where = torch.where(normals[:, :, 2] > 0)
+    normals[where[0], where[1]] = -normals[where[0], where[1]]
+
+    # is this necessary?
+    normals = normals / torch.norm(normals, dim=2).unsqueeze(dim=2)
+
+    title = "normals via svd - {}".format(depth_data_file_name)
+    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save)
+    return depth_data, normals, clustered_normals_np, normal_indices_np
+
+
+def svd_normal_from_reprojected(reprojected_data, coord, window_size=5):
+
+    (u, v) = coord
+
+    assert window_size % 2 == 1
+
+    pixel_count = window_size ** 2
+    from_minus = int((window_size - 1) / 2)
+    to_plus = int((window_size - 1) / 2 + 1)
+    xs = reprojected_data[0, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
+    ys = reprojected_data[1, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
+    zs = reprojected_data[2, u - from_minus:u + to_plus, v - from_minus:v + to_plus].reshape(pixel_count)
+
+    centered_xs = xs - torch.sum(xs) / float(pixel_count)
+    centered_ys = ys - torch.sum(ys) / float(pixel_count)
+    centered_zs = zs - torch.sum(zs) / float(pixel_count)
+    to_decompose = torch.stack((centered_xs, centered_ys, centered_zs), dim=1)
+    U, S, V = torch.svd(to_decompose)
+    normal = -V[2, :]
+
+    norm = torch.norm(normal)
+    #print("norm: {}".format(norm))
+    normal = normal / norm
+
+    return normal
 
 
 def compute_normals_simple_diff_convolution_simple(
@@ -460,9 +577,12 @@ def compute_normals_simple_diff_convolution_simple(
     else:
         mask = default_mask
     smoothed = True
+
+    # TWEAK
     sigma = 1.33
     #sigma = 3
 
+    # TODO param - but depth_data_file_name is also used down below (should be removed though)
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
 
     if old_implementation:
@@ -477,7 +597,14 @@ def compute_normals_simple_diff_convolution_simple(
     return depth_data, normals, clustered_normals_np, normal_indices_np
 
 
-def compute_normals_simple_diff_convolution_all(scene: SceneInfo, file_names, read_directory, save, output_parent_dir, skip_existing=True):
+def compute_normals_all(scene: SceneInfo,
+                        file_names,
+                        read_directory,
+                        save,
+                        output_parent_dir,
+                        skip_existing=True,
+                        impl="svd",
+                        old_impl=False):
 
     for depth_data_file_name in file_names:
 
@@ -488,7 +615,13 @@ def compute_normals_simple_diff_convolution_all(scene: SceneInfo, file_names, re
             print("{} already exists, skipping".format(output_directory))
             continue
 
-        compute_normals_simple_diff_convolution(scene, read_directory, depth_data_file_name, save, output_directory)
+        compute_normals(scene,
+                        read_directory,
+                        depth_data_file_name,
+                        save,
+                        output_directory,
+                        impl=impl,
+                        old_impl=old_impl)
 
 
 # TODO test this
@@ -520,15 +653,23 @@ def main():
     Timer.start()
 
     scene_name = "scene1"
+    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=10, interesting_files=None)
+
+    print("file names:\n{}".format(file_names))
+    print("input dir:\n{}".format(input_directory))
+
     scene_info = SceneInfo.read_scene(scene_name)
     #interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
     interesting_imgs = ["frame_0000000030_2.npy"]
 
-    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=1, interesting_files=None)
 
-    output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
+    impl = "old"
+    if impl == "svd":
+        output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
+    else:
+        output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
 
-    compute_normals_simple_diff_convolution_all(scene_info, file_names, input_directory, save=True, output_parent_dir=output_parent_dir, skip_existing=False)
+    compute_normals_all(scene_info, file_names, input_directory, save=True, output_parent_dir=output_parent_dir, skip_existing=False, impl=impl)
 
     Timer.end()
 

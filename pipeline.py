@@ -1,5 +1,5 @@
 from scene_info import SceneInfo
-from depth_to_normals import compute_normals_simple_diff_convolution, get_megadepth_file_names_and_dir, megadepth_input_dir
+from depth_to_normals import compute_normals, get_megadepth_file_names_and_dir, megadepth_input_dir
 from dataclasses import dataclass
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from connected_components import get_connected_components, show_components
@@ -54,7 +54,7 @@ class Pipeline:
 
         # depth => indices
         output_directory = "{}/{}".format(self.normals_dir, img_name)
-        normals, normal_indices = compute_normals_simple_diff_convolution(self.scene_info, self.depth_input_dir, "{}.npy".format(img_name), self.save_normals, output_directory)
+        normals, normal_indices = compute_normals(self.scene_info, self.depth_input_dir, "{}.npy".format(img_name), self.save_normals, output_directory)
         # TODO - shouldn't the normals be persisted already with the connected components?
 
         # normal indices => cluster indices (maybe safe here?)
