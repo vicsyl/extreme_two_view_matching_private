@@ -2,7 +2,7 @@ scene_name = scene1
 save_normals = True
 matching_difficulties_min = 0
 matching_difficulties_max = 1
-matching_limit = 1
+matching_limit = 2
 planes_based_matching = False
 # SIFT so far
 feature_descriptor = SIFT

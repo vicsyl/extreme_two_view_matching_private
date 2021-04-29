@@ -19,79 +19,77 @@ from evaluation import *
 @dataclass
 class Pipeline:
 
-    scene_name: str
-
-
-    save_normals: bool
-    output_dir: str
+    scene_name = None
+    save_normals = False
+    output_dir = None
 
     chosen_depth_files = None
     sequential_files_limit = None
 
-    show_clustered_components = True
+    show_clustered_components = False
     show_rectification = False
 
     #matching
-    feature_descriptor: cv.Feature2D
+    feature_descriptor = None
     matching_dir = None
-    matching_difficulties: list
-    matching_limit: str
+    matching_difficulties = None
+    matching_limit = None
 
-    planes_based_matching: bool
+    planes_based_matching = False
 
-    feature_descriptors_str_map = {
-        "SIFT": cv.SIFT_create(),
-    }
-
-    @ staticmethod
+    @staticmethod
     def read_conf(config_file_name: str):
+
+        feature_descriptors_str_map = {
+            "SIFT": cv.SIFT_create(),
+        }
+
+        pipeline = Pipeline()
 
         with open(config_file_name) as f:
             for line in f:
+
+                if line.startswith("#"):
+                    continue
+
                 k, v = line.partition("=")[::2]
                 k = k.strip()
                 v = v.strip()
 
                 if k == "scene_name":
-                    scene_name = v
+                    pipeline.scene_name = v
                 elif k == "save_normals":
-                    save_normals = v == "True"
+                    pipeline.save_normals = v == "True"
                 elif k == "matching_difficulties_min":
                     matching_difficulties_min = int(v)
                 elif k == "matching_difficulties_max":
                     matching_difficulties_max = int(v)
                 elif k == "matching_limit":
-                    matching_limit = int(v)
+                    pipeline.matching_limit = int(v)
                 elif k == "planes_based_matching":
-                    planes_based_matching = v == "True"
+                    pipeline.planes_based_matching = v == "True"
                 elif k == "feature_descriptor":
-                    feature_descriptor_str = v
+                    pipeline.feature_descriptor = feature_descriptors_str_map[v]
                 elif k == "output_dir_prefix":
-                    output_dir_prefix = v
+                    pipeline.output_dir = append_timestamp(v)
 
-        return Pipeline(scene_name=scene_name,
-                        save_normals=save_normals,
-                        matching_difficulties=list(range(matching_difficulties_min, matching_difficulties_max)),
-                        matching_limit=matching_limit,
-                        planes_based_matching=planes_based_matching,
-                        feature_descriptor=Pipeline.feature_descriptors_str_map[feature_descriptor_str],
-                        output_dir=append_timestamp(output_dir_prefix))
+        pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
 
+        return pipeline
 
-    def __post_init__(self):
-        self.scene_info = SceneInfo.read_scene(self.scene_name)
+    def start(self):
+        self.log()
+        self.scene_info = SceneInfo.read_scene(self.scene_name, lazy=True)
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
-
 
     def log(self):
         print("Pipeline config:")
-        attr_list = [attr for attr in dir(Pipeline) if not callable(getattr(Pipeline, attr)) and not attr.startswith("__")]
+        attr_list = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__")]
         for attr_name in attr_list:
-            print("  {} = {}".format(attr_name, getattr(Pipeline, attr_name)))
+            print("  {} = {}".format(attr_name, getattr(self, attr_name)))
         print()
 
         Config.log()
-
 
     def process_image(self, img_name):
 
@@ -135,14 +133,17 @@ class Pipeline:
 
     def run_sequential_pipeline(self):
 
+        self.start()
+
         file_names, _ = get_megadepth_file_names_and_dir(self.scene_name, self.sequential_files_limit, self.chosen_depth_files)
         for depth_data_file_name in file_names:
             self.process_image(depth_data_file_name[:-4])
 
     def run_matching_pipeline(self):
 
+        self.start()
+
         stats_map = {}
-        self.log()
 
         for difficulty in self.matching_difficulties:
             print("Difficulty: {}".format(difficulty))

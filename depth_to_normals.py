@@ -165,6 +165,11 @@ def diff_normal_from_depth_data_old(focal_length,
 
 def show_or_save_normals(normals, out_dir, img_name, title, show=False, save=False):
 
+    if show is None:
+        show = Config.config_map[Config.show_normals_in_img]
+    if save is None:
+        save = Config.config_map[Config.save_normals_in_img]
+
     if show or save:
         img = normals.numpy() * 255
         img[:, :, 2] = -img[:, :, 2] / 255
@@ -200,13 +205,15 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, n_
         np.set_printoptions(suppress=True, precision=3)
         for i in range(n_clusters):
             desc = "{}{}={},\n".format(desc, color_names[i], cluster_repr_normal_np[i])
-        plt.title(desc) #  + str(time.time())
+        plt.title(desc) # + str(time.time())
         plt.imshow(img)
         if save:
             Path(out_dir).mkdir(parents=True, exist_ok=True)
             plt.savefig("{}_clusters.jpg".format(img_name))
         if show:
             plt.show()
+        else:
+            plt.close()
 
     if save:
         cv.imwrite("{}_clusters_indices.png".format(img_name), normal_indices_np)
@@ -236,7 +243,7 @@ def cluster_and_save_normals(normals,
     if len(normals.shape) == 5:
         normals = normals.squeeze(dim=0).squeeze(dim=0)
 
-    show_or_save_normals(normals, output_directory, img_name, title, show=show, save=save)
+    show_or_save_normals(normals, output_directory, img_name, title)
 
     minus_z_direction = torch.zeros(normals.shape)
     minus_z_direction[:, :, 2] = -1.0
