@@ -6,7 +6,7 @@ from config import Config
 
 from scene_info import read_cameras, CameraEntry
 from dataclasses import dataclass
-from depth_to_normals import compute_normals_simple_diff_convolution_simple, compute_normals_from_svd
+from depth_to_normals import compute_normals_convolution, compute_normals_from_svd
 
 from img_utils import show_normals_components
 from utils import read_depth_data
@@ -121,14 +121,14 @@ def test_depth_to_normals(old_implementation=True, impl="svd"):
 
         else:
             depth, normals, clustered_normals, normal_indices = \
-                compute_normals_simple_diff_convolution_simple(dsd.camera,
-                                                               dsd.file_dir_and_name[0],
-                                                               dsd.file_dir_and_name[1],
-                                                               save=True,
-                                                               output_directory=dsd.file_dir_and_name[0],
-                                                               override_mask=mask,
-                                                               old_implementation=old_implementation
-                                                               )
+                compute_normals_convolution(dsd.camera,
+                                            dsd.file_dir_and_name[0],
+                                            dsd.file_dir_and_name[1],
+                                            save=True,
+                                            output_directory=dsd.file_dir_and_name[0],
+                                            override_mask=mask,
+                                            old_implementation=old_implementation
+                                            )
 
 
         normals_diff = normals - dsd.plane[:3]

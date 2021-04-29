@@ -163,25 +163,7 @@ def diff_normal_from_depth_data_old(focal_length,
     return normals
 
 
-def cluster_and_save_normals(normals,
-                             depth_data_file_name,
-                             output_directory,
-                             show=False,
-                             title=None,
-                             save=False,
-                             depth_data=None,
-                             angle_threshold=4*math.pi/9):
-
-    file_name_prefix = '{}/{}'.format(output_directory, depth_data_file_name[:-4])
-    if clusters_map.__contains__(depth_data_file_name[:-4]):
-        clusters = clusters_map[depth_data_file_name[:-4]]
-    else:
-        clusters = 2
-        print("WARNING: number of clusters unknown for {}, defaulting to {} ...".format(depth_data_file_name, clusters))
-
-    # TODO just confirm if this happens for monodepth
-    if len(normals.shape) == 5:
-        normals = normals.squeeze(dim=0).squeeze(dim=0)
+def show_or_save_normals(normals, out_dir, img_name, title, show=False, save=False):
 
     if show or save:
         img = normals.numpy() * 255
@@ -195,9 +177,66 @@ def cluster_and_save_normals(normals,
                 ax.imshow(img[:, :, index])
             plt.show()
         if save:
-            Path(output_directory).mkdir(parents=True, exist_ok=True)
-            file_path = "{}.jpg".format(file_name_prefix)
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            file_path = "{}.jpg".format(img_name)
             cv.imwrite(file_path, img)
+
+
+def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, n_clusters, out_dir, img_name, save=False):
+
+    show = Config.config_map[Config.show_normals_in_img]
+    if show or save:
+        img = np.ndarray(normal_indices_np.shape + (3,))
+        img[:, :, 0][normal_indices_np == 0] = 255
+        img[:, :, 0][normal_indices_np != 0] = 0
+        img[:, :, 1][normal_indices_np == 1] = 255
+        img[:, :, 1][normal_indices_np != 1] = 0
+        img[:, :, 2][normal_indices_np == 2] = 255
+        img[:, :, 2][normal_indices_np != 2] = 0
+
+        plt.figure()
+        color_names = ["red", "green", "blue"]
+        desc = ""
+        np.set_printoptions(suppress=True, precision=3)
+        for i in range(n_clusters):
+            desc = "{}{}={},\n".format(desc, color_names[i], cluster_repr_normal_np[i])
+        plt.title(desc) #  + str(time.time())
+        plt.imshow(img)
+        if save:
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            plt.savefig("{}_clusters.jpg".format(img_name))
+        if show:
+            plt.show()
+
+    if save:
+        cv.imwrite("{}_clusters_indices.png".format(img_name), normal_indices_np)
+        np.savetxt('{}_clusters_normals.txt'.format(img_name), cluster_repr_normal_np, delimiter=',', fmt='%1.8f')
+
+    if show or save:
+        show_and_save_normal_clusters(normals, cluster_repr_normal_np, normal_indices_np)
+
+
+def cluster_and_save_normals(normals,
+                             depth_data_file_name,
+                             output_directory,
+                             show=False,
+                             title=None,
+                             save=False,
+                             depth_data=None,
+                             angle_threshold=4*math.pi/9):
+
+    img_name = '{}/{}'.format(output_directory, depth_data_file_name[:-4])
+    if clusters_map.__contains__(depth_data_file_name[:-4]):
+        n_clusters = clusters_map[depth_data_file_name[:-4]]
+    else:
+        n_clusters = 2
+        print("WARNING: number of clusters unknown for {}, defaulting to {} ...".format(depth_data_file_name, n_clusters))
+
+    # TODO just confirm if this happens for monodepth
+    if len(normals.shape) == 5:
+        normals = normals.squeeze(dim=0).squeeze(dim=0)
+
+    show_or_save_normals(normals, output_directory, img_name, title, show=show, save=save)
 
     minus_z_direction = torch.zeros(normals.shape)
     minus_z_direction[:, :, 2] = -1.0
@@ -209,7 +248,7 @@ def cluster_and_save_normals(normals,
 
     # naive sky filtering
     if depth_data is not None:
-        depth_factor = 0.1
+        depth_factor = 0.2
         mn = torch.min(depth_data)
         mx = torch.max(depth_data)
         filtered2 = depth_data[0, 0] <= mn + depth_factor * (mx - mn)
@@ -217,42 +256,16 @@ def cluster_and_save_normals(normals,
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    clustered_normals, normal_indices = spherical_kmeans.kmeans(normals, filtered, clusters)
-    Timer.end_check_point("clustering normals")
-
-    show_loc = Config.config_map[Config.show_normals_in_img]
-    if show_loc or save:
-        img[:, :, 0][normal_indices == 0] = 255
-        img[:, :, 0][normal_indices != 0] = 0
-        img[:, :, 1][normal_indices == 1] = 255
-        img[:, :, 1][normal_indices != 1] = 0
-        img[:, :, 2][normal_indices == 2] = 255
-        img[:, :, 2][normal_indices != 2] = 0
-
-        plt.figure()
-        color_names = ["red", "green", "blue"]
-        desc = ""
-        np.set_printoptions(suppress=True, precision=3)
-        for i in range(clusters):
-            desc = "{}{}={},\n".format(desc, color_names[i], clustered_normals[i].numpy())
-        plt.title(desc) #  + str(time.time())
-        plt.imshow(img)
-        if save:
-            Path(output_directory).mkdir(parents=True, exist_ok=True)
-            plt.savefig("{}_clusters.jpg".format(file_name_prefix))
-        if show_loc:
-            plt.show()
+    cluster_repr_normal, normal_indices = spherical_kmeans.kmeans(normals, filtered, n_clusters)
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
-    clustered_normals_np = clustered_normals.numpy()
-    if save:
-        cv.imwrite("{}_clusters_indices.png".format(file_name_prefix), normal_indices_np)
-        np.savetxt('{}_clusters_normals.txt'.format(file_name_prefix), clustered_normals_np, delimiter=',', fmt='%1.8f')
+    cluster_repr_normal_np = cluster_repr_normal.numpy()
 
-    if show or save:
-        show_and_save_normal_clusters(normals, clustered_normals, normal_indices)
+    Timer.end_check_point("clustering normals")
 
-    return clustered_normals_np, normal_indices_np
+    show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, n_clusters, output_directory, img_name, save=save)
+
+    return cluster_repr_normal_np, normal_indices_np
 
 
 def megadepth_input_dir(scene_name: str):
@@ -296,24 +309,46 @@ def compute_normals(scene: SceneInfo,
     img_name = depth_data_file_name[0:-4]
     camera = scene.get_camera_from_img(img_name)
 
-    if impl=="svd":
+    depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
+
+    if impl == "svd":
         print("using svd")
-        depth_data, normals, clustered_normals_np, normal_indices_np = \
-            compute_normals_from_svd(camera,
-                                     depth_data_read_directory,
-                                     depth_data_file_name,
-                                     save,
-                                     output_directory)
+        title = "normals via svd - {}".format(depth_data_file_name)
+        normals = compute_normals_from_svd(camera, depth_data)
     else:
+        title = "normals with plain diff mask - {}".format(depth_data_file_name)
         print("using conv mask")
-        depth_data, normals, clustered_normals_np, normal_indices_np = \
-            compute_normals_simple_diff_convolution_simple(camera,
-                                                           depth_data_read_directory,
-                                                           depth_data_file_name,
-                                                           save,
-                                                           output_directory,
-                                                           old_implementation=old_impl)
+        normals = compute_normals_convolution(camera, depth_data, old_implementation=old_impl)
+
+    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save, depth_data=depth_data)
     return clustered_normals_np, normal_indices_np
+
+
+def compute_normals_convolution(camera,
+                                depth_data,
+                                override_mask=None,
+                                old_implementation=False):
+
+    default_mask = torch.tensor([[0.25, 0.25, 0, -0.25, -0.25]]).float()
+    #mask = torch.tensor([[0.5, 0, -0.5]]).float()
+
+    if override_mask is not None:
+        mask = override_mask
+    else:
+        mask = default_mask
+    smoothed = True
+
+    # TWEAK
+    sigma = 1.33
+    #sigma = 3
+
+    # TODO param - but depth_data_file_name is also used down below (should be removed though)
+    if old_implementation:
+        normals = diff_normal_from_depth_data_old(camera.focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma, depth_factor=1/6)
+    else:
+        normals = diff_normal_from_depth_data(camera, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
+
+    return normals
 
 
 def pad_normals(normals, window_size, mode="replicate"):
@@ -332,18 +367,12 @@ def pad_normals(normals, window_size, mode="replicate"):
 
     return normals
 
-
 def compute_normals_from_svd(
         camera: CameraEntry,
-        depth_data_read_directory,
-        depth_data_file_name,
-        save,
-        output_directory,
+        depth_data,
 ):
 
     window_size = 5
-
-    depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
 
     hist = torch.histc(depth_data, bins=100, min=torch.min(depth_data), max=torch.max(depth_data))
 
@@ -432,47 +461,7 @@ def compute_normals_from_svd(
     assert normals.shape[0] == depth_height
     assert normals.shape[1] == depth_width
 
-    title = "normals via svd - {}".format(depth_data_file_name)
-    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save, depth_data=depth_data)
-    return depth_data, normals, clustered_normals_np, normal_indices_np
-
-
-def compute_normals_simple_diff_convolution_simple(
-        camera,
-        depth_data_read_directory,
-        depth_data_file_name,
-        save,
-        output_directory,
-        override_mask=None,
-        old_implementation=False):
-    """see :func:`compute_normals_simple_diff_convolution`"""
-
-    default_mask = torch.tensor([[0.25, 0.25, 0, -0.25, -0.25]]).float()
-    #mask = torch.tensor([[0.5, 0, -0.5]]).float()
-
-    if override_mask is not None:
-        mask = override_mask
-    else:
-        mask = default_mask
-    smoothed = True
-
-    # TWEAK
-    sigma = 1.33
-    #sigma = 3
-
-    # TODO param - but depth_data_file_name is also used down below (should be removed though)
-    depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
-
-    if old_implementation:
-        normals = diff_normal_from_depth_data_old(camera.focal_length, depth_data, mask=mask, smoothed=smoothed, sigma=sigma, depth_factor=1/6)
-    else:
-        normals = diff_normal_from_depth_data(camera, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
-    print("Creating dir (if not exists already): {}".format(output_directory))
-    Path(output_directory).mkdir(parents=True, exist_ok=True)
-
-    title = "normals with plain diff mask - {}".format(depth_data_file_name)
-    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save)
-    return depth_data, normals, clustered_normals_np, normal_indices_np
+    return normals
 
 
 def compute_normals_all(scene: SceneInfo,

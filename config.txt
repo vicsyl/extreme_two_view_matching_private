@@ -1,0 +1,9 @@
+scene_name = scene1
+save_normals = True
+matching_difficulties_min = 0
+matching_difficulties_max = 1
+matching_limit = 1
+planes_based_matching = False
+# SIFT so far
+feature_descriptor = SIFT
+output_dir_prefix = work/pipeline_scene1

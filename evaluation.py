@@ -4,7 +4,10 @@ import cv2 as cv
 import math
 import time
 import os
+import matplotlib as plt
 
+from pathlib import Path
+from matching import split_points
 
 """
 DISCLAIMER: the following methods have been adopted from https://github.com/ducha-aiki/ransac-tutorial-2020-data:
@@ -205,6 +208,10 @@ class Stats:
     @staticmethod
     def read_from_file(file_path):
         np_array = np.loadtxt(file_path, delimiter=",")
+        return Stats.load_from_array(np_array)
+
+    @staticmethod
+    def load_from_array(np_array: np.ndarray):
         return Stats(np_array[0], np_array[1], int(np_array[2]), int(np_array[3]), int(np_array[4]), int(np_array[5]))
 
     @staticmethod
@@ -216,7 +223,55 @@ class Stats:
         return np.array([self.error_R, self.error_T, self.tentative_matches, self.inliers, self.all_features_1, self.all_features_2])
 
     def save(self, file_path: str):
-        np.savetxt(file_path, self.to_numpy(), delimiter=',', fmt='%1.8f', header=Stats.get_field_descs())
+        val = self.to_numpy()
+        np.savetxt(file_path, val, delimiter=',', fmt='%1.8f', header=Stats.get_field_descs())
+
+
+def evaluate_matching(scene_info,
+                      E,
+                      kps1,
+                      kps2,
+                      tentative_matches,
+                      inlier_mask,
+                      img_pair,
+                      out_dir,
+                      save_suffix,
+                      stats_map):
+
+    # TODO
+    #    unique = correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2,
+    #                                                    images_info, img_pair)
+    # print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
+
+    print("Image pair: {}x{}:".format(img_pair.img1, img_pair.img2))
+    print("Number of correspondences: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
+    print("Number of not-correspondences: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
+
+    src_tentative, dst_tentative = split_points(tentative_matches, kps1, kps2)
+    src_pts_inliers = src_tentative[inlier_mask[:, 0] == [1]]
+    dst_pts_inliers = dst_tentative[inlier_mask[:, 0] == [1]]
+
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
+    np.savetxt("{}/src_pts_{}.txt".format(out_dir, save_suffix), src_pts_inliers, delimiter=',',
+               fmt='%1.8f')
+    np.savetxt("{}/dst_pts_{}.txt".format(out_dir, save_suffix), dst_pts_inliers, delimiter=',',
+               fmt='%1.8f')
+
+    error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
+    inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
+    stats = Stats(error_R=error_R, error_T=error_T, tentative_matches=len(tentative_matches), inliers=inliers,
+                  all_features_1=len(kps1), all_features_2=len(kps2))
+    stats.save("{}/stats_{}_{}.txt".format(out_dir, img_pair.img1, img_pair.img2))
+
+    inner_map = {}
+    inner_map["E"] = E
+    inner_map["src_pts_inliers"] = src_pts_inliers
+    inner_map["dst_pts_inliers"] = dst_pts_inliers
+    inner_map["stats"] = stats.to_numpy()
+
+    key = "{}_{}".format(img_pair.img1, img_pair.img2)
+    stats_map[key] = inner_map
 
 
 def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):

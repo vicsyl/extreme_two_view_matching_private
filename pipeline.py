@@ -1,17 +1,19 @@
-from scene_info import SceneInfo
-from depth_to_normals import compute_normals, get_megadepth_file_names_and_dir, megadepth_input_dir
 from dataclasses import dataclass
-from rectification import possibly_upsample_normals, get_rectified_keypoints
-from connected_components import get_connected_components, show_components
-from utils import Timer
 from pathlib import Path
-from matching import match_images_and_keypoints, match_images_with_dominant_planes
-from evaluation import compare_poses, Stats
-from config import Config
-from image_data import ImageData
+from datetime import datetime
 
-import numpy as np
 import cv2 as cv
+import pickle
+
+from config import Config
+from connected_components import get_connected_components, show_components
+from depth_to_normals import compute_normals, get_megadepth_file_names_and_dir, megadepth_input_dir
+from image_data import ImageData
+from matching import match_images_and_keypoints, match_images_with_dominant_planes
+from rectification import possibly_upsample_normals, get_rectified_keypoints
+from scene_info import SceneInfo
+from utils import Timer
+from evaluation import *
 
 
 @dataclass
@@ -19,27 +21,77 @@ class Pipeline:
 
     scene_name: str
 
-    sequential_files_limit: int
-    chosen_depth_files: int
 
     save_normals: bool
-    normals_dir: str
+    output_dir: str
+
+    chosen_depth_files = None
+    sequential_files_limit = None
 
     show_clustered_components = True
     show_rectification = False
 
     #matching
     feature_descriptor: cv.Feature2D
-    matching_dir: str
+    matching_dir = None
     matching_difficulties: list
     matching_limit: str
 
     planes_based_matching: bool
 
+    feature_descriptors_str_map = {
+        "SIFT": cv.SIFT_create(),
+    }
+
+    @ staticmethod
+    def read_conf(config_file_name: str):
+
+        with open(config_file_name) as f:
+            for line in f:
+                k, v = line.partition("=")[::2]
+                k = k.strip()
+                v = v.strip()
+
+                if k == "scene_name":
+                    scene_name = v
+                elif k == "save_normals":
+                    save_normals = v == "True"
+                elif k == "matching_difficulties_min":
+                    matching_difficulties_min = int(v)
+                elif k == "matching_difficulties_max":
+                    matching_difficulties_max = int(v)
+                elif k == "matching_limit":
+                    matching_limit = int(v)
+                elif k == "planes_based_matching":
+                    planes_based_matching = v == "True"
+                elif k == "feature_descriptor":
+                    feature_descriptor_str = v
+                elif k == "output_dir_prefix":
+                    output_dir_prefix = v
+
+        return Pipeline(scene_name=scene_name,
+                        save_normals=save_normals,
+                        matching_difficulties=list(range(matching_difficulties_min, matching_difficulties_max)),
+                        matching_limit=matching_limit,
+                        planes_based_matching=planes_based_matching,
+                        feature_descriptor=Pipeline.feature_descriptors_str_map[feature_descriptor_str],
+                        output_dir=append_timestamp(output_dir_prefix))
+
 
     def __post_init__(self):
         self.scene_info = SceneInfo.read_scene(self.scene_name)
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
+
+
+    def log(self):
+        print("Pipeline config:")
+        attr_list = [attr for attr in dir(Pipeline) if not callable(getattr(Pipeline, attr)) and not attr.startswith("__")]
+        for attr_name in attr_list:
+            print("  {} = {}".format(attr_name, getattr(Pipeline, attr_name)))
+        print()
+
+        Config.log()
+
 
     def process_image(self, img_name):
 
@@ -53,8 +105,8 @@ class Pipeline:
         K = self.scene_info.get_img_K(img_name)
 
         # depth => indices
-        output_directory = "{}/{}".format(self.normals_dir, img_name)
-        normals, normal_indices = compute_normals(self.scene_info, self.depth_input_dir, "{}.npy".format(img_name), self.save_normals, output_directory)
+        normals_output_directory = "{}/normals/{}".format(self.output_dir, img_name)
+        normals, normal_indices = compute_normals(self.scene_info, self.depth_input_dir, "{}.npy".format(img_name), self.save_normals, normals_output_directory)
         # TODO - shouldn't the normals be persisted already with the connected components?
 
         # normal indices => cluster indices (maybe safe here?)
@@ -89,35 +141,36 @@ class Pipeline:
 
     def run_matching_pipeline(self):
 
-        processed_pairs = 0
-        for difficulty in self.matching_difficulties:
+        stats_map = {}
+        self.log()
 
+        for difficulty in self.matching_difficulties:
             print("Difficulty: {}".format(difficulty))
 
+            processed_pairs = 0
             for img_pair in self.scene_info.img_pairs[difficulty]:
-
-                Timer.start_check_point("complete image pair matching")
-
                 if self.matching_limit is not None and processed_pairs >= self.matching_limit:
                     break
 
-                out_dir = "work/{}/matching/{}/{}_{}".format(self.scene_info.name, self.matching_dir, img_pair.img1, img_pair.img2)
+                Timer.start_check_point("complete image pair matching")
+
+                matching_out_dir = "{}/matching".format(self.output_dir)
 
                 # I might not need normals yet
                 # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
-                image_data1 = self.process_image(img_pair.img1)
-                # TODO when does this happen?
-                if image_data1 is None:
+                try:
+                    image_data1 = self.process_image(img_pair.img1)
+                except:
                     print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img1, img_pair.img1, img_pair.img2))
                     continue
 
-                image_data2 = self.process_image(img_pair.img2)
-                # TODO when does this happen?
-                if image_data2 is None:
+                try:
+                    image_data2 = self.process_image(img_pair.img2)
+                except:
                     print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img2, img_pair.img1, img_pair.img2))
                     continue
 
-                Path(out_dir).mkdir(parents=True, exist_ok=True)
+                Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
 
                 if self.planes_based_matching:
                     # E, inlier_mask, src_pts, dst_pts, kps1, kps2, tentative_matches =
@@ -126,12 +179,12 @@ class Pipeline:
                         image_data2,
                         images_info=self.scene_info.img_info_map,
                         img_pair=img_pair,
-                        out_dir=out_dir,
+                        out_dir=matching_out_dir,
                         show=True,
                         save=True)
 
                 else:
-                    E, inlier_mask, src_pts, dst_pts, kps1, kps2, tentative_matches = match_images_and_keypoints(
+                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_and_keypoints(
                         image_data1.img,
                         image_data1.key_points,
                         image_data1.descriptions,
@@ -140,22 +193,40 @@ class Pipeline:
                         image_data2.key_points,
                         image_data2.descriptions,
                         image_data2.K,
-                        self.scene_info.img_info_map,
                         img_pair,
-                        out_dir,
+                        matching_out_dir,
                         show=True,
                         save=True)
 
-                    error_R, error_T = compare_poses(E, img_pair, self.scene_info, src_pts, dst_pts)
-                    inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
-                    stats = Stats(error_R=error_R, error_T=error_T, tentative_matches=tentative_matches, inliers=inliers, all_features_1=len(src_pts), all_features_2=len(dst_pts))
-                    stats.save("{}/stats.txt".format(out_dir))
-
-                    #new_stats = Stats.read_from_file("{}/stats.txt".format(out_dir))
-                    # I can now continue with processing stats over the iterated data
+                save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
+                evaluate_matching(self.scene_info,
+                                  E,
+                                  image_data1.key_points,
+                                  image_data2.key_points,
+                                  tentative_matches,
+                                  inlier_mask,
+                                  img_pair,
+                                  matching_out_dir,
+                                  save_suffix,
+                                  stats_map)
 
                 processed_pairs = processed_pairs + 1
                 Timer.end_check_point("complete image pair matching")
+
+        all_stats_file_name = "{}/all.stats.pkl".format(self.output_dir)
+        with open(all_stats_file_name, "wb") as f:
+            pickle.dump(stats_map, f)
+
+        with open(all_stats_file_name, "rb") as f:
+            stats_map_read = pickle.load(f)
+
+        print()
+
+
+def append_timestamp(str):
+    now = datetime.now()
+    timestamp = now.strftime("%Y_%d_%m_%H_%M_%S_%f")
+    return "{}_{}".format(str, timestamp)
 
 
 def main():
@@ -165,18 +236,15 @@ def main():
     Config.set_rectify(False)
     Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
-    pipeline = Pipeline(scene_name="scene1",
-                        sequential_files_limit=10,
-                        chosen_depth_files=None,
-                        save_normals=True,
-                        matching_dir="pipeline_with_rectification_foo",
-                        matching_difficulties=[0],
-                        matching_limit=1,
-                        planes_based_matching=True,
-                        feature_descriptor=cv.SIFT_create(),
-                        normals_dir="work/scene1/normals/simple_diff_mask")
+    pipeline = Pipeline.read_conf("config.txt")
+    # pipeline = Pipeline(scene_name="scene1",
+    #                     save_normals=True,
+    #                     matching_difficulties=list(range(2)),
+    #                     matching_limit=1,
+    #                     planes_based_matching=False,
+    #                     feature_descriptor=cv.SIFT_create(),
+    #                     output_dir=append_timestamp("work/pipeline_scene1"))
 
-    #pipeline.run_sequential_pipeline()
     pipeline.run_matching_pipeline()
 
     Timer.end()
