@@ -22,11 +22,6 @@ class Config:
     config_map[key_planes_based_matching_merge_components] = True
     config_map[show_normals_in_img] = False
 
-    config_map[show_normals_in_img] = False
-    config_map[show_normals_in_img] = False
-    config_map[show_normals_in_img] = False
-    config_map[show_normals_in_img] = False
-
     @staticmethod
     def log():
         print("Config:\n  {}".format("\n  ".join("{}: {},".format(k, v) for k, v in Config.config_map.items())))

@@ -88,6 +88,18 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
     for component_index in valid_components_dict:
 
         normal_index = valid_components_dict[component_index]
+        normal = normals[normal_index]
+        threshold_degrees = 80 # [degrees]
+        angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
+        angle_degrees = angle_rad * 180 / math.pi
+        print("angle: {} vs. angle threshold: {}".format(angle_degrees, threshold_degrees))
+        if angle_degrees >= threshold_degrees:
+            print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
+            continue
+        else:
+            print("angle ok")
+
+
         R = Rs[normal_index]
 
         T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
@@ -154,7 +166,8 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
         if show:
             plt.show()
         if out_dir is not None:
-            plt.savefig("{}/rectified_{}_{}.jpg".format(out_dir, img_name, component_index))
+            path = "{}/rectified_{}_{}.jpg".format(out_dir, img_name, component_index)
+            plt.savefig(path)
 
         # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
         # plt.imshow(img_rectified)
@@ -230,7 +243,7 @@ def show_rectifications(scene_info: SceneInfo, normals_parent_dir, original_inpu
                                 valid_components_dict,
                                 img,
                                 K,
-                                descriptor= cv.SIFT_create(),
+                                descriptor=cv.SIFT_create(),
                                 img_name=img_name,
                                 show=True)
 
@@ -239,10 +252,11 @@ if __name__ == "__main__":
 
     Timer.start()
 
-    interesting_dirs = ["frame_0000000145_2"]
+    #interesting_dirs = ["frame_0000000145_2"]
+    interesting_dirs = ["frame_0000000015_4"]
 
-    scene_info = SceneInfo.read_scene("scene1")
+    scene_info = SceneInfo.read_scene("scene1", lazy=True)
 
-    show_rectifications(scene_info, "work/scene1/normals/simple_diff_mask", "original_dataset/scene1/images", limit=1, interesting_dirs=None)
+    show_rectifications(scene_info, "work/scene1/normals/svd", "original_dataset/scene1/images", limit=10, interesting_dirs=None)
 
     Timer.end()

@@ -21,7 +21,6 @@ def get_rotation_matrix(unit_rotation_vector, theta):
     b = math.sin(theta) * K
     c = (1.0 - math.cos(theta)) * K @ K
 
-    print("{}\n, {}\n, {}".format(a, b, c))
     R = a + b + c
     return R
 

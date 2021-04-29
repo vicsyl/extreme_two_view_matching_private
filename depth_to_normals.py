@@ -169,6 +169,7 @@ def cluster_and_save_normals(normals,
                              show=False,
                              title=None,
                              save=False,
+                             depth_data=None,
                              angle_threshold=4*math.pi/9):
 
     file_name_prefix = '{}/{}'.format(output_directory, depth_data_file_name[:-4])
@@ -194,15 +195,25 @@ def cluster_and_save_normals(normals,
                 ax.imshow(img[:, :, index])
             plt.show()
         if save:
-            cv.imwrite("{}.jpg".format(file_name_prefix), img)
+            Path(output_directory).mkdir(parents=True, exist_ok=True)
+            file_path = "{}.jpg".format(file_name_prefix)
+            cv.imwrite(file_path, img)
 
     minus_z_direction = torch.zeros(normals.shape)
     minus_z_direction[:, :, 2] = -1.0
     dot_product = torch.sum(normals * minus_z_direction, dim=-1)
     threshold = math.cos(angle_threshold)
-    # TWEAK
-    #filtered = torch.where(dot_product >= threshold, 1, 0)
-    filtered = torch.where(dot_product >= -100, 1, 0)
+    filtered = dot_product >= threshold #, True, False)
+    # TWEAK - enable all
+    #filtered = torch.where(dot_product >= -100, 1, 0)
+
+    # naive sky filtering
+    if depth_data is not None:
+        depth_factor = 0.1
+        mn = torch.min(depth_data)
+        mx = torch.max(depth_data)
+        filtered2 = depth_data[0, 0] <= mn + depth_factor * (mx - mn)
+        filtered = torch.logical_and(filtered, filtered2)
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
@@ -210,7 +221,6 @@ def cluster_and_save_normals(normals,
     Timer.end_check_point("clustering normals")
 
     show_loc = Config.config_map[Config.show_normals_in_img]
-    print("show loc: {}".format(show_loc))
     if show_loc or save:
         img[:, :, 0][normal_indices == 0] = 255
         img[:, :, 0][normal_indices != 0] = 0
@@ -228,6 +238,7 @@ def cluster_and_save_normals(normals,
         plt.title(desc) #  + str(time.time())
         plt.imshow(img)
         if save:
+            Path(output_directory).mkdir(parents=True, exist_ok=True)
             plt.savefig("{}_clusters.jpg".format(file_name_prefix))
         if show_loc:
             plt.show()
@@ -305,7 +316,7 @@ def compute_normals(scene: SceneInfo,
     return clustered_normals_np, normal_indices_np
 
 
-def padd_normals(normals, window_size, mode="replicate"):
+def pad_normals(normals, window_size, mode="replicate"):
     """
     :param normals: (h, w, 3)
     :return:
@@ -333,6 +344,9 @@ def compute_normals_from_svd(
     window_size = 5
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
+
+    hist = torch.histc(depth_data, bins=100, min=torch.min(depth_data), max=torch.max(depth_data))
+
     if Config.svd_smoothing:
         depth_data = gaussian_filter2d(depth_data, Config.svd_smoothing_sigma)
 
@@ -414,12 +428,12 @@ def compute_normals_from_svd(
     # is this necessary?
     normals = normals / torch.norm(normals, dim=2).unsqueeze(dim=2)
 
-    normals = padd_normals(normals, window_size=window_size)
+    normals = pad_normals(normals, window_size=window_size)
     assert normals.shape[0] == depth_height
     assert normals.shape[1] == depth_width
 
     title = "normals via svd - {}".format(depth_data_file_name)
-    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save)
+    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, show=True, title=title, save=save, depth_data=depth_data)
     return depth_data, normals, clustered_normals_np, normal_indices_np
 
 
@@ -497,17 +511,18 @@ def main():
     Timer.start()
     Config.log()
 
+    #interesting_files = scene_info.imgs_for_comparing_difficulty(0)
+    interesting_files = ["frame_0000000015_4.npy"]
+
     scene_name = "scene1"
-    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=2, interesting_files=None)
+    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=20, interesting_files=None)
 
     scene_info = SceneInfo.read_scene(scene_name, lazy=True)
-    #interesting_imgs = scene_info.imgs_for_comparing_difficulty(0)
-    interesting_imgs = ["frame_0000000030_2.npy"]
 
     impl = "svd"
     #impl = "not svd"
     if impl == "svd":
-        output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
+        output_parent_dir = "work/{}/normals/svd".format(scene_name)
     else:
         output_parent_dir = "work/{}/normals/simple_diff_mask".format(scene_name)
 
