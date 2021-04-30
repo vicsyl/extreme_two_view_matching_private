@@ -7,3 +7,4 @@ planes_based_matching = False
 # SIFT so far
 feature_descriptor = SIFT
 output_dir_prefix = work/pipeline_scene1
+# rectify = False

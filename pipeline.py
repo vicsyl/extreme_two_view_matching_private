@@ -37,6 +37,8 @@ class Pipeline:
 
     planes_based_matching = False
 
+    rectify = True
+
     @staticmethod
     def read_conf(config_file_name: str):
 
@@ -58,6 +60,8 @@ class Pipeline:
 
                 if k == "scene_name":
                     pipeline.scene_name = v
+                if k == "rectify":
+                    pipeline.rectify = v == "True"
                 elif k == "save_normals":
                     pipeline.save_normals = v == "True"
                 elif k == "matching_difficulties_min":
@@ -81,6 +85,7 @@ class Pipeline:
         self.log()
         self.scene_info = SceneInfo.read_scene(self.scene_name, lazy=False)
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
+        Config.set_rectify(self.rectify)
 
     def log(self):
         print("Pipeline config:")
@@ -113,6 +118,7 @@ class Pipeline:
         if self.show_clustered_components:
             show_components(components_indices, valid_components_dict, normals=normals)
 
+        # TODO if False, I can skip computing the normals !!!
         if Config.rectify():
 
             # get rectification
