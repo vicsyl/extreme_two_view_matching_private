@@ -161,17 +161,17 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(rectified)
         if show:
-            plt.show()
+            plt.show(block=False)
         plt.imshow(rectified_components)
         if show:
-            plt.show()
+            plt.show(block=False)
         if out_dir is not None:
             path = "{}/rectified_{}_{}.jpg".format(out_dir, img_name, component_index)
             plt.savefig(path)
 
         # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
         # plt.imshow(img_rectified)
-        # plt.show()
+        # plt.show(block=False)
     return all_kps, all_descs
 
 

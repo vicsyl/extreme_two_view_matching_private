@@ -180,7 +180,7 @@ def show_or_save_normals(normals, out_dir, img_name, title, show=False, save=Fal
                 # row, columns, index
                 ax = fig.add_subplot(131 + index)
                 ax.imshow(img[:, :, index])
-            plt.show()
+            plt.show(block=False)
         if save:
             Path(out_dir).mkdir(parents=True, exist_ok=True)
             file_path = "{}.jpg".format(img_name)
@@ -211,7 +211,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, n_
             Path(out_dir).mkdir(parents=True, exist_ok=True)
             plt.savefig("{}_clusters.jpg".format(img_name))
         if show:
-            plt.show()
+            plt.show(block=False)
         else:
             plt.close()
 

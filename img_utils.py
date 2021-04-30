@@ -79,4 +79,4 @@ def show_normals_components(normals, title, figsize=None):
         # row, columns, index
         ax = fig.add_subplot(131 + index)
         ax.imshow(img[:, :, index])
-    plt.show()
+    plt.show(block=False)

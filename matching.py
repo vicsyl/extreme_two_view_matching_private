@@ -100,11 +100,13 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, save_s
     if show or save:
         tentative_matches_in_singleton_list = [[m] for m in tentative_matches]
         img3 = cv.drawMatchesKnn(img1, kps1, img2, kps2, tentative_matches_in_singleton_list, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        fig, ax = plt.subplots()
+        ax.set_aspect("auto")
         plt.imshow(img3)
         if save:
             plt.savefig("{}/tentative_{}.jpg".format(out_dir, save_suffix))
         if show:
-            plt.show()
+            plt.show(block=False)
 
     return tentative_matches
 
@@ -243,7 +245,7 @@ def find_and_draw_homography(img1, kps1, descs1, img2, kps2, descs2):
     if True:
         img = draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
         plt.imshow(img)
-        plt.show()
+        plt.show(block=False)
 
     src_kps = apply_inliers_on_list(src_kps, inlier_mask)
     src_dsc = apply_inliers_on_list(src_dsc, inlier_mask)
@@ -355,7 +357,7 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
             if save:
                 plt.savefig("{}/matches.jpg".format(out_dir))
             if show:
-                plt.show()
+                plt.show(block=False)
 
     print("best indices: {} <=> {}".format(best_idxs_1, best_idxs_2))
 
@@ -383,7 +385,7 @@ def show_save_matching(img1,
         if save:
             plt.savefig("{}/matches_{}.jpg".format(out_dir, save_suffix))
         if show:
-            plt.show()
+            plt.show(block=False)
 
 #
 # # TODO

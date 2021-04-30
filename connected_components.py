@@ -70,7 +70,7 @@ def show_components(cluster_indices, valid_component_dict, title=None, normals=N
                 desc = "{}[{}]={},\n".format(desc, cur_colors_names, normals[merged_dict[merged_values]])
             plt.title(desc)
         plt.imshow(cluster_colors)
-        plt.show()
+        plt.show(block=False)
     return cluster_colors
 
 
