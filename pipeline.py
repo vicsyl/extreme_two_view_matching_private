@@ -216,10 +216,7 @@ class Pipeline:
         with open(all_stats_file_name, "wb") as f:
             pickle.dump(stats_map, f)
 
-        # with open(all_stats_file_name, "rb") as f:
-        #     stats_map_read = pickle.load(f)
-        #
-        # print()
+        evaluate(stats_map, self.scene_info)
 
 
 def append_timestamp(str):

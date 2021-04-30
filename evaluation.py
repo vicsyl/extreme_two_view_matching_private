@@ -1,3 +1,5 @@
+import numpy as np
+
 from scene_info import *
 from utils import quaternions_to_R
 import cv2 as cv
@@ -310,31 +312,6 @@ def evaluate_matching(scene_info,
     error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
-    # Path(out_dir).mkdir(parents=True, exist_ok=True)
-    # np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
-    # np.savetxt("{}/src_pts_{}.txt".format(out_dir, save_suffix), src_pts_inliers, delimiter=',',
-    #            fmt='%1.8f')
-    # np.savetxt("{}/dst_pts_{}.txt".format(out_dir, save_suffix), dst_pts_inliers, delimiter=',',
-    #            fmt='%1.8f')
-    #
-    # stats = Stats(error_R=error_R,
-    #               error_T=error_T,
-    #               tentative_matches=len(tentative_matches),
-    #               inliers=inliers,
-    #               all_features_1=len(kps1),
-    #               all_features_2=len(kps2),
-    #               E=E,
-    #               src_pts_inliers=src_pts_inliers,
-    #               dst_pts_inliers=dst_pts_inliers)
-    #
-    # stats.save_brief("{}/stats_{}.txt".format(out_dir, save_suffix))
-    #
-    # inner_map = {}
-    # inner_map["E"] = E
-    # inner_map["src_pts_inliers"] = src_pts_inliers
-    # inner_map["dst_pts_inliers"] = dst_pts_inliers
-    # inner_map["stats"] = stats.to_numpy()
-
     stats = Stats.save_parts(out_dir,
                      save_suffix,
                      E,
@@ -441,26 +418,61 @@ def correctly_matched_point_for_image_pair(kps_inliers1, kps_inliers2, images_in
     return unique
 
 
-def evaluate(stats_map: dict, scene_name: str):
+def print_stats(stat_name: str, stat_in_list: list):
+    np_ar = np.array(stat_in_list)
+    print("average {}: {}".format(stat_name, np.sum(np_ar) / len(stat_in_list)))
 
-    scene_info = SceneInfo.read_scene(scene_name)
+
+def evaluate(stats_map: dict, scene_info: SceneInfo):
+
+    l_entries = []
+    n_entries = 0
+
+    error_R = []
+    error_T = []
+    tentative_matches = []
+    inliers = []
+    all_features_1 = []
+    all_features_2 = []
+    matched_points = []
 
     for img_pair_str, stats in stats_map.items():
 
+        n_entries += 1
         img_pair_entry, diff = scene_info.find_img_pair(img_pair_str)
+        l_entries.append(str(img_pair_entry))
 
-        unique = correctly_matched_point_for_image_pair(stats.src_pts_inliers,
+        error_R.append(stats.error_R)
+        error_T.append(stats.error_T)
+        tentative_matches.append(stats.tentative_matches)
+        inliers.append(stats.inliers)
+        all_features_1.append(stats.all_features_1)
+        all_features_2.append(stats.all_features_2)
+
+        matched_points_local = correctly_matched_point_for_image_pair(stats.src_pts_inliers,
                                                         stats.dst_pts_inliers,
                                                         scene_info.img_info_map,
                                                         img_pair_entry)
-        print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
+        matched_points.append(matched_points_local.shape[0])
 
+    print("Image entries (img name, difficulty)")
+    print(",\n".join(l_entries))
+
+    print("Stats report")
+    print_stats("error_R", error_R)
+    print_stats("error_T", error_T)
+    print_stats("tentative_matches", tentative_matches)
+    print_stats("inliers", inliers)
+    print_stats("all_features_1", all_features_1)
+    print_stats("all_features_2", all_features_2)
+    print_stats("matched dataset image points", matched_points)
 
 
 def evaluate_last(scene_name):
 
+    scene_info = SceneInfo.read_scene(scene_name)
     stats_map = read_last()
-    evaluate(stats_map, scene_name)
+    evaluate(stats_map, scene_info)
 
 
 def main():
