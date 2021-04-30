@@ -76,6 +76,15 @@ class SceneInfo:
         camera_id = self.img_info_map[img_name].camera_id
         return self.cameras[camera_id].get_K()
 
+    # FIXME very inefficient
+    def find_img_pair(self, key):
+        for diff in range(len(self.img_pairs)):
+            for img_pair_entry in self.img_pairs[diff]:
+                key_img_pe = "{}_{}".format(img_pair_entry.img1, img_pair_entry.img2)
+                if key_img_pe == key:
+                    return img_pair_entry, diff
+        return None
+
     @staticmethod
     def read_scene(scene_name, lazy=False):
         Timer.start_check_point("reading scene info")

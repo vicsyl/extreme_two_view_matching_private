@@ -5,6 +5,8 @@ import math
 import time
 import os
 import matplotlib as plt
+import glob
+import pickle
 
 from pathlib import Path
 from matching import split_points
@@ -204,27 +206,85 @@ class Stats:
     inliers: int
     all_features_1: int
     all_features_2: int
+    src_pts_inliers: np.ndarray
+    dst_pts_inliers: np.ndarray
+    E: np.ndarray
+
+    # can be made to a constructor?
+    @staticmethod
+    def read_from_dict(d):
+        E = d["E"]
+        src_pts_inliers = d["src_pts_inliers"]
+        dst_pts_inliers = d["dst_pts_inliers"]
+        stats = Stats.load_from_array(d["stats"])
+        stats.src_pts_inliers = src_pts_inliers
+        stats.dsrc_pts_inliers = dst_pts_inliers
+        stats.E = E
+        return stats
 
     @staticmethod
     def read_from_file(file_path):
-        np_array = np.loadtxt(file_path, delimiter=",")
+        np_array = np.loadtxt(file_path, delimiter=";\n,")
         return Stats.load_from_array(np_array)
 
     @staticmethod
     def load_from_array(np_array: np.ndarray):
-        return Stats(np_array[0], np_array[1], int(np_array[2]), int(np_array[3]), int(np_array[4]), int(np_array[5]))
+        return Stats(error_R=np_array[0],
+                     error_T=np_array[1],
+                     tentative_matches=int(np_array[2]),
+                     inliers=int(np_array[3]),
+                     all_features_1=int(np_array[4]),
+                     all_features_2=int(np_array[5]),
+                     src_pts_inliers=None,
+                     dst_pts_inliers=None,
+                     E=None)
 
     @staticmethod
     def get_field_descs():
         l = ["error in R", "error in T", "tentative matches", "inliers", "all features in 1st", "all features in 2nd"]
-        return ", ".join(l)
+        return ";\n".join(l)
 
     def to_numpy(self):
         return np.array([self.error_R, self.error_T, self.tentative_matches, self.inliers, self.all_features_1, self.all_features_2])
 
-    def save(self, file_path: str):
+    def save_brief(self, file_path: str):
         val = self.to_numpy()
-        np.savetxt(file_path, val, delimiter=',', fmt='%1.8f', header=Stats.get_field_descs())
+        np.savetxt(file_path, val, delimiter=';\n', fmt='%1.8f', header=Stats.get_field_descs())
+
+    @staticmethod
+    def save_parts(out_dir,
+                   save_suffix,
+                   E,
+                   src_pts_inliers,
+                   dst_pts_inliers,
+                   error_R,
+                   error_T,
+                   n_tentative_matches,
+                   n_inliers,
+                   n_all_features_1,
+                   n_all_features_2
+                   ):
+
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
+        np.savetxt("{}/src_pts_{}.txt".format(out_dir, save_suffix), src_pts_inliers, delimiter=',',
+                   fmt='%1.8f')
+        np.savetxt("{}/dst_pts_{}.txt".format(out_dir, save_suffix), dst_pts_inliers, delimiter=',',
+                   fmt='%1.8f')
+
+        stats = Stats(error_R=error_R,
+                      error_T=error_T,
+                      tentative_matches=n_tentative_matches,
+                      inliers=n_inliers,
+                      all_features_1=n_all_features_1,
+                      all_features_2=n_all_features_2,
+                      E=E,
+                      src_pts_inliers=src_pts_inliers,
+                      dst_pts_inliers=dst_pts_inliers)
+
+        stats.save_brief("{}/stats_{}.txt".format(out_dir, save_suffix))
+
+        return stats
 
 
 def evaluate_matching(scene_info,
@@ -235,13 +295,9 @@ def evaluate_matching(scene_info,
                       inlier_mask,
                       img_pair,
                       out_dir,
-                      save_suffix,
                       stats_map):
 
-    # TODO
-    #    unique = correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2,
-    #                                                    images_info, img_pair)
-    # print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
+    save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
     print("Image pair: {}x{}:".format(img_pair.img1, img_pair.img2))
     print("Number of correspondences: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
@@ -251,27 +307,50 @@ def evaluate_matching(scene_info,
     src_pts_inliers = src_tentative[inlier_mask[:, 0] == [1]]
     dst_pts_inliers = dst_tentative[inlier_mask[:, 0] == [1]]
 
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
-    np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
-    np.savetxt("{}/src_pts_{}.txt".format(out_dir, save_suffix), src_pts_inliers, delimiter=',',
-               fmt='%1.8f')
-    np.savetxt("{}/dst_pts_{}.txt".format(out_dir, save_suffix), dst_pts_inliers, delimiter=',',
-               fmt='%1.8f')
-
     error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
-    stats = Stats(error_R=error_R, error_T=error_T, tentative_matches=len(tentative_matches), inliers=inliers,
-                  all_features_1=len(kps1), all_features_2=len(kps2))
-    stats.save("{}/stats_{}_{}.txt".format(out_dir, img_pair.img1, img_pair.img2))
 
-    inner_map = {}
-    inner_map["E"] = E
-    inner_map["src_pts_inliers"] = src_pts_inliers
-    inner_map["dst_pts_inliers"] = dst_pts_inliers
-    inner_map["stats"] = stats.to_numpy()
+    # Path(out_dir).mkdir(parents=True, exist_ok=True)
+    # np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
+    # np.savetxt("{}/src_pts_{}.txt".format(out_dir, save_suffix), src_pts_inliers, delimiter=',',
+    #            fmt='%1.8f')
+    # np.savetxt("{}/dst_pts_{}.txt".format(out_dir, save_suffix), dst_pts_inliers, delimiter=',',
+    #            fmt='%1.8f')
+    #
+    # stats = Stats(error_R=error_R,
+    #               error_T=error_T,
+    #               tentative_matches=len(tentative_matches),
+    #               inliers=inliers,
+    #               all_features_1=len(kps1),
+    #               all_features_2=len(kps2),
+    #               E=E,
+    #               src_pts_inliers=src_pts_inliers,
+    #               dst_pts_inliers=dst_pts_inliers)
+    #
+    # stats.save_brief("{}/stats_{}.txt".format(out_dir, save_suffix))
+    #
+    # inner_map = {}
+    # inner_map["E"] = E
+    # inner_map["src_pts_inliers"] = src_pts_inliers
+    # inner_map["dst_pts_inliers"] = dst_pts_inliers
+    # inner_map["stats"] = stats.to_numpy()
+
+    stats = Stats.save_parts(out_dir,
+                     save_suffix,
+                     E,
+                     src_pts_inliers,
+                     dst_pts_inliers,
+                     error_R,
+                     error_T,
+                     len(tentative_matches),
+                     inliers,
+                     len(kps1),
+                     len(kps2))
 
     key = "{}_{}".format(img_pair.img1, img_pair.img2)
-    stats_map[key] = inner_map
+    #stats_map[key] = inner_map
+    stats_map[key] = stats
+    return stats
 
 
 def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
@@ -309,6 +388,79 @@ def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
         result_map[dir] = Stats(errors[0], errors[1], tentative_matches, inliers, all_features_1, all_features_2)
 
     return result_map
+
+
+def read_last():
+    prefix = "pipeline_scene1"
+    gl = glob.glob("work/{}*".format(prefix))
+    gl.sort()
+    last_file = "{}/{}".format(gl[-1], "all.stats.pkl")
+
+    with open(last_file, "rb") as f:
+        stats_map_read = pickle.load(f)
+
+    return stats_map_read
+
+
+def get_kps_gt_id(kps_matches_np, image_entry: ImageEntry, diff_threshold=2.0):
+
+    # kps_matches_points = [list(kps[kps_index].pt) for kps_index in kps_indices]
+    # kps_matches_np = np.array(kps_matches_points)
+
+    image_data = image_entry.data
+    data_ids = image_entry.data_point_idxs
+
+    diff = np.ndarray(image_data.shape)
+    mins = np.ndarray(kps_matches_np.shape[0])
+    data_point_ids = -2 * np.ones(kps_matches_np.shape[0], dtype=np.int32)
+    for p_idx, match_point in enumerate(kps_matches_np):
+        diff[:, 0] = image_data[:, 0] - match_point[0]
+        diff[:, 1] = image_data[:, 1] - match_point[1]
+        diff_norm = np.linalg.norm(diff, axis=1)
+        min_index = np.argmin(diff_norm)
+        min_diff = diff_norm[min_index]
+        mins[p_idx] = min_diff
+        if min_diff < diff_threshold:
+            data_point_ids[p_idx] = data_ids[min_index]
+        # else:
+        #     print()
+
+    return data_point_ids, mins
+
+
+def correctly_matched_point_for_image_pair(kps_inliers1, kps_inliers2, images_info, img_pair):
+
+    data_point1_ids, mins1 = get_kps_gt_id(kps_inliers1, images_info[img_pair.img1], diff_threshold=2.0)
+    data_point2_ids, mins2 = get_kps_gt_id(kps_inliers2, images_info[img_pair.img2], diff_threshold=2.0)
+
+    # FIXME this is wrong
+    data_point_ids_matches = data_point1_ids[data_point1_ids == data_point2_ids]
+    unique = np.unique(data_point_ids_matches)
+    unique = unique[unique != -1]
+    unique = unique[unique != -2]
+    return unique
+
+
+def evaluate(stats_map: dict, scene_name: str):
+
+    scene_info = SceneInfo.read_scene(scene_name)
+
+    for img_pair_str, stats in stats_map.items():
+
+        img_pair_entry, diff = scene_info.find_img_pair(img_pair_str)
+
+        unique = correctly_matched_point_for_image_pair(stats.src_pts_inliers,
+                                                        stats.dst_pts_inliers,
+                                                        scene_info.img_info_map,
+                                                        img_pair_entry)
+        print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
+
+
+
+def evaluate_last(scene_name):
+
+    stats_map = read_last()
+    evaluate(stats_map, scene_name)
 
 
 def main():
@@ -394,4 +546,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    evaluate_last("scene1")

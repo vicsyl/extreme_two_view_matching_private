@@ -111,43 +111,6 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, save_s
     return tentative_matches
 
 
-def correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2, images_info, img_pair):
-    matches = [m for (idx, m) in enumerate(tentative_matches) if inlier_mask[idx ,0] == 1]
-    kps1_indices = [m.queryIdx for m in matches]
-    kps2_indices = [m.trainIdx for m in matches]
-
-    data_point1_ids, mins1 = get_kps_gt_id(kps1, kps1_indices, images_info[img_pair.img1], diff_threshold=100.0)
-    data_point2_ids, mins2 = get_kps_gt_id(kps2, kps2_indices, images_info[img_pair.img2], diff_threshold=100.0)
-
-    data_point_ids_matches = data_point1_ids[data_point1_ids == data_point2_ids]
-    unique = np.unique(data_point_ids_matches)
-    return unique
-
-
-def get_kps_gt_id(kps, kps_indices, image_entry: ImageEntry, diff_threshold=2.0):
-
-    kps_matches_points = [list(kps[kps_index].pt) for kps_index in kps_indices]
-    kps_matches_np = np.array(kps_matches_points)
-
-    image_data = image_entry.data
-    data_ids = image_entry.data_point_idxs
-
-    diff = np.ndarray(image_data.shape)
-    mins = np.ndarray(kps_matches_np.shape[0])
-    data_point_ids = -2 * np.ones(kps_matches_np.shape[0], dtype=np.int32)
-    for p_idx, match_point in enumerate(kps_matches_np):
-        diff[:, 0] = image_data[:, 0] - match_point[0]
-        diff[:, 1] = image_data[:, 1] - match_point[1]
-        diff_norm = np.linalg.norm(diff, axis=1)
-        min_index = np.argmin(diff_norm)
-        min_diff = diff_norm[min_index]
-        mins[p_idx] = min_diff
-        if min_diff < diff_threshold:
-            data_point_ids[p_idx] = data_ids[min_index]
-
-    return data_point_ids, mins
-
-
 def find_keypoints(scene_name, image_entry: ImageEntry, descriptor):
 
     img_path = 'original_dataset/{}/images/{}.jpg'.format(scene_name, image_entry.image_name)

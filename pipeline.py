@@ -79,7 +79,7 @@ class Pipeline:
 
     def start(self):
         self.log()
-        self.scene_info = SceneInfo.read_scene(self.scene_name, lazy=True)
+        self.scene_info = SceneInfo.read_scene(self.scene_name, lazy=False)
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
 
     def log(self):
@@ -199,7 +199,6 @@ class Pipeline:
                         show=True,
                         save=True)
 
-                save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
                 evaluate_matching(self.scene_info,
                                   E,
                                   image_data1.key_points,
@@ -208,7 +207,6 @@ class Pipeline:
                                   inlier_mask,
                                   img_pair,
                                   matching_out_dir,
-                                  save_suffix,
                                   stats_map)
 
                 processed_pairs = processed_pairs + 1
@@ -218,10 +216,10 @@ class Pipeline:
         with open(all_stats_file_name, "wb") as f:
             pickle.dump(stats_map, f)
 
-        with open(all_stats_file_name, "rb") as f:
-            stats_map_read = pickle.load(f)
-
-        print()
+        # with open(all_stats_file_name, "rb") as f:
+        #     stats_map_read = pickle.load(f)
+        #
+        # print()
 
 
 def append_timestamp(str):
