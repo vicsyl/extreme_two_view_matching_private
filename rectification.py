@@ -160,7 +160,8 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
         #plt.figure(dpi=600)
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(rectified)
-        if show:
+        show_loc = True
+        if show_loc:
             plt.show(block=False)
         plt.imshow(rectified_components)
         if show:
