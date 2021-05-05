@@ -24,13 +24,16 @@ def show_point_cloud(points_x, points_y, points_z):
     plt.show(block=False)
 
 
-def show_and_save_normal_clusters(normals, clustered_normals, normal_indices):
+def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices, show, save, out_dir, img_name):
+
+    if not show and not save:
+        return
 
     cluster_color_names = ["red", "green", "blue"]
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    plt.title("Normals clustering" + str(time.time()))
+    plt.title("Normals clustering: {}".format(img_name))
 
     ax.set_xlabel("x")
     ax.set_ylabel("z")
@@ -49,7 +52,6 @@ def show_and_save_normal_clusters(normals, clustered_normals, normal_indices):
         ax.plot((clustered_normals[i, 0]), (clustered_normals[i, 2]), (clustered_normals[i, 1]), 'o', color="black", markersize=5.0)
 
     ax.view_init(elev=10.0, azim=None)
-    #ax.view_init(elev=0.1, azim=-40)
 
     x_lim = [-1, 1]
     y_lim = [-1, 1]
@@ -58,13 +60,19 @@ def show_and_save_normal_clusters(normals, clustered_normals, normal_indices):
     ax.set_ylim(y_lim)
     ax.set_zlim(z_lim)
 
-    plt.show(block=False)
+    if show:
+        for i in range(clustered_normals.shape[0] - 1):
+            for j in range(i + 1, clustered_normals.shape[0]):
+                angle = np.arccos(np.dot(clustered_normals[i], clustered_normals[j]))
+                angle_degrees = 180 / math.pi * angle
+                print("angle between normal {} and {}: {} degrees".format(i, j, angle_degrees))
+        plt.show(block=False)
+    else:
+        plt.close()
 
-    for i in range(clustered_normals.shape[0] - 1):
-        for j in range(i + 1, clustered_normals.shape[0]):
-            angle = np.arccos(np.dot(clustered_normals[i], clustered_normals[j]))
-            angle_degrees = 180/math.pi * angle
-            print("angle between normal {} and {}: {} degrees".format(i, j, angle_degrees))
+    if save:
+        out_path = '{}/{}_point_cloud.jpg'.format(out_dir, img_name[:-4])
+        plt.savefig(out_path)
 
 
 def show_normals_components(normals, title, figsize=None):

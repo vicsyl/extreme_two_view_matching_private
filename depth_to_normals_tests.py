@@ -6,7 +6,7 @@ from config import Config
 
 from scene_info import read_cameras, CameraEntry
 from dataclasses import dataclass
-from depth_to_normals import compute_normals_convolution, compute_normals_from_svd
+from depth_to_normals import *
 
 from img_utils import show_normals_components
 from utils import read_depth_data
@@ -110,26 +110,28 @@ def test_depth_to_normals(old_implementation=True, impl="svd"):
 
         mask = torch.tensor([[0.5, 0, -0.5]]).float()
 
+        depth_data = read_depth_data(dsd.file_dir_and_name[1], dsd.file_dir_and_name[0])
+
         if impl == "svd":
-            depth, normals, clustered_normals, normal_indices = \
-                compute_normals_from_svd(dsd.camera,
-                                         dsd.file_dir_and_name[0],
-                                         dsd.file_dir_and_name[1],
-                                         save=True,
-                                         output_directory=dsd.file_dir_and_name[0],
-                                         )
+            normals = compute_normals_from_svd(dsd.camera,
+                                               depth_data,
+                                               output_directory=dsd.file_dir_and_name[0],
+                                               img_name=dsd.file_dir_and_name[1],
+                                               )
 
         else:
-            depth, normals, clustered_normals, normal_indices = \
-                compute_normals_convolution(dsd.camera,
-                                            dsd.file_dir_and_name[0],
-                                            dsd.file_dir_and_name[1],
-                                            save=True,
-                                            output_directory=dsd.file_dir_and_name[0],
-                                            override_mask=mask,
-                                            old_implementation=old_implementation
-                                            )
+            normals = compute_normals_convolution(dsd.camera,
+                                                  depth_data,
+                                                  output_directory=dsd.file_dir_and_name[0],
+                                                  img_name=dsd.file_dir_and_name[1],
+                                                  override_mask=mask,
+                                                  old_implementation=old_implementation
+                                                  )
 
+        clustered_normals, normal_indices = \
+            cluster_and_save_normals(normals,
+                                     depth_data_file_name=dsd.file_dir_and_name[1],
+                                     output_directory=dsd.file_dir_and_name[0])
 
         normals_diff = normals - dsd.plane[:3]
         show_normals_components(normals_diff, "difference from exact result", (30.0, 20.0))
@@ -139,7 +141,6 @@ def test_depth_to_normals(old_implementation=True, impl="svd"):
 
         normals_np = normals.numpy()[5:-5, 5:-5]
         diff = normals_np - exact
-
 
         maxima = np.max(normals_np, axis=(0, 1))
         minima = np.min(normals_np, axis=(0, 1))

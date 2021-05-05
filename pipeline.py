@@ -4,6 +4,8 @@ from datetime import datetime
 
 import cv2 as cv
 import pickle
+import traceback
+import sys
 
 from config import Config
 from connected_components import get_connected_components, show_components
@@ -20,8 +22,9 @@ from evaluation import *
 class Pipeline:
 
     scene_name = None
-    save_normals = False
     output_dir = None
+
+    show_save_normals = False
 
     chosen_depth_files = None
     sequential_files_limit = None
@@ -61,9 +64,7 @@ class Pipeline:
                 if k == "scene_name":
                     pipeline.scene_name = v
                 if k == "rectify":
-                    pipeline.rectify = v == "True"
-                elif k == "save_normals":
-                    pipeline.save_normals = v == "True"
+                    pipeline.rectify = v.lower() == "true"
                 elif k == "matching_difficulties_min":
                     matching_difficulties_min = int(v)
                 elif k == "matching_difficulties_max":
@@ -71,11 +72,13 @@ class Pipeline:
                 elif k == "matching_limit":
                     pipeline.matching_limit = int(v)
                 elif k == "planes_based_matching":
-                    pipeline.planes_based_matching = v == "True"
+                    pipeline.planes_based_matching = v.lower() == "true"
                 elif k == "feature_descriptor":
                     pipeline.feature_descriptor = feature_descriptors_str_map[v]
                 elif k == "output_dir_prefix":
                     pipeline.output_dir = append_timestamp(v)
+                elif k == "show_save_normals":
+                    pipeline.show_save_normals = v.lower() == "true"
 
         pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
 
@@ -86,6 +89,8 @@ class Pipeline:
         self.scene_info = SceneInfo.read_scene(self.scene_name, lazy=False)
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
         Config.set_rectify(self.rectify)
+        Config.config_map[Config.save_normals_in_img] = self.show_save_normals
+        Config.config_map[Config.show_normals_in_img] = self.show_save_normals
 
     def log(self):
         print("Pipeline config:")
@@ -109,7 +114,8 @@ class Pipeline:
 
         # depth => indices
         normals_output_directory = "{}/normals/{}".format(self.output_dir, img_name)
-        normals, normal_indices = compute_normals(self.scene_info, self.depth_input_dir, "{}.npy".format(img_name), self.save_normals, normals_output_directory)
+        depth_data_file_name = "{}.npy".format(img_name)
+        normals, normal_indices = compute_normals(self.scene_info, self.depth_input_dir, depth_data_file_name, normals_output_directory)
         # TODO - shouldn't the normals be persisted already with the connected components?
 
         # normal indices => cluster indices (maybe safe here?)
@@ -167,14 +173,20 @@ class Pipeline:
                 # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
                 try:
                     image_data1 = self.process_image(img_pair.img1)
-                except:
-                    print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img1, img_pair.img1, img_pair.img2))
+                except Exception as e:
+                    print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img1,
+                                                                                              img_pair.img1,
+                                                                                              img_pair.img2))
+                    print(traceback.format_exc(), file=sys.stderr)
                     continue
 
                 try:
                     image_data2 = self.process_image(img_pair.img2)
-                except:
-                    print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img2, img_pair.img1, img_pair.img2))
+                except Exception as e:
+                    print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img2,
+                                                                                              img_pair.img1,
+                                                                                              img_pair.img2))
+                    print(traceback.format_exc(), file=sys.stderr)
                     continue
 
                 Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
@@ -239,13 +251,6 @@ def main():
     Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
     pipeline = Pipeline.read_conf("config.txt")
-    # pipeline = Pipeline(scene_name="scene1",
-    #                     save_normals=True,
-    #                     matching_difficulties=list(range(2)),
-    #                     matching_limit=1,
-    #                     planes_based_matching=False,
-    #                     feature_descriptor=cv.SIFT_create(),
-    #                     output_dir=append_timestamp("work/pipeline_scene1"))
 
     pipeline.run_matching_pipeline()
 
