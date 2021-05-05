@@ -8,3 +8,4 @@ feature_descriptor = SIFT
 output_dir_prefix = work/pipeline_scene1
 rectify = True
 show_save_normals = False
+do_flann = False
