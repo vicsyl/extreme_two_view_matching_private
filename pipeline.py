@@ -80,7 +80,7 @@ class Pipeline:
                 elif k == "show_save_normals":
                     pipeline.show_save_normals = v.lower() == "true"
                 elif k == "do_flann":
-                    Config.config_map[Config.do_flann()] = v.lower() == "true"
+                    Config.config_map[Config.key_do_flann] = v.lower() == "true"
 
         pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
 
