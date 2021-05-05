@@ -204,8 +204,8 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
 class Stats:
     error_R: float
     error_T: float
-    src_tentative: np.ndarray
-    dst_tentative: np.ndarray
+    src_tentatives: np.ndarray
+    dst_tentatives: np.ndarray
     tentative_matches: int
     inliers: int
     all_features_1: int
@@ -280,8 +280,8 @@ class Stats:
 
         stats = Stats(error_R=error_R,
                       error_T=error_T,
-                      src_tentative=src_tentative,
-                      dst_tentative=dst_tentative,
+                      src_tentatives=src_tentative,
+                      dst_tentatives=dst_tentative,
                       tentative_matches=n_tentative_matches,
                       inliers=n_inliers,
                       all_features_1=n_all_features_1,
@@ -507,7 +507,7 @@ def evaluate(stats_map: dict, scene_info: SceneInfo):
         all_features_1.append(stats.all_features_1)
         all_features_2.append(stats.all_features_2)
 
-        checks = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, stats.src_tentative, stats.dst_tentative, x2_F_x1_thresholds)
+        checks = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, stats.src_tentatives, stats.dst_tentatives, x2_F_x1_thresholds)
         all_checks.append(checks)
 
         # matched_points_local = correctly_matched_point_for_image_pair(stats.src_pts_inliers,

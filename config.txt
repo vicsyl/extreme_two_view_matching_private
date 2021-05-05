@@ -1,7 +1,7 @@
 scene_name = scene1
 matching_difficulties_min = 0
 matching_difficulties_max = 1
-matching_limit = 3
+matching_limit = 5
 planes_based_matching = False
 # SIFT so far
 feature_descriptor = SIFT
