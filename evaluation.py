@@ -204,6 +204,8 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
 class Stats:
     error_R: float
     error_T: float
+    src_tentative: np.ndarray
+    dst_tentative: np.ndarray
     tentative_matches: int
     inliers: int
     all_features_1: int
@@ -257,8 +259,10 @@ class Stats:
     def save_parts(out_dir,
                    save_suffix,
                    E,
-                   src_pts_inliers,
-                   dst_pts_inliers,
+                   src_tentative,
+                   dst_tentative,
+                   src_inliers,
+                   dst_inliers,
                    error_R,
                    error_T,
                    n_tentative_matches,
@@ -269,20 +273,22 @@ class Stats:
 
         Path(out_dir).mkdir(parents=True, exist_ok=True)
         np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
-        np.savetxt("{}/src_pts_{}.txt".format(out_dir, save_suffix), src_pts_inliers, delimiter=',',
-                   fmt='%1.8f')
-        np.savetxt("{}/dst_pts_{}.txt".format(out_dir, save_suffix), dst_pts_inliers, delimiter=',',
-                   fmt='%1.8f')
+        np.savetxt("{}/src_inliers_{}.txt".format(out_dir, save_suffix), src_inliers, delimiter=',', fmt='%1.8f')
+        np.savetxt("{}/dst_inliers_{}.txt".format(out_dir, save_suffix), dst_inliers, delimiter=',', fmt='%1.8f')
+        np.savetxt("{}/src_tentative_{}.txt".format(out_dir, save_suffix), src_tentative, delimiter=',', fmt='%1.8f')
+        np.savetxt("{}/dst_tentative_{}.txt".format(out_dir, save_suffix), dst_tentative, delimiter=',', fmt='%1.8f')
 
         stats = Stats(error_R=error_R,
                       error_T=error_T,
+                      src_tentative=src_tentative,
+                      dst_tentative=dst_tentative,
                       tentative_matches=n_tentative_matches,
                       inliers=n_inliers,
                       all_features_1=n_all_features_1,
                       all_features_2=n_all_features_2,
                       E=E,
-                      src_pts_inliers=src_pts_inliers,
-                      dst_pts_inliers=dst_pts_inliers)
+                      src_pts_inliers=src_inliers,
+                      dst_pts_inliers=dst_inliers)
 
         stats.save_brief("{}/stats_{}.txt".format(out_dir, save_suffix))
 
@@ -315,6 +321,8 @@ def evaluate_matching(scene_info,
     stats = Stats.save_parts(out_dir,
                      save_suffix,
                      E,
+                     src_tentative,
+                     dst_tentative,
                      src_pts_inliers,
                      dst_pts_inliers,
                      error_R,
@@ -337,7 +345,7 @@ def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
     if limit is not None:
         dirs = dirs[0:limit]
 
-    flattened_img_pairs = [pair for diff in scene_info.img_pairs for pair in diff]
+    flattened_img_pairs = [pair for diff in scene_info.img_pairs_lists for pair in diff]
     img_pair_map = {"{}_{}".format(img_pair.img1, img_pair.img2): img_pair for img_pair in flattened_img_pairs}
 
     result_map = {}
@@ -374,6 +382,7 @@ def read_last():
     last_file = "{}/{}".format(gl[-1], "all.stats.pkl")
 
     with open(last_file, "rb") as f:
+        print("reading: {}".format(last_file))
         stats_map_read = pickle.load(f)
 
     return stats_map_read
@@ -405,6 +414,7 @@ def get_kps_gt_id(kps_matches_np, image_entry: ImageEntry, diff_threshold=2.0):
     return data_point_ids, mins
 
 
+# NOTE NOT USED, and probably won't be
 def correctly_matched_point_for_image_pair(kps_inliers1, kps_inliers2, images_info, img_pair):
 
     data_point1_ids, mins1 = get_kps_gt_id(kps_inliers1, images_info[img_pair.img1], diff_threshold=2.0)
@@ -423,6 +433,51 @@ def print_stats(stat_name: str, stat_in_list: list):
     print("average {}: {}".format(stat_name, np.sum(np_ar) / len(stat_in_list)))
 
 
+def vector_product_matrix(vec: np.ndarray):
+    return np.array([
+        [    0.0, -vec[2],  vec[1]],
+        [ vec[2],     0.0, -vec[0]],
+        [-vec[1],  vec[0],       0],
+    ])
+
+
+def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: ImagePairEntry, src_tentatives_2d, dst_tentatives_2d, thresholds):
+
+    # input: img pair -> imgs -> T1/2, R1/2 -> ground truth F
+    # input: tentatives (src, dst)
+
+    img_entry_1: ImageEntry = scene_info.img_info_map[img_pair.img1]
+    T1 = np.array(img_entry_1.t)
+    R1 = quaternions_to_R(img_entry_1.qs)
+    K1 = scene_info.get_img_K(img_pair.img1)
+    K1_inv = np.linalg.inv(K1)
+    src_tentative = np.ndarray((src_tentatives_2d.shape[0], 3))
+    src_tentative[:, :2] = src_tentatives_2d
+    src_tentative[:, 2] = 1.0
+
+    img_entry_2: ImageEntry = scene_info.img_info_map[img_pair.img2]
+    T2 = np.array(img_entry_2.t)
+    R2 = quaternions_to_R(img_entry_2.qs)
+    K2 = scene_info.get_img_K(img_pair.img2)
+    K2_inv = np.linalg.inv(K2)
+    dst_tentative = np.ndarray((dst_tentatives_2d.shape[0], 3))
+    dst_tentative[:, :2] = dst_tentatives_2d
+    dst_tentative[:, 2] = 1.0
+
+    F_ground_truth = K2_inv.T @ R2 @ vector_product_matrix(T2 - T1) @ R1.T @ K1_inv
+    F_x1 = F_ground_truth @ src_tentative.T
+    x2_F_x1 = dst_tentative[:, 0] * F_x1[0] + dst_tentative[:, 1] * F_x1[1] + dst_tentative[:, 2] * F_x1[2]
+
+    checks = np.zeros(3)
+    checks[0] = np.sum(np.abs(x2_F_x1) < thresholds[0])
+    checks[1] = np.sum(np.abs(x2_F_x1) < thresholds[1])
+    checks[2] = np.sum(np.abs(x2_F_x1) < thresholds[2])
+
+    #hist = np.histogram(np.abs(x2_F_x1), bins=100)
+
+    return checks
+
+
 def evaluate(stats_map: dict, scene_info: SceneInfo):
 
     l_entries = []
@@ -434,13 +489,16 @@ def evaluate(stats_map: dict, scene_info: SceneInfo):
     inliers = []
     all_features_1 = []
     all_features_2 = []
-    matched_points = []
+    #matched_points = []
+    all_checks = []
+    x2_F_x1_thresholds = np.array([0.05, 0.01, 0.005])
 
     for img_pair_str, stats in stats_map.items():
 
         n_entries += 1
-        img_pair_entry, diff = scene_info.find_img_pair(img_pair_str)
-        l_entries.append(str(img_pair_entry))
+        img_pair, diff = scene_info.find_img_pair(img_pair_str)
+
+        l_entries.append(str(img_pair))
 
         error_R.append(stats.error_R)
         error_T.append(stats.error_T)
@@ -449,11 +507,14 @@ def evaluate(stats_map: dict, scene_info: SceneInfo):
         all_features_1.append(stats.all_features_1)
         all_features_2.append(stats.all_features_2)
 
-        matched_points_local = correctly_matched_point_for_image_pair(stats.src_pts_inliers,
-                                                        stats.dst_pts_inliers,
-                                                        scene_info.img_info_map,
-                                                        img_pair_entry)
-        matched_points.append(matched_points_local.shape[0])
+        checks = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, stats.src_tentative, stats.dst_tentative, x2_F_x1_thresholds)
+        all_checks.append(checks)
+
+        # matched_points_local = correctly_matched_point_for_image_pair(stats.src_pts_inliers,
+        #                                                 stats.dst_pts_inliers,
+        #                                                 scene_info.img_info_map,
+        #                                                 img_pair)
+        # matched_points.append(matched_points_local.shape[0])
 
     print("Image entries (img name, difficulty)")
     print(",\n".join(l_entries))
@@ -465,7 +526,10 @@ def evaluate(stats_map: dict, scene_info: SceneInfo):
     print_stats("inliers", inliers)
     print_stats("all_features_1", all_features_1)
     print_stats("all_features_2", all_features_2)
-    print_stats("matched dataset image points", matched_points)
+
+    all_checks = np.array(all_checks)
+    all_checks_avgs = np.sum(all_checks, axis=0) / all_checks.shape[0]
+    print("F ground truth checks averages (for thresholds: {}): {}".format(x2_F_x1_thresholds, all_checks_avgs))
 
 
 def evaluate_last(scene_name):

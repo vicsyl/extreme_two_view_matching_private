@@ -425,13 +425,13 @@ def img_correspondences(scene_info: SceneInfo, output_dir, descriptor, normals_d
 
         print("Difficulty: {}".format(difficulty))
 
-        max_limit = len(scene_info.img_pairs[difficulty])
+        max_limit = len(scene_info.img_pairs_lists[difficulty])
         for i in range(max_limit):
 
             if limit is not None and processed_pairs >= limit:
                 break
 
-            img_pair: ImagePairEntry = scene_info.img_pairs[difficulty][i]
+            img_pair: ImagePairEntry = scene_info.img_pairs_lists[difficulty][i]
 
             out_dir = "work/{}/matching/{}/{}_{}".format(scene_info.name, output_dir, img_pair.img1, img_pair.img2)
             if os.path.isdir(out_dir) and not override_existing:

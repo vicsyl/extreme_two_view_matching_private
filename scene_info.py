@@ -61,7 +61,8 @@ class CameraEntry:
 @dataclass
 class SceneInfo:
 
-    img_pairs: list
+    img_pairs_lists: list
+    img_pairs_maps: list
     img_info_map: dict
     cameras: dict
     name: str
@@ -76,31 +77,32 @@ class SceneInfo:
         camera_id = self.img_info_map[img_name].camera_id
         return self.cameras[camera_id].get_K()
 
-    # FIXME very inefficient
     def find_img_pair(self, key):
-        for diff in range(len(self.img_pairs)):
-            for img_pair_entry in self.img_pairs[diff]:
-                key_img_pe = "{}_{}".format(img_pair_entry.img1, img_pair_entry.img2)
-                if key_img_pe == key:
-                    return img_pair_entry, diff
+        for diff in range(len(self.img_pairs_lists)):
+            if self.img_pairs_maps[diff].__contains__(key):
+                return self.img_pairs_maps[diff][key], diff
+            # for img_pair_entry in self.img_pairs_lists[diff]:
+            #     key_img_pe = "{}_{}".format(img_pair_entry.img1, img_pair_entry.img2)
+            #     if key_img_pe == key:
+            #         return img_pair_entry, diff
         return None
 
     @staticmethod
     def read_scene(scene_name, lazy=False):
         Timer.start_check_point("reading scene info")
         print("scene={}, lazy={}".format(scene_name, lazy))
-        img_pairs = read_image_pairs(scene_name)
+        img_pairs_lists, img_pairs_maps = read_image_pairs(scene_name)
         img_info_map = read_images(scene_name, lazy=lazy)
         cameras = read_cameras(scene_name)
         Timer.end_check_point("reading scene info")
-        return SceneInfo(img_pairs, img_info_map, cameras, scene_name)
+        return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name)
 
     def get_camera_from_img(self, img: str):
         return self.cameras[self.img_info_map[img].camera_id]
 
     def imgs_for_comparing_difficulty(self, difficulty, suffix=".npy"):
         interesting_imgs = set()
-        for img_pair in self.img_pairs[difficulty]:
+        for img_pair in self.img_pairs_lists[difficulty]:
             interesting_imgs.add(img_pair.img1 + suffix)
             interesting_imgs.add(img_pair.img2 + suffix)
         return sorted(list(interesting_imgs))
@@ -111,9 +113,11 @@ def read_image_pairs(scene):
     file_name = "original_dataset/{}/{}_image_pairs.txt".format(scene, scene)
     f = open(file_name, "r")
 
-    ret = [None] * 18
+    img_pairs_maps = [None] * 18
+    img_pairs_lists = [None] * 18
     for i in range(18):
-        ret[i] = []
+        img_pairs_maps[i] = {}
+        img_pairs_lists[i] = []
 
     for line in f:
         bits = line.split(" ")
@@ -121,9 +125,12 @@ def read_image_pairs(scene):
         img2 = bits[1].strip()[:-4]
         diff = int(bits[2])
         img_pair = ImagePairEntry(img1, img2, diff)
-        ret[img_pair.difficulty].append(img_pair)
 
-    return ret
+        img_pairs_lists[img_pair.difficulty].append(img_pair)
+        key = "{}_{}".format(img_pair.img1, img_pair.img2)
+        img_pairs_maps[img_pair.difficulty][key] = img_pair
+
+    return img_pairs_lists, img_pairs_maps
 
 
 def read_images(scene, lazy=False):
@@ -201,5 +208,5 @@ def read_cameras(scene):
 def test():
     cameras = read_cameras("scene1")
     images = read_images("scene1")
-    img_pairs = read_image_pairs("scene1")
+    img_pairs_lists, img_pairs_maps = read_image_pairs("scene1")
     print("cameras and images read")

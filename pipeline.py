@@ -161,7 +161,7 @@ class Pipeline:
             print("Difficulty: {}".format(difficulty))
 
             processed_pairs = 0
-            for img_pair in self.scene_info.img_pairs[difficulty]:
+            for img_pair in self.scene_info.img_pairs_lists[difficulty]:
                 if self.matching_limit is not None and processed_pairs >= self.matching_limit:
                     break
 
@@ -239,7 +239,7 @@ class Pipeline:
 
 def append_timestamp(str):
     now = datetime.now()
-    timestamp = now.strftime("%Y_%d_%m_%H_%M_%S_%f")
+    timestamp = now.strftime("%Y_%m_%d_%H_%M_%S_%f")
     return "{}_{}".format(str, timestamp)
 
 
