@@ -125,8 +125,7 @@ def read_depth_data(filename, directory, height=None, width=None):
 
     file_path = '{}/{}'.format(directory, filename)
     if not os.path.isfile(file_path):
-        print("ERROR: {} doesn't exist, skipping".format(file_path))
-        raise -1
+        raise Exception("ERROR: {} doesn't exist, skipping")
     depth_data_np = np.load(file_path).astype(np.float64)
     depth_data = torch.from_numpy(depth_data_np)
     depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])

@@ -6,6 +6,7 @@ import cv2 as cv
 import pickle
 import traceback
 import sys
+import torch
 
 from config import Config
 from connected_components import get_connected_components, show_components
@@ -87,6 +88,7 @@ class Pipeline:
         return pipeline
 
     def start(self):
+        print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
         self.log()
         self.scene_info = SceneInfo.read_scene(self.scene_name, lazy=False)
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
@@ -129,6 +131,9 @@ class Pipeline:
         # TODO if False, I can skip computing the normals !!!
         if Config.rectify():
 
+            matching_out_dir = "{}/matching".format(self.output_dir)
+            Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
+
             # get rectification
             kps, descs = get_rectified_keypoints(normals,
                                                  components_indices,
@@ -137,6 +142,7 @@ class Pipeline:
                                                  K,
                                                  descriptor=self.feature_descriptor,
                                                  img_name=img_name,
+                                                 out_dir=matching_out_dir,
                                                  show=self.show_rectification)
 
         else:
@@ -170,6 +176,7 @@ class Pipeline:
                 Timer.start_check_point("complete image pair matching")
 
                 matching_out_dir = "{}/matching".format(self.output_dir)
+                Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
 
                 # I might not need normals yet
                 # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
@@ -190,8 +197,6 @@ class Pipeline:
                                                                                               img_pair.img2))
                     print(traceback.format_exc(), file=sys.stderr)
                     continue
-
-                Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
 
                 if self.planes_based_matching:
                     # E, inlier_mask, src_pts, dst_pts, kps1, kps2, tentative_matches =

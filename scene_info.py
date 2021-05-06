@@ -88,7 +88,7 @@ class SceneInfo:
         return None
 
     @staticmethod
-    def read_scene(scene_name, lazy=False):
+    def read_scene(scene_name, lazy=True):
         Timer.start_check_point("reading scene info")
         print("scene={}, lazy={}".format(scene_name, lazy))
         img_pairs_lists, img_pairs_maps = read_image_pairs(scene_name)
