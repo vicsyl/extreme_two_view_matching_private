@@ -8,6 +8,7 @@ from resize import upsample_nearest_numpy
 from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix
 from scene_info import SceneInfo, read_cameras
 from connected_components import show_components, read_img_normals_info, get_connected_components
+from img_utils import show_or_close
 
 
 # refactor: just one
@@ -83,7 +84,8 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
     all_descs = None
     all_kps = []
 
-    components_in_colors = show_components(components_indices, valid_components_dict, actually_show=False)
+    # components_in_colors will be used for other visualizations
+    components_in_colors = show_components(components_indices, valid_components_dict, show=False)
 
     for component_index in valid_components_dict:
 
@@ -111,9 +113,6 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
         T_inv = np.linalg.inv(T)
 
         rectified = cv.warpPerspective(img, T, bounding_box)
-
-        rectified_components = components_in_colors.astype(np.float32) / 255
-        rectified_components = cv.warpPerspective(rectified_components, T, bounding_box)
 
         kps, descs = descriptor.detectAndCompute(rectified, None)
 
@@ -156,16 +155,16 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
             else:
                 all_descs = np.vstack((all_descs, descs))
 
-        #plt.figure()
-        #plt.figure(dpi=600)
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(rectified)
         show_loc = True
-        if show_loc:
-            plt.show(block=False)
+        show_or_close(show_loc)
+
+        rectified_components = components_in_colors.astype(np.float32) / 255
+        rectified_components = cv.warpPerspective(rectified_components, T, bounding_box)
         plt.imshow(rectified_components)
-        if show:
-            plt.show(block=False)
+        show_or_close(show)
+
         if out_dir is not None:
             path = "{}/rectified_{}_{}.jpg".format(out_dir, img_name, component_index)
             plt.savefig(path)

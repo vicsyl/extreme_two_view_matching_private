@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import glob
 from utils import Timer, identity_map_from_range_of_iter, merge_keys_for_same_value
 
-
 # original_input_dir - to scene info
 def read_img_normals_info(parent_dir, img_name_dir):
 
@@ -26,7 +25,7 @@ def read_img_normals_info(parent_dir, img_name_dir):
     return normals, normal_indices
 
 
-def show_components(cluster_indices, valid_component_dict, title=None, normals=None, actually_show=True):
+def show_components(cluster_indices, valid_component_dict, title=None, normals=None, show=True):
 
     colors = [
         [255, 0, 0],
@@ -56,7 +55,7 @@ def show_components(cluster_indices, valid_component_dict, title=None, normals=N
     for i, c_index in enumerate(valid_component_dict.keys()):
         cluster_colors[np.where(cluster_indices == c_index)] = colors[i % 9]
 
-    if actually_show:
+    if show:
         if title is not None:
             plt.title(title)
         elif normals is not None:

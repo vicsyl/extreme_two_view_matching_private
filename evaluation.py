@@ -496,7 +496,7 @@ def evaluate(stats_map: dict, scene_info: SceneInfo):
     for img_pair_str, stats in stats_map.items():
 
         n_entries += 1
-        img_pair, diff = scene_info.find_img_pair(img_pair_str)
+        img_pair, diff = scene_info.find_img_pair_from_key(img_pair_str)
 
         l_entries.append(str(img_pair))
 

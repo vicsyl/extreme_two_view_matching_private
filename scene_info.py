@@ -77,14 +77,17 @@ class SceneInfo:
         camera_id = self.img_info_map[img_name].camera_id
         return self.cameras[camera_id].get_K()
 
-    def find_img_pair(self, key):
+    @staticmethod
+    def get_key(img1_name: str, img2_name: str):
+        return "{}_{}".format(img1_name, img2_name)
+
+    def find_img_pair_from_imgs(self, img1_name, img2_name):
+        return self.find_img_pair_from_key(SceneInfo.get_key(img1_name, img2_name))
+
+    def find_img_pair_from_key(self, key):
         for diff in range(len(self.img_pairs_lists)):
             if self.img_pairs_maps[diff].__contains__(key):
                 return self.img_pairs_maps[diff][key], diff
-            # for img_pair_entry in self.img_pairs_lists[diff]:
-            #     key_img_pe = "{}_{}".format(img_pair_entry.img1, img_pair_entry.img2)
-            #     if key_img_pe == key:
-            #         return img_pair_entry, diff
         return None
 
     @staticmethod
@@ -133,7 +136,7 @@ def read_image_pairs(scene):
     return img_pairs_lists, img_pairs_maps
 
 
-def read_images(scene, lazy=False):
+def read_images(scene, lazy=True):
 
     file_name = "original_dataset/{}/0/images.txt".format(scene)
     f = open(file_name, "r")

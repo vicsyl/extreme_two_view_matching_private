@@ -24,6 +24,13 @@ def show_point_cloud(points_x, points_y, points_z):
     plt.show(block=False)
 
 
+def show_or_close(show):
+    if show:
+        plt.show(block=False)
+    else:
+        plt.close()
+
+
 def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices, show, save, out_dir, img_name):
 
     if not show and not save:
@@ -66,9 +73,8 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
                 angle = np.arccos(np.dot(clustered_normals[i], clustered_normals[j]))
                 angle_degrees = 180 / math.pi * angle
                 print("angle between normal {} and {}: {} degrees".format(i, j, angle_degrees))
-        plt.show(block=False)
-    else:
-        plt.close()
+
+    show_or_close(show)
 
     if save:
         out_path = '{}/{}_point_cloud.jpg'.format(out_dir, img_name[:-4])

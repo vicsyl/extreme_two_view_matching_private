@@ -1,3 +1,4 @@
+
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
@@ -6,6 +7,7 @@ import cv2 as cv
 import pickle
 import traceback
 import sys
+
 import torch
 
 from config import Config
@@ -16,7 +18,17 @@ from matching import match_images_and_keypoints, match_images_with_dominant_plan
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from scene_info import SceneInfo
 from utils import Timer
+from img_utils import show_or_close
 from evaluation import *
+
+import matplotlib.pyplot as plt
+
+
+def parse_list(list_str: str):
+    fields = list_str.split(",")
+    fields = filter(lambda x: x != "", map(lambda x: x.strip(), fields))
+    fields = list(fields)
+    return fields
 
 
 @dataclass
@@ -26,6 +38,7 @@ class Pipeline:
     output_dir = None
 
     show_save_normals = False
+    show_orig_image = True
 
     chosen_depth_files = None
     sequential_files_limit = None
@@ -35,9 +48,10 @@ class Pipeline:
 
     #matching
     feature_descriptor = None
-    matching_dir = None
+    #matching_dir = None
     matching_difficulties = None
     matching_limit = None
+    matching_pairs = None
 
     planes_based_matching = False
 
@@ -55,7 +69,7 @@ class Pipeline:
         with open(config_file_name) as f:
             for line in f:
 
-                if line.startswith("#"):
+                if line.strip().startswith("#"):
                     continue
 
                 k, v = line.partition("=")[::2]
@@ -82,6 +96,11 @@ class Pipeline:
                     pipeline.show_save_normals = v.lower() == "true"
                 elif k == "do_flann":
                     Config.config_map[Config.key_do_flann] = v.lower() == "true"
+                elif k == "image_pairs":
+                    pipeline.matching_pairs = parse_list(v)
+                elif k == "chosen_depth_files":
+                    pipeline.chosen_depth_files = parse_list(v)
+
 
         pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
 
@@ -90,8 +109,12 @@ class Pipeline:
     def start(self):
         print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
         self.log()
-        self.scene_info = SceneInfo.read_scene(self.scene_name, lazy=False)
+        self.scene_info = SceneInfo.read_scene(self.scene_name)
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
+
+        if self.matching_pairs is not None:
+            self.matching_difficulties = range(0, 18)
+
         Config.set_rectify(self.rectify)
         Config.config_map[Config.save_normals_in_img] = self.show_save_normals
         Config.config_map[Config.show_normals_in_img] = self.show_save_normals
@@ -114,6 +137,10 @@ class Pipeline:
         # input image & K
         img_file_path = self.scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path, None)
+        plt.figure()
+        plt.imshow(img)
+        show_or_close(self.show_orig_image)
+
         K = self.scene_info.get_img_K(img_name)
 
         # depth => indices
@@ -170,7 +197,15 @@ class Pipeline:
 
             processed_pairs = 0
             for img_pair in self.scene_info.img_pairs_lists[difficulty]:
+
+                key = SceneInfo.get_key(img_pair.img1, img_pair.img2)
+                if self.matching_pairs is not None and \
+                        key not in self.matching_pairs:
+                    print("key '{}' not in interesting pairs: {}".format(key, self.matching_pairs))
+                    continue
+
                 if self.matching_limit is not None and processed_pairs >= self.matching_limit:
+                    print("Reached matching limit of {} for difficulty {}".format(self.matching_limit, difficulty))
                     break
 
                 Timer.start_check_point("complete image pair matching")
@@ -259,6 +294,7 @@ def main():
 
     pipeline = Pipeline.read_conf("config.txt")
 
+    #pipeline.run_sequential_pipeline()
     pipeline.run_matching_pipeline()
 
     Timer.end()
