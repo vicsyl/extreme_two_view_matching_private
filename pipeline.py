@@ -9,6 +9,7 @@ import traceback
 import sys
 
 import torch
+import argparse
 
 from config import Config
 from connected_components import get_connected_components, show_components
@@ -58,7 +59,7 @@ class Pipeline:
     rectify = True
 
     @staticmethod
-    def read_conf(config_file_name: str):
+    def configure(config_file_name: str, args):
 
         feature_descriptors_str_map = {
             "SIFT": cv.SIFT_create(),
@@ -92,6 +93,8 @@ class Pipeline:
                     pipeline.feature_descriptor = feature_descriptors_str_map[v]
                 elif k == "output_dir_prefix":
                     pipeline.output_dir = append_timestamp(v)
+                elif k == "output_dir":
+                    pipeline.output_dir = v
                 elif k == "show_save_normals":
                     pipeline.show_save_normals = v.lower() == "true"
                 elif k == "do_flann":
@@ -103,6 +106,9 @@ class Pipeline:
 
 
         pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
+
+        if args.__contains__("output_dir"):
+            pipeline.output_dir = args.output_dir
 
         return pipeline
 
@@ -291,12 +297,16 @@ def append_timestamp(str):
 
 def main():
 
+    parser = argparse.ArgumentParser(prog='pipeline')
+    parser.add_argument('--output_dir', help='ouput dir')
+    args = parser.parse_args()
+
     Timer.start()
 
     Config.set_rectify(False)
     Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
-    pipeline = Pipeline.read_conf("config.txt")
+    pipeline = Pipeline.configure("config.txt", args)
 
     #pipeline.run_sequential_pipeline()
     pipeline.run_matching_pipeline()
