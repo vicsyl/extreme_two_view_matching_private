@@ -213,18 +213,17 @@ class Stats:
     src_pts_inliers: np.ndarray
     dst_pts_inliers: np.ndarray
     E: np.ndarray
+    normals1: np.ndarray
+    normals2: np.ndarray
 
     # can be made to a constructor?
-    @staticmethod
-    def read_from_dict(d):
-        E = d["E"]
-        src_pts_inliers = d["src_pts_inliers"]
-        dst_pts_inliers = d["dst_pts_inliers"]
-        stats = Stats.load_from_array(d["stats"])
-        stats.src_pts_inliers = src_pts_inliers
-        stats.dsrc_pts_inliers = dst_pts_inliers
-        stats.E = E
-        return stats
+    # @staticmethod
+    # def read_from_dict(d):
+    #     stats = Stats.load_from_array(d["stats"])
+    #     stats.src_pts_inliers = d["src_pts_inliers"]
+    #     stats.dsrc_pts_inliers = d["dst_pts_inliers"]
+    #     stats.E = d["E"]
+    #     return stats
 
     @staticmethod
     def read_from_file(file_path):
@@ -241,7 +240,9 @@ class Stats:
                      all_features_2=int(np_array[5]),
                      src_pts_inliers=None,
                      dst_pts_inliers=None,
-                     E=None)
+                     E=None,
+                     normals=None
+                     )
 
     @staticmethod
     def get_field_descs():
@@ -268,7 +269,9 @@ class Stats:
                    n_tentative_matches,
                    n_inliers,
                    n_all_features_1,
-                   n_all_features_2
+                   n_all_features_2,
+                   normals1,
+                   normals2,
                    ):
 
         Path(out_dir).mkdir(parents=True, exist_ok=True)
@@ -277,6 +280,8 @@ class Stats:
         np.savetxt("{}/dst_inliers_{}.txt".format(out_dir, save_suffix), dst_inliers, delimiter=',', fmt='%1.8f')
         np.savetxt("{}/src_tentative_{}.txt".format(out_dir, save_suffix), src_tentative, delimiter=',', fmt='%1.8f')
         np.savetxt("{}/dst_tentative_{}.txt".format(out_dir, save_suffix), dst_tentative, delimiter=',', fmt='%1.8f')
+        np.savetxt("{}/normals_1_{}.txt".format(out_dir, save_suffix), normals1, delimiter=',', fmt='%1.8f')
+        np.savetxt("{}/normals_2_{}.txt".format(out_dir, save_suffix), normals2, delimiter=',', fmt='%1.8f')
 
         stats = Stats(error_R=error_R,
                       error_T=error_T,
@@ -288,7 +293,10 @@ class Stats:
                       all_features_2=n_all_features_2,
                       E=E,
                       src_pts_inliers=src_inliers,
-                      dst_pts_inliers=dst_inliers)
+                      dst_pts_inliers=dst_inliers,
+                      normals1=normals1,
+                      normals2=normals2,
+                      )
 
         stats.save_brief("{}/stats_{}.txt".format(out_dir, save_suffix))
 
@@ -303,7 +311,9 @@ def evaluate_matching(scene_info,
                       inlier_mask,
                       img_pair,
                       out_dir,
-                      stats_map):
+                      stats_map,
+                      normals1,
+                      normals2):
 
     save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
@@ -319,18 +329,21 @@ def evaluate_matching(scene_info,
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
     stats = Stats.save_parts(out_dir,
-                     save_suffix,
-                     E,
-                     src_tentative,
-                     dst_tentative,
-                     src_pts_inliers,
-                     dst_pts_inliers,
-                     error_R,
-                     error_T,
-                     len(tentative_matches),
-                     inliers,
-                     len(kps1),
-                     len(kps2))
+                             save_suffix,
+                             E,
+                             src_tentative,
+                             dst_tentative,
+                             src_pts_inliers,
+                             dst_pts_inliers,
+                             error_R,
+                             error_T,
+                             len(tentative_matches),
+                             inliers,
+                             len(kps1),
+                             len(kps2),
+                             normals1,
+                             normals2,
+                             )
 
     key = "{}_{}".format(img_pair.img1, img_pair.img2)
     #stats_map[key] = inner_map
@@ -646,6 +659,6 @@ def main():
 
 if __name__ == "__main__":
 
-    evaluate_file("scene1", "all.stats.pkl")
+    evaluate_file("scene1", "work/pipeline_scene1_2021_05_12_18_49_55_115656/all.stats.pkl")
 
     #evaluate_last("scene1")

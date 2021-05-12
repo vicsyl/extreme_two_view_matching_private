@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import spherical_kmeans
 from pathlib import Path
 from clusters_map import clusters_map
+from sky_filter import get_nonsky_mask
 
 
 """
@@ -234,7 +235,9 @@ def cluster_and_save_normals(normals,
                              depth_data_file_name,
                              output_directory,
                              depth_data=None,
-                             angle_threshold=4*math.pi/9):
+                             angle_threshold=4*math.pi/9,
+                             filter_mask=None,
+                             ):
 
     if clusters_map.__contains__(depth_data_file_name[:-4]):
         n_clusters = clusters_map[depth_data_file_name[:-4]]
@@ -249,24 +252,20 @@ def cluster_and_save_normals(normals,
     minus_z_direction = torch.zeros(normals.shape)
     minus_z_direction[:, :, 2] = -1.0
 
-    # TODO remove this!!
     # dot_product = torch.sum(normals * minus_z_direction, dim=-1)
     # threshold = math.cos(angle_threshold)
     # filtered = dot_product >= threshold #, True, False)
     # TWEAK - enable all
-    filtered = torch.where(normals[:, :, 0] < 2, 1, 0)
 
-    # naive sky filtering
-    if depth_data is not None:
-        depth_factor = 0.2
-        mn = torch.min(depth_data)
-        mx = torch.max(depth_data)
-        filtered2 = depth_data[0, 0] <= mn + depth_factor * (mx - mn)
-        filtered = torch.logical_and(filtered, filtered2)
+    if filter_mask is None:
+        # only ones
+        filter_mask = torch.ones(normals.shape[:2])
+    elif isinstance(filter_mask, np.ndarray):
+        filter_mask = torch.from_numpy(filter_mask)
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices = spherical_kmeans.kmeans(normals, filtered, n_clusters)
+    cluster_repr_normal, normal_indices = spherical_kmeans.kmeans(normals, filter_mask, n_clusters)
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
     cluster_repr_normal_np = cluster_repr_normal.numpy()
@@ -324,7 +323,15 @@ def compute_normals(scene: SceneInfo,
     else:
         normals = compute_normals_convolution(camera, depth_data, output_directory, depth_data_file_name, old_implementation=old_impl)
 
-    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals, depth_data_file_name, output_directory, depth_data=depth_data)
+    img_file_path = scene.get_img_file_path(img_name)
+    img = cv.imread(img_file_path, None)
+    filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+
+    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals,
+                                                                       depth_data_file_name,
+                                                                       output_directory,
+                                                                       depth_data=depth_data,
+                                                                       filter_mask=filter_mask)
     return clustered_normals_np, normal_indices_np
 
 
@@ -516,7 +523,7 @@ def main():
     interesting_files = ["frame_0000000015_4.npy"]
 
     scene_name = "scene1"
-    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=20, interesting_files=None)
+    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=20, interesting_files=interesting_files)
 
     scene_info = SceneInfo.read_scene(scene_name, lazy=True)
 

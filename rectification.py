@@ -115,7 +115,7 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
         else:
             print("angle ok")
 
-        R = get_rectification_rotation(normals)
+        R = get_rectification_rotation(normals[valid_components_dict[component_index]])
 
         T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
         #TODO this is too defensive (and wrong) I think, I can warp only the plane

@@ -268,7 +268,10 @@ class Pipeline:
                                   inlier_mask,
                                   img_pair,
                                   matching_out_dir,
-                                  stats_map)
+                                  stats_map,
+                                  image_data1.normals,
+                                  image_data2.normals,
+                                  )
 
                 processed_pairs = processed_pairs + 1
                 Timer.end_check_point("complete image pair matching")

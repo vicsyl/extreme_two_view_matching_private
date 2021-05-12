@@ -15,7 +15,8 @@ angle_distance = 2 * math.asin(distance_threshold / 2)
 #print("angle distance in rad used for k_means in radians: {}".format(angle_distance))
 #print("the same in degrees: {}".format(angle_distance / math.pi * 180.0))
 
-def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
+
+def kmeans(normals: torch.Tensor, filter_mask, clusters, max_iter=20):
     """
     :param normals: torch: w,h,3 (may add b)
     :return:
@@ -34,7 +35,7 @@ def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
         diff_norm = torch.norm(diffs, dim=3)
         mins = torch.min(diff_norm, dim=0, keepdim=True)
         arg_mins = mins[1].squeeze(0)
-        filtered_arg_mins = torch.where(filter, arg_mins, 3)
+        filtered_arg_mins = torch.where(filter_mask, arg_mins, 3)
 
         if old_arg_mins is not None:
             changes = old_arg_mins[old_arg_mins != filtered_arg_mins].shape[0]
@@ -53,7 +54,7 @@ def kmeans(normals: torch.Tensor, filter, clusters, max_iter=20):
     diff_norm = torch.norm(diffs, dim=3)
     mins = torch.min(diff_norm, dim=0, keepdim=True)
     arg_mins = mins[1].squeeze(0)
-    filtered_arg_mins = torch.where(filter == 1, arg_mins, 3)
+    filtered_arg_mins = torch.where(filter_mask == 1, arg_mins, 3)
     mins = mins[0].squeeze(0)
 
     arg_mins = torch.where(mins < distance_threshold, filtered_arg_mins, 3)

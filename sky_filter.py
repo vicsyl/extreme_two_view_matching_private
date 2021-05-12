@@ -3,10 +3,11 @@ import torchvision as tv
 import numpy as np
 
 from mit_semseg.models import ModelBuilder, SegmentationModule
+
 from PIL import Image
 
 
-def get_nonsky_mask(np_image):
+def get_nonsky_mask(np_image, height, width):
     net_encoder = ModelBuilder.build_encoder(
         arch='resnet18dilated',
         fc_dim=512,
@@ -22,18 +23,19 @@ def get_nonsky_mask(np_image):
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
     segmentation_module.eval()
     semseg_model = segmentation_module
-    semseg_model = semseg_model.cuda()
+    #semseg_model = semseg_model.cuda()
     pil_to_tensor = tv.transforms.Compose([
-        tv.transforms.Resize((512, 384)),
+        # TODO resiz
+        tv.transforms.Resize((height, width)),
         tv.transforms.ToTensor(),
         tv.transforms.Normalize(
             mean=[0.485, 0.456, 0.406],  # These are RGB mean+std values
             std=[0.229, 0.224, 0.225])  # across a large photo dataset.
     ])
-    #pil_image = Image.open(fname).convert('RGB')
-    #img_original = np.array(pil_image)
-    img_data = pil_to_tensor(np_image)
-    singleton_batch = {'img_data': img_data[None].cuda()}
+    PIL_image = Image.fromarray(np.uint8(np_image)).convert('RGB')
+    img_data = pil_to_tensor(PIL_image)
+    #singleton_batch = {'img_data': img_data[None].cuda()}
+    singleton_batch = {'img_data': img_data[None]}
     output_size = img_data.shape[1:]
     # Run the segmentation at the highest resolution.
     with torch.no_grad():
@@ -43,4 +45,3 @@ def get_nonsky_mask(np_image):
         pred = pred.detach().cpu()[0].numpy()
         nonsky_mask = pred != 2
     return nonsky_mask
-
