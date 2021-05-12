@@ -539,6 +539,29 @@ def evaluate_last(scene_name):
     evaluate(stats_map, scene_info)
 
 
+def evaluate_file(scene_name, file_name):
+
+    scene_info = SceneInfo.read_scene(scene_name)
+    with open(file_name, "rb") as f:
+        print("reading: {}".format(file_name))
+        stats_map = pickle.load(f)
+
+
+    #items_in_list = list(stats_map.items())
+    val = sorted(stats_map.items(), key=lambda key_value: key_value[1].error_R)
+    vals = list(map(lambda v: v[1].error_R, val))
+    vals1 = np.array(vals)
+    hist1 = np.histogram(vals1)
+    avg1 = np.average(vals1)
+
+    vals2 = np.array(list(filter(lambda v: v != np.pi, vals)))
+    hist2 = np.histogram(vals1)
+    avg2 = np.average(vals2)
+
+    print()
+    #evaluate(stats_map_read, scene_info)
+
+
 def main():
     start = time.time()
 
@@ -622,4 +645,7 @@ def main():
 
 
 if __name__ == "__main__":
-    evaluate_last("scene1")
+
+    evaluate_file("scene1", "all.stats.pkl")
+
+    #evaluate_last("scene1")

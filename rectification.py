@@ -4,63 +4,78 @@ import os
 import cv2 as cv
 import matplotlib.pyplot as plt
 import torch
+from pathlib import Path
 from resize import upsample_nearest_numpy
 from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix
 from scene_info import SceneInfo, read_cameras
 from connected_components import show_components, read_img_normals_info, get_connected_components
 from img_utils import show_or_close
+from depth_to_normals import compute_normals
+from config import Config
+#from matching import rich_split_points, find_correspondences, draw_matches, find_and_draw_homography, apply_inliers_on_list
 
 
-# refactor: just one
-def get_rectification_rotations(normals):
+def get_rectification_rotation(normal):
 
     # now the normals will be "from" me, "inside" the surfaces
-    normals = -normals
+    normal = -normal
 
     z = np.array([0.0, 0.0, 1.0])
-    Rs = []
 
     # this handles the case when there is only one dominating plane
-    if len(normals.shape) == 1:
-        normals = normals.reshape(1, -1)
-    for _, normal in enumerate(normals):
-        assert normal[2] > 0
-        rotation_vector = np.cross(normal, z)
-        rotation_vector_norm = sin_theta = np.linalg.norm(rotation_vector)
-        unit_rotation_vector = rotation_vector / rotation_vector_norm
-        theta = math.asin(sin_theta)
 
-        R = get_rotation_matrix(unit_rotation_vector, theta)
-        det = np.linalg.det(R)
-        assert math.fabs(det - 1.0) < 0.0001
-        Rs.append(R)
+    assert normal[2] > 0
+    rotation_vector = np.cross(normal, z)
+    rotation_vector_norm = sin_theta = np.linalg.norm(rotation_vector)
+    unit_rotation_vector = rotation_vector / rotation_vector_norm
+    theta = math.asin(sin_theta)
 
-    return Rs
+    R = get_rotation_matrix(unit_rotation_vector, theta)
+    det = np.linalg.det(R)
+    assert math.fabs(det - 1.0) < 0.0001
+    return R
 
 
 def add_third_row(column_vecs):
     return np.vstack((column_vecs, np.ones(column_vecs.shape[1])))
 
 
-def get_perspective_transform(R, K, K_inv, component_indices, index):
+def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
 
-    coords = np.where(component_indices == index)
-    coords = np.array([coords[1], coords[0]])
-    coords = add_third_row(coords)
+    unscaled = True
+    while unscaled:
 
-    P = K @ R @ K_inv
+        coords = np.where(component_indices == index)
+        coords = np.array([coords[1], coords[0]])
+        coords = add_third_row(coords)
 
-    new_coords = P @ coords
-    new_coords /= new_coords[2, :]
+        P = K @ R @ K_inv
+        if scale != 1.0:
+            unscaled = False
+            #P[:2, :] *= scale
 
-    min_row = min(new_coords[1])
-    max_row = max(new_coords[1])
-    min_col = min(new_coords[0])
-    max_col = max(new_coords[0])
+        new_coords = P @ coords
+        new_coords = new_coords / new_coords[2, :]
+        #new_coords[2] = 1.0
 
-    dst = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]])
-    dst = np.transpose(dst)
-    dst = add_third_row(dst)
+        min_row = min(new_coords[1])
+        max_row = max(new_coords[1])
+        min_col = min(new_coords[0])
+        max_col = max(new_coords[0])
+
+        dst = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]])
+        dst = np.transpose(dst)
+        dst = add_third_row(dst)
+
+        if unscaled:
+            new_bb_size = (max_row - min_row) * (max_col - min_col)
+            # len(coords) * factor(=1.3) = new_bb
+            scale = np.sqrt((coords.shape[1] * 2.0) / new_bb_size)
+            if scale == 1.0:
+                unscaled = False
+                break
+
+
 
     translate_vec_new = (-np.min(dst[0]), -np.min(dst[1]))
     translate_matrix_new = np.array([
@@ -75,11 +90,10 @@ def get_perspective_transform(R, K, K_inv, component_indices, index):
 
     return P, bounding_box_new
 
-
+# FIXME: keypoints not belonging to any component are simply disregarded
 def get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_dir=None, show=False):
 
     K_inv = np.linalg.inv(K)
-    Rs = get_rectification_rotations(normals)
 
     all_descs = None
     all_kps = []
@@ -101,8 +115,7 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
         else:
             print("angle ok")
 
-
-        R = Rs[normal_index]
+        R = get_rectification_rotation(normals)
 
         T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
         #TODO this is too defensive (and wrong) I think, I can warp only the plane
@@ -157,8 +170,7 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
 
         plt.title("normal {}".format(normals[normal_index]))
         plt.imshow(rectified)
-        show_loc = True
-        show_or_close(show_loc)
+        show_or_close(show)
 
         rectified_components = components_in_colors.astype(np.float32) / 255
         rectified_components = cv.warpPerspective(rectified_components, T, bounding_box)
@@ -248,15 +260,151 @@ def show_rectifications(scene_info: SceneInfo, normals_parent_dir, original_inpu
                                 show=True)
 
 
-if __name__ == "__main__":
+def play_with_rectification(scene_info: SceneInfo, normals_parent_dir, original_input_dir, limit, interesting_dirs=None):
+
+    if interesting_dirs is not None:
+        dirs = interesting_dirs
+    else:
+        dirs = [dirname for dirname in sorted(os.listdir(normals_parent_dir)) if os.path.isdir("{}/{}".format(normals_parent_dir, dirname))]
+        dirs = sorted(dirs)
+        if limit is not None:
+            dirs = dirs[0:limit]
+
+    if len(dirs) == 0:
+        print("WARNING: no normals data!")
+
+    for img_name in dirs:
+        print("Processing: {}".format(img_name))
+
+        img_file_path = '{}/{}.jpg'.format(original_input_dir, img_name)
+        img = cv.imread(img_file_path, None)
+
+        normals, normal_indices = read_img_normals_info(normals_parent_dir, img_name)
+        if normals is None:
+            print("depth data for img_name is probably missing, skipping")
+            continue
+
+        show_domponents = False
+        if show_domponents:
+            show_components(normal_indices, identity_map_from_range_of_iter(normals), normals)
+
+        # manual "extension" point
+        # normals = np.array(
+        #     [[ 0.33717412, -0.30356583, -0.89115733],
+        #      [-0.68118596, -0.23305716, -0.6940245 ]]
+        # )
+        # normals = np.array(
+        #     [
+        #      [ 0.33717412, -0.30356583, -0.89115733],
+        #      [-0.91, -0.25, -0.31]],
+        # )
+        # for i in range(len(normals)):
+        #     norm = np.linalg.norm(normals[i])
+        #     normals[i] /= norm
+        #     print("normalized: {}".format(normals[i]))
+
+        normal_indices = possibly_upsample_normals(img, normal_indices)
+        K = scene_info.get_img_K(img_name)
+        components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
+
+        all_kps, all_descs = get_rectified_keypoints(normals,
+                                components_indices,
+                                valid_components_dict,
+                                img,
+                                K,
+                                descriptor=cv.SIFT_create(),
+                                img_name=img_name,
+                                show=True)
+
+
+def play_main():
 
     Timer.start()
 
-    #interesting_dirs = ["frame_0000000145_2"]
-    interesting_dirs = ["frame_0000000015_4"]
-
-    scene_info = SceneInfo.read_scene("scene1", lazy=True)
-
-    show_rectifications(scene_info, "work/scene1/normals/svd", "original_dataset/scene1/images", limit=10, interesting_dirs=None)
+    # interesting_files = interests
+    #
+    # scene_info = SceneInfo.read_scene("scene1", lazy=True)
+    #
+    # play_iterate(scene_info, "original_dataset/scene1/images", limit=20, interesting_files=interesting_files)
 
     Timer.end()
+
+
+interests = [
+    # "frame_0000001670_1.jpg",
+    # "frame_0000000705_3.jpg",
+    "frame_0000000535_3.jpg",
+    "frame_0000000450_3.jpg",
+    # "frame_0000000910_3.jpg",
+    # "frame_0000000870_4.jpg",
+    # "frame_0000002185_1.jpg",
+    # "frame_0000000460_4.jpg",
+    # "frame_0000000165_1.jpg",
+    # "frame_0000000335_1.jpg",
+    # "frame_0000000355_1.jpg",
+    # "frame_0000000250_1.jpg",
+
+]
+
+pairs_int_files = interesting_dirs = [
+    # "frame_0000001535_4.jpg",
+    # "frame_0000000305_1.jpg",
+    # "frame_0000001135_4.jpg",
+    # "frame_0000001150_4.jpg",
+    # "frame_0000000785_2.jpg",
+    # "frame_0000000710_2.jpg",
+    # "frame_0000000155_4.jpg",
+    # "frame_0000002375_1.jpg",
+    # "frame_0000000535_3.jpg",
+    # "frame_0000000450_3.jpg",
+    # "frame_0000000895_4.jpg",
+    # "frame_0000000610_2.jpg",
+    # "frame_0000000225_3.jpg",
+    # "frame_0000000265_4.jpg",
+    # "frame_0000000105_2.jpg",
+    # "frame_0000000365_3.jpg",
+    # "frame_0000001785_3.jpg",
+    # "frame_0000000125_1.jpg",
+    # "frame_0000000910_3.jpg",
+    # "frame_0000000870_4.jpg",
+    # "frame_0000002230_1.jpg",
+    # "frame_0000000320_3.jpg",
+    # "frame_0000000315_3.jpg",
+    # "frame_0000000085_4.jpg",
+    # "frame_0000002070_1.jpg",
+    # "frame_0000000055_2.jpg",
+    # "frame_0000001670_1.jpg",
+    # "frame_0000000705_3.jpg",
+    "frame_0000000345_1.jpg",
+    "frame_0000001430_4.jpg",
+    "frame_0000002185_1.jpg",
+    "frame_0000000460_4.jpg",
+    "frame_0000001175_3.jpg",
+    "frame_0000001040_4.jpg",
+    "frame_0000000165_1.jpg",
+    "frame_0000000335_1.jpg",
+    "frame_0000001585_4.jpg",
+    "frame_0000001435_4.jpg",
+    "frame_0000000110_4.jpg",
+    "frame_0000000130_3.jpg",
+    "frame_0000000445_2.jpg",
+    "frame_0000000755_3.jpg",
+    "frame_0000000355_1.jpg",
+    "frame_0000000250_1.jpg",
+    ]
+
+if __name__ == "__main__":
+
+    play_main()
+
+    # Timer.start()
+    #
+    # #interesting_dirs = ["frame_0000000145_2"]
+    # interesting_dirs = ["frame_0000000015_4"]
+    #
+    # scene_info = SceneInfo.read_scene("scene1", lazy=True)
+    #
+    # show_rectifications(scene_info, "work/scene1/normals/svd", "original_dataset/scene1/images", limit=1, interesting_dirs=None)
+    #
+    # Timer.end()
+

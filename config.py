@@ -1,3 +1,4 @@
+import cv2 as cv
 
 class Config:
 
@@ -13,6 +14,7 @@ class Config:
     svd_smoothing_sigma = 1.33
     svd_weighted = True
     svd_weighted_sigma = 0.8
+    rectification_interpolation_key = "rectification_interpolation_key"
 
     # window size
 
@@ -23,6 +25,7 @@ class Config:
     config_map[key_planes_based_matching_merge_components] = True
     config_map[show_normals_in_img] = True
     config_map[save_normals_in_img] = True
+    config_map[rectification_interpolation_key] = cv.INTER_LINEAR
 
     @staticmethod
     def log():

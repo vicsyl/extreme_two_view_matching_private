@@ -138,6 +138,7 @@ class Pipeline:
         img_file_path = self.scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path, None)
         plt.figure()
+        plt.title(img_name)
         plt.imshow(img)
         show_or_close(self.show_orig_image)
 

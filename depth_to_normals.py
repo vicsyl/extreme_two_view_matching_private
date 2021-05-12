@@ -183,6 +183,7 @@ def show_or_save_normals_components(normals, out_dir, img_name, title, show=None
                 ax.imshow(img[:, :, index])
             plt.show(block=False)
         if save:
+            assert out_dir is not None
             Path(out_dir).mkdir(parents=True, exist_ok=True)
             file_path = "{}/{}.jpg".format(out_dir, img_name[:-4])
             plt.savefig(file_path)
@@ -247,11 +248,13 @@ def cluster_and_save_normals(normals,
 
     minus_z_direction = torch.zeros(normals.shape)
     minus_z_direction[:, :, 2] = -1.0
-    dot_product = torch.sum(normals * minus_z_direction, dim=-1)
-    threshold = math.cos(angle_threshold)
-    filtered = dot_product >= threshold #, True, False)
+
+    # TODO remove this!!
+    # dot_product = torch.sum(normals * minus_z_direction, dim=-1)
+    # threshold = math.cos(angle_threshold)
+    # filtered = dot_product >= threshold #, True, False)
     # TWEAK - enable all
-    #filtered = torch.where(dot_product >= -100, 1, 0)
+    filtered = torch.where(normals[:, :, 0] < 2, 1, 0)
 
     # naive sky filtering
     if depth_data is not None:

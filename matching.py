@@ -3,12 +3,15 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from connected_components import get_connected_components
+from connected_components import get_connected_components, show_components
 from utils import Timer, merge_keys_for_same_value
 from config import Config
 from image_data import ImageData
 from copy import deepcopy, copy
 import itertools
+
+from img_utils import show_or_close
+from depth_to_normals import compute_normals
 
 from rectification import read_img_normals_info, get_rectified_keypoints, possibly_upsample_normals
 from pathlib import Path
@@ -80,30 +83,59 @@ def rich_split_points(tentative_matches, kps1, dsc1, kps2, dsc2):
     return src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc
 
 
-def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, save_suffix="", ratio_thresh=0.8, show=True, save=True):
+def get_simple_matches(knn_matches, ratio_thresh):
+    return [m for m, n in knn_matches if m.distance < ratio_thresh * n.distance]
 
+
+def get_simple_cross_checked_matches(knn_matches, ratio_thresh):
+
+    tentative_matches = []
+    tentative_matches_dict = {}
+    for m, n in knn_matches:
+        if m.distance < ratio_thresh * n.distance:
+            if not tentative_matches_dict.__contains__(m.trainIdx):
+                tentative_matches_dict[m.trainIdx] = []
+            tentative_matches_dict[m.trainIdx].append(m)
+
+    # simple cross check without ratio test
+    for key, values in tentative_matches_dict.items():
+        min_value = None
+        for value in values:
+            if min_value is None or value.distance < min_value.distance:
+                min_value = value
+        tentative_matches.append(value)
+    return tentative_matches
+
+
+def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, save_suffix=None, ratio_thresh=0.8, show=True, save=True):
+
+    crossCheck = False
     if Config.do_flann():
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=4)
-        search_params = dict(checks=128)
+        search_params = dict(checks=128, crossCheck=crossCheck)
         matcher = cv.FlannBasedMatcher(index_params, search_params)
     else:
-        matcher = cv.BFMatcher()
+        matcher = cv.BFMatcher(crossCheck=crossCheck)
 
+    assert descs1 is not None and len(descs1) != 0
+    assert descs2 is not None and len(descs2) != 0
     knn_matches = matcher.knnMatch(descs1, descs2, 2)
 
-    tentative_matches = []
-    for m, n in knn_matches:
-        if m.distance < ratio_thresh * n.distance:
-            tentative_matches.append(m)
+    tentative_matches = get_simple_matches(knn_matches, ratio_thresh)
+    # TODO to not end up with one-to-many relationship
+    #tentative_matches = get_simple_cross_checked_matches(knn_matches, ratio_thresh)
+    print("tentative_matches: {}".format(len(tentative_matches)))
 
     if show or save:
         tentative_matches_in_singleton_list = [[m] for m in tentative_matches]
         img3 = cv.drawMatchesKnn(img1, kps1, img2, kps2, tentative_matches_in_singleton_list, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 10))
         ax.set_aspect("auto")
         plt.imshow(img3)
         if save:
+            assert out_dir is not None
+            assert save_suffix is not None
             plt.savefig("{}/tentative_{}.jpg".format(out_dir, save_suffix))
         if show:
             plt.show(block=False)
@@ -119,38 +151,6 @@ def find_keypoints(scene_name, image_entry: ImageEntry, descriptor):
         return None, None
     kps, descs = descriptor.detectAndCompute(img, None)
     return kps, descs
-
-
-def find_keypoints_match_with_data(scene_name, image_entry: ImageEntry, descriptor, diff_threshold):
-
-    kps, descs = find_keypoints(scene_name, image_entry, descriptor)
-    if kps is None:
-        return None
-    kps_indices = list(range(len(kps)))
-
-    data_point_ids, mins = get_kps_gt_id(kps, kps_indices, image_entry, diff_threshold=diff_threshold)
-    # FIXME - still need to distinguish between indices -1!!!
-    data_point_ids = data_point_ids[data_point_ids != -2]
-    return data_point_ids
-
-
-def keypoints_match_with_data(scene_name, diff_threshold, descriptor=cv.SIFT_create(), limit=None):
-
-    images_info = read_images(scene_name)
-
-    existent_ids = 0
-    for idx, image_entry_key in enumerate(images_info):
-        image_entry = images_info[image_entry_key]
-        # FIXME - still need to distinguish between indices -1!!!
-        data_point_ids = find_keypoints_match_with_data(scene_name, image_entry, descriptor, diff_threshold)
-        if data_point_ids is None:
-            print("Image: {} doesn't exist!!!".format(image_entry.image_name))
-        else:
-            all_points = len(image_entry.data)
-            print("Image: {}, points matches:{}/{}".format(image_entry.image_name, len(data_point_ids), all_points))
-            existent_ids = existent_ids + 1
-            if limit is not None and existent_ids == limit:
-                break
 
 
 def get_kts_desc_normal_list(image_data: ImageData, merge_components: bool):
@@ -214,9 +214,9 @@ def find_and_draw_homography(img1, kps1, descs1, img2, kps2, descs2):
     src_dsc = apply_inliers_on_list(src_dsc, inlier_mask)
     dst_kps = apply_inliers_on_list(dst_kps, inlier_mask)
     dst_dsc = apply_inliers_on_list(dst_dsc, inlier_mask)
-    tentative_matches = apply_inliers_on_list(tentative_matches, inlier_mask)
+    matches = apply_inliers_on_list(tentative_matches, inlier_mask)
 
-    return H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc
+    return H, matches, src_kps, src_dsc, dst_kps, dst_dsc
 
 
 def match_images_with_dominant_planes(image_data1: ImageData, image_data2: ImageData, images_info, img_pair, out_dir, show: bool, save: bool):
@@ -233,13 +233,11 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
             kps1, desc1, components1, normal_index1 = kpts_desc_list1[ix1]
             kps2, desc2, components2, normal_index2 = kpts_desc_list2[ix2]
             print("matching component/normal {} from 1st image against {} component/normal from 2nd image".format(ix1, ix2))
-            # if len(kps1) < 4:
-            #     print()
             try:
-                H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc = find_and_draw_homography(image_data1.img, kps1, desc1, image_data2.img, kps2, desc2)
+                H, matches, src_kps, src_dsc, dst_kps, dst_dsc = find_and_draw_homography(image_data1.img, kps1, desc1, image_data2.img, kps2, desc2)
             except:
                 print("Handle me!")
-            homography_matching_dict[(ix1, ix2)] = (H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc)
+            homography_matching_dict[(ix1, ix2)] = (H, matches, src_kps, src_dsc, dst_kps, dst_dsc)
 
     if len(kpts_desc_list1) <= len(kpts_desc_list2):
         less_planes = 1
@@ -282,7 +280,7 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                 ix1 = i
                 ix2 = cur_permutation[i]
 
-            _, tentative_matches, cur_kps1, cur_dsc1, cur_kps2, cur_dsc2 = homography_matching_dict[(ix1, ix2)]
+            _, matches, cur_kps1, cur_dsc1, cur_kps2, cur_dsc2 = homography_matching_dict[(ix1, ix2)]
             kps1_l.extend(cur_kps1)
             kps2_l.extend(cur_kps2)
             dsc1_l.extend(cur_dsc1)
@@ -373,7 +371,6 @@ def show_save_matching(img1,
 #
 #     return src_pts_inliers, dst_pts_inliers
 #
-
 
 def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save):
 
