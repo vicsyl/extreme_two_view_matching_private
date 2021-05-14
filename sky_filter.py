@@ -1,23 +1,30 @@
 import torch.nn
 import torchvision as tv
 import numpy as np
+from utils import Timer
 
 from mit_semseg.models import ModelBuilder, SegmentationModule
 
 from PIL import Image
 
 
+net_encoder = ModelBuilder.build_encoder(
+    arch='resnet18dilated',
+    fc_dim=512,
+    weights='.semseg/encoder_epoch_20.pth')
+
+
+net_decoder = ModelBuilder.build_decoder(
+    arch='ppm_deepsup',
+    fc_dim=512,
+    num_class=150,
+    weights='.semseg/decoder_epoch_20.pth',
+    use_softmax=True)
+
+
 def get_nonsky_mask(np_image, height, width):
-    net_encoder = ModelBuilder.build_encoder(
-        arch='resnet18dilated',
-        fc_dim=512,
-        weights='.semseg/encoder_epoch_20.pth')
-    net_decoder = ModelBuilder.build_decoder(
-        arch='ppm_deepsup',
-        fc_dim=512,
-        num_class=150,
-        weights='.semseg/decoder_epoch_20.pth',
-        use_softmax=True)
+
+    Timer.start_check_point("sky masking")
 
     crit = torch.nn.NLLLoss(ignore_index=-1)
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
@@ -44,4 +51,7 @@ def get_nonsky_mask(np_image, height, width):
         _, pred = torch.max(scores, dim=1)
         pred = pred.detach().cpu()[0].numpy()
         nonsky_mask = pred != 2
+
+    Timer.end_check_point("sky masking")
+
     return nonsky_mask

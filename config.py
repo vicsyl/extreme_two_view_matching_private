@@ -1,12 +1,13 @@
 import cv2 as cv
 
-class Config:
 
+class Config:
 
     key_rectify = "rectify"
     key_do_flann = "do_flann"
     key_planes_based_matching_merge_components = "key_planes_based_matching_merge_components"
 
+    show_sky_mask = "show_sky_mask"
     show_normals_in_img = "show_normals_in_img"
     save_normals_in_img = "save_normals_in_img"
 
@@ -24,6 +25,7 @@ class Config:
     config_map[key_do_flann] = True
     config_map[key_planes_based_matching_merge_components] = True
     config_map[show_normals_in_img] = True
+    config_map[show_sky_mask] = True
     config_map[save_normals_in_img] = True
     config_map[rectification_interpolation_key] = cv.INTER_LINEAR
 

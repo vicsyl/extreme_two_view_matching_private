@@ -160,6 +160,7 @@ def diff_normal_from_depth_data_old(focal_length,
     normals = torch.cat((-gradient_dzdx, -gradient_dzdy, -z_ones), dim=4)
     normals_norms = torch.norm(normals, dim=4).unsqueeze(dim=4)
     normals = normals / normals_norms
+    normals = normals.squeeze(0).squeeze(0)
 
     return normals
 
@@ -190,7 +191,7 @@ def show_or_save_normals_components(normals, out_dir, img_name, title, show=None
             plt.savefig(file_path)
 
 
-def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, n_clusters, out_dir, img_name, show=None, save=None):
+def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, out_dir, img_name, show=None, save=None):
 
     if show is None:
         show = Config.config_map[Config.show_normals_in_img]
@@ -210,7 +211,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, n_
         color_names = ["red", "green", "blue"]
         title = "{}:\n".format(img_name)
         np.set_printoptions(suppress=True, precision=3)
-        for i in range(n_clusters):
+        for i in range(cluster_repr_normal_np.shape[0]):
             title = "{}{}={},".format(title, color_names[i], cluster_repr_normal_np[i])
         plt.title(title)
         plt.imshow(img)
@@ -234,16 +235,9 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, n_
 def cluster_and_save_normals(normals,
                              depth_data_file_name,
                              output_directory,
-                             depth_data=None,
                              angle_threshold=4*math.pi/9,
                              filter_mask=None,
                              ):
-
-    if clusters_map.__contains__(depth_data_file_name[:-4]):
-        n_clusters = clusters_map[depth_data_file_name[:-4]]
-    else:
-        n_clusters = 2
-        print("WARNING: number of clusters unknown for {}, defaulting to {} ...".format(depth_data_file_name, n_clusters))
 
     # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
@@ -265,14 +259,14 @@ def cluster_and_save_normals(normals,
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices = spherical_kmeans.kmeans(normals, filter_mask, n_clusters)
+    cluster_repr_normal, normal_indices = spherical_kmeans.cluster(normals, filter_mask)
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
     cluster_repr_normal_np = cluster_repr_normal.numpy()
 
     Timer.end_check_point("clustering normals")
 
-    show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, n_clusters, output_directory, depth_data_file_name)
+    show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, output_directory, depth_data_file_name)
 
     return cluster_repr_normal_np, normal_indices_np
 
@@ -292,6 +286,18 @@ def get_megadepth_file_names_and_dir(scene_name, limit, interesting_files):
     directory = megadepth_input_dir(scene_name)
     file_names = get_file_names_from_dir(directory, limit, interesting_files, ".npy")
     return file_names, directory
+
+
+def show_sky_mask(img, filter_mask):
+    if Config.config_map[Config.show_sky_mask]:
+        fig = plt.figure()
+        plt.title("sky mask")
+        plt.axis('off')
+        ax = fig.add_subplot(131)
+        ax.imshow(img)
+        ax = fig.add_subplot(132)
+        ax.imshow(filter_mask)
+        plt.show(block=False)
 
 
 def compute_normals(scene: SceneInfo,
@@ -324,13 +330,13 @@ def compute_normals(scene: SceneInfo,
         normals = compute_normals_convolution(camera, depth_data, output_directory, depth_data_file_name, old_implementation=old_impl)
 
     img_file_path = scene.get_img_file_path(img_name)
-    img = cv.imread(img_file_path, None)
+    img = cv.imread(img_file_path)
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+    show_sky_mask(img, filter_mask)
 
     clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals,
                                                                        depth_data_file_name,
                                                                        output_directory,
-                                                                       depth_data=depth_data,
                                                                        filter_mask=filter_mask)
     return clustered_normals_np, normal_indices_np
 
@@ -479,8 +485,8 @@ def compute_normals_from_svd(
     assert normals.shape[0] == depth_height
     assert normals.shape[1] == depth_width
 
-    title = "normals via svd - {}".format(img_name)
-    show_or_save_normals_components(normals, output_directory, img_name, title)
+    # title = "normals via svd - {}".format(img_name)
+    # show_or_save_normals_components(normals, output_directory, img_name, title, save=False)
 
     return normals
 

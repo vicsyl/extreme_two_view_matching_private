@@ -52,7 +52,7 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
         P = K @ R @ K_inv
         if scale != 1.0:
             unscaled = False
-            #P[:2, :] *= scale
+            P[:2, :] *= scale
 
         new_coords = P @ coords
         new_coords = new_coords / new_coords[2, :]

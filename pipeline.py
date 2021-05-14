@@ -97,6 +97,8 @@ class Pipeline:
                     pipeline.output_dir = v
                 elif k == "show_save_normals":
                     pipeline.show_save_normals = v.lower() == "true"
+                elif k == "show_rectification":
+                    pipeline.show_rectification = v.lower() == "true"
                 elif k == "do_flann":
                     Config.config_map[Config.key_do_flann] = v.lower() == "true"
                 elif k == "image_pairs":
@@ -208,7 +210,6 @@ class Pipeline:
                 key = SceneInfo.get_key(img_pair.img1, img_pair.img2)
                 if self.matching_pairs is not None and \
                         key not in self.matching_pairs:
-                    print("key '{}' not in interesting pairs: {}".format(key, self.matching_pairs))
                     continue
 
                 if self.matching_limit is not None and processed_pairs >= self.matching_limit:
@@ -307,6 +308,7 @@ def main():
     Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
     pipeline = Pipeline.configure("config.txt", args)
+    #pipeline.matching_pairs = "frame_0000000650_2_frame_0000001285_2"
 
     #pipeline.run_sequential_pipeline()
     pipeline.run_matching_pipeline()

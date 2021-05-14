@@ -317,7 +317,7 @@ def evaluate_matching(scene_info,
 
     save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
-    print("Image pair: {}x{}:".format(img_pair.img1, img_pair.img2))
+    print("Image pair: {} <-> {}:".format(img_pair.img1, img_pair.img2))
     print("Number of correspondences: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
     print("Number of not-correspondences: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
 

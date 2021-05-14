@@ -195,6 +195,7 @@ def save_img_with_timestamp_jpg(path_prefix, np_img):
 
 class Timer:
 
+    log_enabled = False
     start_time = None
 
     stats_times = {}
@@ -202,17 +203,22 @@ class Timer:
     stats_start_times = {}
 
     @staticmethod
+    def log(message):
+        if Timer.log_enabled:
+            print(message)
+
+    @staticmethod
     def start():
-        print("Starting the timer")
+        Timer.log("Starting the timer")
         Timer.start_time = time.time()
 
     @staticmethod
     def start_check_point(label):
         assert label is not None
-        print("{} starting".format(label))
+        Timer.log("{} starting".format(label))
         start = Timer.stats_start_times.get(label)
         if start is not None:
-            print("WARNING: missing call of end_check_point for label '{}'".format(label))
+            Timer.log("WARNING: missing call of end_check_point for label '{}'".format(label))
         Timer.stats_start_times[label] = time.time()
 
     @staticmethod
@@ -221,10 +227,10 @@ class Timer:
         end = time.time()
         start = Timer.stats_start_times.get(label)
         if start is None:
-            print("WARNING: missing call of start_check_point for label '{}'".format(label))
+            Timer.log("WARNING: missing call of start_check_point for label '{}'".format(label))
         else:
             duration = end - start
-            print("{} finished. It took {}".format(label, duration))
+            Timer.log("{} finished. It took {}".format(label, duration))
             Timer.stats_start_times[label] = None
             if Timer.stats_counts.get(label) is None:
                 Timer.stats_counts[label] = 0
