@@ -49,3 +49,7 @@ class Config:
     @staticmethod
     def set_rectify(bool_val):
         Config.config_map[Config.key_rectify] = bool_val
+
+    @staticmethod
+    def set_save(bool_val):
+        Config.config_map[Config.save_normals_in_img] = bool_val

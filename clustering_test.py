@@ -11,7 +11,7 @@ from config import Config
 from scene_info import SceneInfo
 from depth_to_normals import get_megadepth_file_names_and_dir, compute_normals_from_svd, show_or_save_clusters, compute_normals_all
 from utils import *
-import spherical_kmeans
+import clustering
 from sky_filter import get_nonsky_mask
 
 
@@ -23,8 +23,7 @@ def inter_intra(normals, filter_mask, depth_data_file_name):
 
         Timer.start_check_point("clustering normals")
         # TODO consider to return clustered_normals.numpy()
-        #cluster_repr_normal, normal_indices = spherical_kmeans.kmeans(normals, filter_mask, n_clusters, max_iter=100)
-        cluster_repr_normal, normal_indices = spherical_kmeans.cluster(normals, filter_mask, n_clusters, max_iter=100)
+        cluster_repr_normal, normal_indices = clustering.cluster(normals, filter_mask, n_clusters)
 
         print("normals: {}".format(cluster_repr_normal))
 
@@ -91,7 +90,7 @@ def iterative(normals, filter_mask, depth_data_file_name):
 
         Timer.start_check_point("clustering normals")
         # TODO consider to return clustered_normals.numpy()
-        cluster_repr_normal, normal_indices = spherical_kmeans.kmeans(normals, filter_mask, 1, max_iter=100)
+        cluster_repr_normal, normal_indices = clustering.kmeans(normals, filter_mask, 1, max_iter=100)
 
         cluster_normals = normals[torch.logical_and(normal_indices == 0, filter_mask == 1)]
         cluster_normals = cluster_normals.reshape(-1, 3)
@@ -159,7 +158,7 @@ def show_3d_points(points):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    plt.title("Ekvidistant {} points on sphere".format(points.shape[0]))
+    plt.title("Approximately equidistant {} points on sphere".format(points.shape[0]))
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
@@ -219,9 +218,8 @@ def main():
 
 
 def points():
-
     n = 100
-    points = spherical_kmeans.n_points_across_sphere(n)
+    points = clustering.n_points_across_sphere(n)
     show_3d_points(points)
 
 

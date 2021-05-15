@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 import torch.nn.functional as F
 
-import spherical_kmeans
+import clustering
 from pathlib import Path
 from clusters_map import clusters_map
 from sky_filter import get_nonsky_mask
@@ -31,7 +31,7 @@ b) I used differential convolution masks to estimate the normal. This is much fa
 Problems:
   - I thought I would see clear clusters of the normals corresponding to the dominant planes. but...
   - megadepth seems to capture various irregularities (bricks on the wall) and the normals are not clustered that smoothly
-  - in some functions I use the spherical k-means, which I implemented in 'spherical_kmeans.py' 
+  - in some functions I use the spherical k-means, which I implemented in 'clustering.py'
   - in the original paper they also say that they look for "connected regions of points whose normals belong to the same cluster" - not sure how this was done 
     but obviously some effort can be done in this respect to further smooth out the clusters (enlarge them)
   - I am actually confused, but still convinced that I cannot predict normals correctly if I have only unscaled depth info - I would need to have scaled depth info
@@ -189,6 +189,7 @@ def show_or_save_normals_components(normals, out_dir, img_name, title, show=None
             Path(out_dir).mkdir(parents=True, exist_ok=True)
             file_path = "{}/{}.jpg".format(out_dir, img_name[:-4])
             plt.savefig(file_path)
+        plt.close()
 
 
 def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, out_dir, img_name, show=None, save=None):
@@ -207,7 +208,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         img[:, :, 2][normal_indices_np == 2] = 255
         img[:, :, 2][normal_indices_np != 2] = 0
 
-        plt.figure()
+        plt.figure(figsize=(9, 9))
         color_names = ["red", "green", "blue"]
         title = "{}:\n".format(img_name)
         np.set_printoptions(suppress=True, precision=3)
@@ -259,7 +260,7 @@ def cluster_and_save_normals(normals,
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices = spherical_kmeans.cluster(normals, filter_mask)
+    cluster_repr_normal, normal_indices = clustering.cluster(normals, filter_mask)
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
     cluster_repr_normal_np = cluster_repr_normal.numpy()
@@ -288,14 +289,14 @@ def get_megadepth_file_names_and_dir(scene_name, limit, interesting_files):
     return file_names, directory
 
 
-def show_sky_mask(img, filter_mask):
+def show_sky_mask(img, filter_mask, img_name):
     if Config.config_map[Config.show_sky_mask]:
         fig = plt.figure()
-        plt.title("sky mask")
+        plt.title("sky mask for {}".format(img_name))
         plt.axis('off')
-        ax = fig.add_subplot(131)
+        ax = fig.add_subplot(121)
         ax.imshow(img)
-        ax = fig.add_subplot(132)
+        ax = fig.add_subplot(122)
         ax.imshow(filter_mask)
         plt.show(block=False)
 
@@ -332,7 +333,7 @@ def compute_normals(scene: SceneInfo,
     img_file_path = scene.get_img_file_path(img_name)
     img = cv.imread(img_file_path)
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
-    show_sky_mask(img, filter_mask)
+    show_sky_mask(img, filter_mask, img_name)
 
     clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals,
                                                                        depth_data_file_name,

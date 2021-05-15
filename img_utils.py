@@ -22,6 +22,7 @@ def show_point_cloud(points_x, points_y, points_z):
     ax.view_init(elev=10.0, azim=None)
 
     plt.show(block=False)
+    plt.close()
 
 
 def show_or_close(show):
@@ -38,6 +39,7 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
 
     cluster_color_names = ["red", "green", "blue"]
 
+    #fig = plt.figure(figsize=(9, 9))
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     plt.title("Normals clustering: {}".format(img_name))
@@ -54,6 +56,9 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
     for i in range(len(clustered_normals)):
         rel_normals = normals[normal_indices == i]
         ax.plot((rel_normals[::10, 0]), (rel_normals[::10, 2]), (rel_normals[::10, 1]), '.', color=cluster_color_names[i], markersize=0.5)
+
+    if len(clustered_normals.shape) == 1:
+        clustered_normals = np.expand_dims(clustered_normals, axis=0)
 
     for i in range(len(clustered_normals)):
         ax.plot((clustered_normals[i, 0]), (clustered_normals[i, 2]), (clustered_normals[i, 1]), 'o', color="black", markersize=5.0)
