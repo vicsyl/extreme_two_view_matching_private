@@ -3,22 +3,30 @@ import math
 from utils import Timer
 
 
+def assert_almost_equal(one, two):
+    assert math.fabs(one - two) < 0.000001
+
 class Clustering:
 
-    N_points = 150
+    N_points = 300
     angle_distance_threshold_degrees = 30
     angle_distance_threshold = angle_distance_threshold_degrees * math.pi / 180
     distance_threshold = math.sin(angle_distance_threshold / 2) * 2
-    distance_threshold_angle_times_two = math.sin(angle_distance_threshold) * 2
 
-    assert angle_distance_threshold == 2 * math.asin(distance_threshold / 2)
-    assert angle_distance_threshold == math.asin(distance_threshold_angle_times_two / 2)
+    distance_inter_cluster_threshold_factor = 2.5
+    angle_distance_inter_cluster_threshold_degrees = angle_distance_threshold_degrees * distance_inter_cluster_threshold_factor
+    angle_distance_inter_cluster_threshold = angle_distance_inter_cluster_threshold_degrees * math.pi / 180
+    distance_inter_cluster_threshold = math.sin(angle_distance_inter_cluster_threshold / 2) * 2
 
-    points_threshold = 18000
+    assert_almost_equal(angle_distance_threshold, math.asin(distance_threshold / 2) * 2)
+    assert_almost_equal(angle_distance_inter_cluster_threshold, math.asin(distance_inter_cluster_threshold / 2) * 2)
 
-    print("Clustering: distance_threshold: {}".format(distance_threshold))
+    points_threshold = 20000
+
     print("Clustering: angle_distance_threshold: {} degrees".format(angle_distance_threshold_degrees))
-    print("Clustering: distance_threshold_angle_times_two: {}".format(distance_threshold_angle_times_two))
+    print("Clustering: angle_distance_inter_cluster_threshold_degrees: {}".format(angle_distance_inter_cluster_threshold_degrees))
+    print("Clustering: distance_threshold: {}".format(distance_threshold))
+    print("Clustering: distance_inter_cluster_threshold: {}".format(distance_inter_cluster_threshold))
     print("Clustering: points_threshold: {}".format(points_threshold))
     print("Clustering: N_points: {}".format(N_points))
 
@@ -77,7 +85,7 @@ def cluster(normals: torch.Tensor, filter_mask):
         for cluster_center in cluster_centers:
             diff = n_centers[index, 0, 0] - cluster_center
             diff_norm = torch.norm(diff)
-            if diff_norm < Clustering.distance_threshold_angle_times_two:
+            if diff_norm < Clustering.distance_inter_cluster_threshold:
                 distance_ok = False
                 break
 
