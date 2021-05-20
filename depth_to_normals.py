@@ -7,7 +7,7 @@ from config import Config
 from scene_info import read_cameras, read_images, SceneInfo, CameraEntry
 from image_processing import *
 from utils import *
-from img_utils import show_and_save_normal_clusters_3d, show_point_cloud
+from img_utils import show_and_save_normal_clusters_3d, show_point_cloud, show_or_close
 import matplotlib.pyplot as plt
 
 import torch.nn.functional as F
@@ -165,12 +165,8 @@ def diff_normal_from_depth_data_old(focal_length,
     return normals
 
 
-def show_or_save_normals_components(normals, out_dir, img_name, title, show=None, save=None):
-
-    if show is None:
-        show = Config.config_map[Config.show_normals_in_img]
-    if save is None:
-        save = Config.config_map[Config.save_normals_in_img]
+# decom'd
+def show_or_save_normals_components(normals, out_dir, img_name, title, show=False, save=False):
 
     if show or save:
         img = normals.numpy() * 255
@@ -192,12 +188,7 @@ def show_or_save_normals_components(normals, out_dir, img_name, title, show=None
         plt.close()
 
 
-def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, out_dir, img_name, show=None, save=None):
-
-    if show is None:
-        show = Config.config_map[Config.show_normals_in_img]
-    if save is None:
-        save = Config.config_map[Config.save_normals_in_img]
+def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, out_dir, img_name, show=False, save=False):
 
     if show or save:
         img = np.ndarray(normal_indices_np.shape + (3,))
@@ -213,8 +204,8 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         title = "{}:\n".format(img_name)
         np.set_printoptions(suppress=True, precision=3)
         for i in range(cluster_repr_normal_np.shape[0]):
-            degrees = math.acos(np.dot(np.array([0, 0, -1]), cluster_repr_normal_np[i])) * 180 / math.pi
-            title = "{}{}={} - {} deg.,".format(title, color_names[i], cluster_repr_normal_np[i], degrees)
+            degrees = np.array([math.acos(np.dot(np.array([0, 0, -1]), cluster_repr_normal_np[i])) * 180 / math.pi])
+            title = "{}{}={} - {} deg.,\n".format(title, color_names[i], cluster_repr_normal_np[i], degrees)
         plt.title(title)
         plt.imshow(img)
         if save:
@@ -227,31 +218,19 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
             plt.close()
 
     if save:
-        cv.imwrite("{}_clusters_indices.png".format(out_path), normal_indices_np)
-        np.savetxt('{}_clusters_normals.txt'.format(out_path), cluster_repr_normal_np, delimiter=',', fmt='%1.8f')
+        cv.imwrite("{}_clusters_indices_unused.png".format(out_path), normal_indices_np)
+        np.savetxt('{}_clusters_normals_unused.txt'.format(out_path), cluster_repr_normal_np, delimiter=',', fmt='%1.8f')
 
     if show:
         show_and_save_normal_clusters_3d(normals, cluster_repr_normal_np, normal_indices_np, show, save, out_dir, img_name)
 
 
-def cluster_and_save_normals(normals,
-                             depth_data_file_name,
-                             output_directory,
-                             angle_threshold=4*math.pi/9,
-                             filter_mask=None,
-                             ):
+def cluster_normals(normals, filter_mask=None):
 
     # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
         normals = normals.squeeze(dim=0).squeeze(dim=0)
-
-    minus_z_direction = torch.zeros(normals.shape)
-    minus_z_direction[:, :, 2] = -1.0
-
-    # dot_product = torch.sum(normals * minus_z_direction, dim=-1)
-    # threshold = math.cos(angle_threshold)
-    # filtered = dot_product >= threshold #, True, False)
-    # TWEAK - enable all
+        raise Exception("should not happen")
 
     if filter_mask is None:
         # only ones
@@ -268,7 +247,7 @@ def cluster_and_save_normals(normals,
 
     Timer.end_check_point("clustering normals")
 
-    show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, output_directory, depth_data_file_name)
+    #show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, output_directory, depth_data_file_name)
 
     return cluster_repr_normal_np, normal_indices_np
 
@@ -290,24 +269,40 @@ def get_megadepth_file_names_and_dir(scene_name, limit, interesting_files):
     return file_names, directory
 
 
-def show_sky_mask(img, filter_mask, img_name):
-    if Config.config_map[Config.show_sky_mask]:
-        fig = plt.figure()
-        plt.title("sky mask for {}".format(img_name))
-        plt.axis('off')
-        ax = fig.add_subplot(121)
-        ax.imshow(img)
-        ax = fig.add_subplot(122)
-        ax.imshow(filter_mask)
-        plt.show(block=False)
+def show_sky_mask(img, filter_mask, img_name, show, save=False, path=None):
+    if not save and not show:
+        return
+    fig = plt.figure()
+    plt.title("sky mask for {}".format(img_name))
+    plt.axis('off')
+    ax = fig.add_subplot(121)
+    ax.imshow(img)
+    ax = fig.add_subplot(122)
+    ax.imshow(filter_mask)
+    if save:
+        plt.savefig(path)
+    show_or_close(show)
+
+
+def compute_only_normals(scene: SceneInfo,
+                    depth_data_read_directory,
+                    depth_data_file_name):
+
+    img_name = depth_data_file_name[0:-4]
+    camera = scene.get_camera_from_img(img_name)
+
+    depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
+
+    normals = compute_normals_from_svd(camera, depth_data)
+    #  normals = compute_normals_convolution(camera, depth_data, output_directory, depth_data_file_name, old_implementation=old_impl)
+
+    return normals
 
 
 def compute_normals(scene: SceneInfo,
                     depth_data_read_directory,
                     depth_data_file_name,
-                    output_directory,
-                    impl="svd",
-                    old_impl=False,
+                    output_directory
                     ):
     """
     Currently the standard way to compute the normals and cluster them. This is called from other modules
@@ -317,36 +312,31 @@ def compute_normals(scene: SceneInfo,
     :param depth_data_read_directory:
     :param depth_data_file_name:
     :param output_directory:
-    :param upsample:
     :return: (normals, normal_indices)
     """
 
+    normals = compute_only_normals(scene,
+                                   depth_data_read_directory,
+                                   depth_data_file_name,
+                                   output_directory)
+
     img_name = depth_data_file_name[0:-4]
-    camera = scene.get_camera_from_img(img_name)
-
-    depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
-
-    if impl == "svd":
-        normals = compute_normals_from_svd(camera, depth_data, output_directory, depth_data_file_name)
-    else:
-        normals = compute_normals_convolution(camera, depth_data, output_directory, depth_data_file_name, old_implementation=old_impl)
-
     img_file_path = scene.get_img_file_path(img_name)
     img = cv.imread(img_file_path)
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
-    show_sky_mask(img, filter_mask, img_name)
+    show_sky_mask(img, filter_mask, img_name, show=True)
 
-    clustered_normals_np, normal_indices_np = cluster_and_save_normals(normals,
-                                                                       depth_data_file_name,
-                                                                       output_directory,
-                                                                       filter_mask=filter_mask)
+    clustered_normals_np, normal_indices_np = cluster_normals(normals,
+                                                              depth_data_file_name,
+                                                              output_directory,
+                                                              filter_mask=filter_mask)
     return clustered_normals_np, normal_indices_np
 
 
 def compute_normals_convolution(camera,
                                 depth_data,
-                                output_directory,
-                                img_name,
+                                output_directory=None,
+                                img_name=None,
                                 override_mask=None,
                                 old_implementation=False):
 
@@ -368,8 +358,8 @@ def compute_normals_convolution(camera,
     else:
         normals = diff_normal_from_depth_data(camera, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
 
-    title = "normals with plain diff mask - {}".format(img_name)
-    show_or_save_normals_components(normals, output_directory, img_name, title)
+    # title = "normals with plain diff mask - {}".format(img_name)
+    # show_or_save_normals_components(normals, output_directory, img_name, title)
 
     return normals
 
@@ -394,8 +384,8 @@ def pad_normals(normals, window_size, mode="replicate"):
 def compute_normals_from_svd(
         camera: CameraEntry,
         depth_data,
-        output_directory,
-        img_name
+        output_directory=None,
+        img_name=None
 ):
 
     window_size = 5

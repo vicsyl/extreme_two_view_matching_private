@@ -9,9 +9,9 @@ import os
 import matplotlib as plt
 import glob
 import pickle
+from typing import List
 
 from pathlib import Path
-from matching import split_points
 
 """
 DISCLAIMER: the following methods have been adopted from https://github.com/ducha-aiki/ransac-tutorial-2020-data:
@@ -145,6 +145,12 @@ def evaluate_R_t(R_gt, t_gt, R, t, q_gt=None):
     return err_q, err_t
 
 
+def split_points(tentative_matches, kps1, kps2):
+    src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
+    dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1, 2)
+    return src_pts, dst_pts
+
+
 def eval_essential_matrix(p1n, p2n, E, dR, dt):
     if len(p1n) != len(p2n):
         raise RuntimeError('Size mismatch in the keypoint lists')
@@ -200,6 +206,59 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     return errors
 
 
+# a HACK that enables pickling of cv2.KeyPoint - see
+# https://stackoverflow.com/questions/10045363/pickling-cv2-keypoint-causes-picklingerror/48832618
+import copyreg
+import cv2
+
+
+def _pickle_keypoints(point):
+    return cv2.KeyPoint, (*point.pt, point.size, point.angle,
+                          point.response, point.octave, point.class_id)
+
+
+copyreg.pickle(cv2.KeyPoint().__class__, _pickle_keypoints)
+
+
+@dataclass
+class ImageData:
+    img: np.ndarray
+    key_points: List[cv.KeyPoint]
+    descriptions: object
+    K: np.ndarray
+    normals: np.ndarray
+    components_indices: np.ndarray
+    valid_components_dict: dict
+
+    @staticmethod
+    def from_serialized_data(img, K, img_serialized_data):
+        return ImageData(img=img,
+                         K=K,
+                         key_points=img_serialized_data.kpts,
+                         descriptions=img_serialized_data.descs,
+                         normals=img_serialized_data.normals,
+                         components_indices=img_serialized_data.components_indices,
+                         valid_components_dict=img_serialized_data.valid_components_dict)
+
+    def to_serialized_data(self):
+        return ImageSerializedData(kpts=self.key_points,
+                                   descs=self.descriptions,
+                                   normals=self.normals,
+                                   components_indices=None,
+                                   valid_components_dict=None)
+                                   # components_indices=self.components_indices,
+                                   # valid_components_dict=self.valid_components_dict)
+
+
+@dataclass
+class ImageSerializedData:
+    kpts: list
+    descs: list
+    normals: np.ndarray
+    components_indices: np.ndarray
+    valid_components_dict: dict
+
+
 @dataclass
 class Stats:
     error_R: float
@@ -215,6 +274,9 @@ class Stats:
     E: np.ndarray
     normals1: np.ndarray
     normals2: np.ndarray
+    kpts1: list
+    kpts2: list
+
 
     # can be made to a constructor?
     # @staticmethod
@@ -272,16 +334,18 @@ class Stats:
                    n_all_features_2,
                    normals1,
                    normals2,
+                   whole_kpts1,
+                   whole_kpts2,
                    ):
 
         Path(out_dir).mkdir(parents=True, exist_ok=True)
-        np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
-        np.savetxt("{}/src_inliers_{}.txt".format(out_dir, save_suffix), src_inliers, delimiter=',', fmt='%1.8f')
-        np.savetxt("{}/dst_inliers_{}.txt".format(out_dir, save_suffix), dst_inliers, delimiter=',', fmt='%1.8f')
-        np.savetxt("{}/src_tentative_{}.txt".format(out_dir, save_suffix), src_tentative, delimiter=',', fmt='%1.8f')
-        np.savetxt("{}/dst_tentative_{}.txt".format(out_dir, save_suffix), dst_tentative, delimiter=',', fmt='%1.8f')
-        np.savetxt("{}/normals_1_{}.txt".format(out_dir, save_suffix), normals1, delimiter=',', fmt='%1.8f')
-        np.savetxt("{}/normals_2_{}.txt".format(out_dir, save_suffix), normals2, delimiter=',', fmt='%1.8f')
+        # np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
+        # np.savetxt("{}/src_inliers_{}.txt".format(out_dir, save_suffix), src_inliers, delimiter=',', fmt='%1.8f')
+        # np.savetxt("{}/dst_inliers_{}.txt".format(out_dir, save_suffix), dst_inliers, delimiter=',', fmt='%1.8f')
+        # np.savetxt("{}/src_tentative_{}.txt".format(out_dir, save_suffix), src_tentative, delimiter=',', fmt='%1.8f')
+        # np.savetxt("{}/dst_tentative_{}.txt".format(out_dir, save_suffix), dst_tentative, delimiter=',', fmt='%1.8f')
+        # np.savetxt("{}/normals_1_{}.txt".format(out_dir, save_suffix), normals1, delimiter=',', fmt='%1.8f')
+        # np.savetxt("{}/normals_2_{}.txt".format(out_dir, save_suffix), normals2, delimiter=',', fmt='%1.8f')
 
         stats = Stats(error_R=error_R,
                       error_T=error_T,
@@ -296,9 +360,11 @@ class Stats:
                       dst_pts_inliers=dst_inliers,
                       normals1=normals1,
                       normals2=normals2,
+                      kpts1=whole_kpts1,
+                      kpts2=whole_kpts2
                       )
 
-        stats.save_brief("{}/stats_{}.txt".format(out_dir, save_suffix))
+        #stats.save_brief("{}/stats_{}.txt".format(out_dir, save_suffix))
 
         return stats
 
@@ -343,6 +409,8 @@ def evaluate_matching(scene_info,
                              len(kps2),
                              normals1,
                              normals2,
+                             kps1,
+                             kps2
                              )
 
     key = "{}_{}".format(img_pair.img1, img_pair.img2)
@@ -668,6 +736,7 @@ if __name__ == "__main__":
 
 #    evaluate_file("scene1", "work/pipeline_scene1_2021_05_12_18_49_55_115656/all.stats.pkl")
     #evaluate_file("scene1", "all.stats.pkl")
-    evaluate_file("scene1", "all.stats_last_rect.pkl")
+    #evaluate_file("scene1", "all.stats_last_rect.pkl")
+    evaluate_file("scene1", "work/pipeline_scene1_333/all.stats.pkl")
 
     #evaluate_last("scene1")

@@ -25,7 +25,7 @@ def rectify_play(scene_info, img_name, rectify, use_default_dict=True):
 
     show_clustered_components = False
     if show_clustered_components:
-        show_components(components_indices, valid_components_dict, normals=normals)
+        get_and_show_components(components_indices, valid_components_dict, normals=normals)
 
     feature_descriptor = cv.SIFT_create()
 
@@ -81,10 +81,6 @@ def get_valid_component_dict(img_name, valid_components_dict):
 
 
 def rectify_iterate_play(scene_info: SceneInfo, files_to_match=None):
-
-    Config.config_map[Config.save_normals_in_img] = False
-    Config.config_map[Config.show_normals_in_img] = False
-
 
     # baseline
     img1, kps1, descs1 = rectify_play(scene_info, rectify=False, img_name=files_to_match[0][:-4])
@@ -188,7 +184,7 @@ def show_rectification_play(normals, valid_components_dict, img_name, img, K, co
                                          K,
                                          descriptor=feature_descriptor,
                                          img_name=img_name,
-                                         out_dir=None,
+                                         out_prefix=None,
                                          show=show_rectification)
 
 
@@ -244,8 +240,9 @@ def play_main():
     Timer.start()
 
     interesting_files = [
-        "frame_0000000535_3.jpg",
-        "frame_0000000450_3.jpg",
+        "frame_0000001465_4.jpg",
+        # "frame_0000000535_3.jpg",
+        # "frame_0000000450_3.jpg",
     ]
 
     scene_info = SceneInfo.read_scene("scene1", lazy=True)

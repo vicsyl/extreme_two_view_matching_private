@@ -79,8 +79,6 @@ def get_file_dir_and_name(plane):
 
 def test_depth_to_normals(old_implementation=True, impl="svd"):
 
-    Config.config_map[Config.show_normals_in_img] = False
-
     planes_coeffs = np.array([
         [0, 0, 1, -1],
         [0, 0, 1, -100],
@@ -129,9 +127,9 @@ def test_depth_to_normals(old_implementation=True, impl="svd"):
                                                   )
 
         clustered_normals, normal_indices = \
-            cluster_and_save_normals(normals,
-                                     depth_data_file_name=dsd.file_dir_and_name[1],
-                                     output_directory=dsd.file_dir_and_name[0])
+            cluster_normals(normals,
+                            depth_data_file_name=dsd.file_dir_and_name[1],
+                            output_directory=dsd.file_dir_and_name[0])
 
         normals_diff = normals - dsd.plane[:3]
         show_normals_components(normals_diff, "difference from exact result", (30.0, 20.0))

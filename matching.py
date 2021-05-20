@@ -3,10 +3,10 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-from connected_components import get_connected_components, show_components
+from connected_components import get_connected_components, get_and_show_components
 from utils import Timer, merge_keys_for_same_value
 from config import Config
-from image_data import ImageData
+from evaluation import ImageData
 from copy import deepcopy, copy
 import itertools
 
@@ -400,15 +400,15 @@ def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2,
     return E, inlier_mask, src_pts, dst_pts, tentative_matches
 
 
-def prepare_data_for_keypoints_and_desc(scene_info, img_name, normal_indices, normals, descriptor, out_dir):
+def prepare_data_for_keypoints_and_desc(scene_info, img_name, normal_indices, normals, descriptor, out_dir, rectify):
 
     K = scene_info.get_img_K(img_name)
     img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_name))
 
-    if Config.rectify():
+    if rectify:
         normal_indices = possibly_upsample_normals(img, normal_indices)
         components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
-        kps, descs = get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_dir=out_dir)
+        kps, descs = get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_prefix=out_dir)
     else:
         kps, descs = descriptor.detectAndCompute(img, None)
 
@@ -447,8 +447,8 @@ def img_correspondences(scene_info: SceneInfo, output_dir, descriptor, normals_d
 
             Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-            img1, K_1, kps1, descs1 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img1, normal_indices1, normals1, descriptor, out_dir)
-            img2, K_2, kps2, descs2 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img2, normal_indices2, normals2, descriptor, out_dir)
+            img1, K_1, kps1, descs1 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img1, normal_indices1, normals1, descriptor, out_dir, rectify)
+            img2, K_2, kps2, descs2 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img2, normal_indices2, normals2, descriptor, out_dir, rectify)
 
             return match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True)
 

@@ -40,6 +40,7 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
     cluster_color_names = ["red", "green", "blue"]
 
     #fig = plt.figure(figsize=(9, 9))
+    #plt.close()
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     plt.title("Normals clustering: {}".format(img_name))
@@ -79,11 +80,12 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
                 angle_degrees = 180 / math.pi * angle
                 print("angle between normal {} and {}: {} degrees".format(i, j, angle_degrees))
 
-    show_or_close(show)
-
+    # NOTE: first save, then show!!!
     if save:
         out_path = '{}/{}_point_cloud.jpg'.format(out_dir, img_name[:-4])
         plt.savefig(out_path)
+
+    show_or_close(show)
 
 
 def show_normals_components(normals, title, figsize=None):

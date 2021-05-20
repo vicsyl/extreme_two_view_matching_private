@@ -8,7 +8,7 @@ from pathlib import Path
 from resize import upsample_nearest_numpy
 from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix
 from scene_info import SceneInfo, read_cameras
-from connected_components import show_components, read_img_normals_info, get_connected_components
+from connected_components import get_and_show_components, read_img_normals_info, get_connected_components
 from img_utils import show_or_close
 from depth_to_normals import compute_normals
 from config import Config
@@ -90,8 +90,9 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
 
     return P, bounding_box_new
 
+
 # FIXME: keypoints not belonging to any component are simply disregarded
-def get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_dir=None, show=False):
+def get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, show=False, save=False, out_prefix=None):
 
     K_inv = np.linalg.inv(K)
 
@@ -99,7 +100,7 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
     all_kps = []
 
     # components_in_colors will be used for other visualizations
-    components_in_colors = show_components(components_indices, valid_components_dict, show=False)
+    # components_in_colors = get_and_show_components(components_indices, valid_components_dict, show=False)
 
     for component_index in valid_components_dict:
 
@@ -162,23 +163,22 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
             else:
                 all_descs = np.vstack((all_descs, descs))
 
-        plt.title("normal {}".format(normals[normal_index]))
-        plt.imshow(rectified)
-        show_or_close(show)
+        if show or save:
+            plt.figure()
+            plt.title("{} - component: {},\n normal: {}".format(img_name, component_index, normals[normal_index]))
+            plt.imshow(rectified)
+            if save:
+                plt.savefig("{}_rectified_component_{}.jpg.".format(out_prefix, component_index))
+            show_or_close(show)
 
-        rectified_components = components_in_colors.astype(np.float32) / 255
-        rectified_components = cv.warpPerspective(rectified_components, T, bounding_box)
-        plt.imshow(rectified_components)
-        show_or_close(show)
+        # if show_components:
+        #     rectified_components = components_in_colors.astype(np.float32) / 255
+        #     rectified_components = cv.warpPerspective(rectified_components, T, bounding_box)
+        #     plt.imshow(rectified_components)
+        #     show_or_close(show)
 
-        if out_dir is not None:
-            path = "{}/rectified_{}_{}.jpg".format(out_dir, img_name, component_index)
-            plt.savefig(path)
 
-        # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
-        # plt.imshow(img_rectified)
-        # plt.show(block=False)
-
+    # TODO corner case - None, [], ...
     kps, descs = descriptor.detectAndCompute(img, None)
 
     kps_floats = np.float32([kp.pt for kp in kps])
@@ -210,16 +210,24 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
     else:
         all_descs = np.vstack((all_descs, descs))
 
-    #print()
+    if show or save:
+        no_component_img = img.copy()
+        cv.drawKeypoints(no_component_img, kps, no_component_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        plt.figure(figsize=(10, 10))
+        plt.title("{} - no valid component".format(img_name))
+        plt.imshow(no_component_img)
+        if save:
+            plt.savefig("{}_rectified_no_valid_component.jpg.".format(out_prefix))
+        show_or_close(show)
 
-    show_all = True
-    if show_all:
         all_img = img.copy()
         cv.drawKeypoints(all_img, all_kps, all_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         plt.figure(figsize=(10, 10))
         plt.title("All keypoints")
         plt.imshow(all_img)
-        plt.show()
+        if save:
+            plt.savefig("{}_rectified_all.jpg.".format(out_prefix))
+        show_or_close(show)
         print("{} keypoints found".format(len(all_kps)))
 
     return all_kps, all_descs
@@ -267,7 +275,7 @@ def show_rectifications(scene_info: SceneInfo, normals_parent_dir, original_inpu
 
         show = True
         if show:
-            show_components(normal_indices, identity_map_from_range_of_iter(normals), normals)
+            get_and_show_components(normal_indices, identity_map_from_range_of_iter(normals), normals)
 
         # manual "extension" point
         # normals = np.array(
@@ -324,7 +332,7 @@ def play_with_rectification(scene_info: SceneInfo, normals_parent_dir, original_
 
         show_domponents = False
         if show_domponents:
-            show_components(normal_indices, identity_map_from_range_of_iter(normals), normals)
+            get_and_show_components(normal_indices, identity_map_from_range_of_iter(normals), normals)
 
         # manual "extension" point
         # normals = np.array(

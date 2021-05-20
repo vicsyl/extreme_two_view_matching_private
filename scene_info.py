@@ -91,10 +91,11 @@ class SceneInfo:
         return None
 
     @staticmethod
-    def read_scene(scene_name, lazy=True):
+    def read_scene(scene_name):
         Timer.start_check_point("reading scene info")
-        print("scene={}, lazy={}".format(scene_name, lazy))
+        print("scene={}".format(scene_name))
         img_pairs_lists, img_pairs_maps = read_image_pairs(scene_name)
+        lazy = True
         img_info_map = read_images(scene_name, lazy=lazy)
         cameras = read_cameras(scene_name)
         Timer.end_check_point("reading scene info")
@@ -208,8 +209,19 @@ def read_cameras(scene):
     return camera_map
 
 
+def show_imgs_reuse(scene_info):
+
+    img_pairs_per_diff = [len(diff_list) for diff_list in scene_info.img_pairs_lists]
+    img_used = sum(img_pairs_per_diff) * 2
+    img_all = len(scene_info.img_info_map)
+    print("an img is used (at least) {} times on average".format(img_used / img_all))
+
+
 def test():
-    cameras = read_cameras("scene1")
-    images = read_images("scene1")
-    img_pairs_lists, img_pairs_maps = read_image_pairs("scene1")
+    scene_info = SceneInfo.read_scene("scene1")
+    show_imgs_reuse(scene_info)
     print("cameras and images read")
+
+
+if __name__ == "__main__":
+    test()

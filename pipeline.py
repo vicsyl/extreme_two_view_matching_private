@@ -12,15 +12,16 @@ import torch
 import argparse
 
 from config import Config
-from connected_components import get_connected_components, show_components
-from depth_to_normals import compute_normals, get_megadepth_file_names_and_dir, megadepth_input_dir
-from image_data import ImageData
+from connected_components import get_connected_components, get_and_show_components
+from depth_to_normals import compute_normals, compute_only_normals, get_megadepth_file_names_and_dir, megadepth_input_dir
+from depth_to_normals import show_sky_mask, cluster_normals, show_or_save_clusters
 from matching import match_images_and_keypoints, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from scene_info import SceneInfo
 from utils import Timer
 from img_utils import show_or_close
 from evaluation import *
+from sky_filter import get_nonsky_mask
 
 import matplotlib.pyplot as plt
 
@@ -44,8 +45,15 @@ class Pipeline:
     chosen_depth_files = None
     sequential_files_limit = None
 
+    show_clusters = True
     show_clustered_components = True
     show_rectification = False
+    show_sky_mask = True
+
+    save_sky_mask = True
+    save_clusters = True
+    save_clustered_components = True
+    save_rectification = True
 
     #matching
     feature_descriptor = None
@@ -116,16 +124,13 @@ class Pipeline:
 
     def start(self):
         print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
-        self.log()
-        self.scene_info = SceneInfo.read_scene(self.scene_name)
         self.depth_input_dir = megadepth_input_dir(self.scene_name)
 
         if self.matching_pairs is not None:
             self.matching_difficulties = range(0, 18)
 
-        Config.set_rectify(self.rectify)
-        Config.config_map[Config.save_normals_in_img] = self.show_save_normals
-        Config.config_map[Config.show_normals_in_img] = self.show_save_normals
+        self.log()
+        self.scene_info = SceneInfo.read_scene(self.scene_name)
 
     def log(self):
         print("Pipeline config:")
@@ -140,7 +145,7 @@ class Pipeline:
 
         Timer.start_check_point("processing img")
         print("Processing: {}".format(img_name))
-        # TODO skip/override existing (on multiple levels)
+        img_processing_dir = "{}/normals".format(self.output_dir)
 
         # input image & K
         img_file_path = self.scene_info.get_img_file_path(img_name)
@@ -153,53 +158,112 @@ class Pipeline:
         K = self.scene_info.get_img_K(img_name)
 
         # depth => indices
-        normals_output_directory = "{}/normals/{}".format(self.output_dir, img_name)
         depth_data_file_name = "{}.npy".format(img_name)
-        normals, normal_indices = compute_normals(self.scene_info, self.depth_input_dir, depth_data_file_name, normals_output_directory)
-        # TODO - shouldn't the normals be persisted already with the connected components?
 
-        # normal indices => cluster indices (maybe safe here?)
-        # TODO after the call to get_connected_components?
-        normal_indices = possibly_upsample_normals(img, normal_indices)
+        normals = compute_only_normals(self.scene_info, self.depth_input_dir, depth_data_file_name)
 
-        valid_normal_indices = []
-        for i, normal in enumerate(normals):
-            angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
-            angle_degrees = angle_rad * 180 / math.pi
-            #print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
-            if angle_degrees >= Config.plane_threshold_degrees:
-            #print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
-                continue
-            else:
-                #print("angle ok")
-                valid_normal_indices.append(i)
+        img_name = depth_data_file_name[0:-4]
+        img_file_path = self.scene_info.get_img_file_path(img_name)
+        img = cv.imread(img_file_path)
 
-        components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices)
-        if Pipeline.show_clustered_components:
-            show_components(components_indices, valid_components_dict, normals=normals)
+        # TODO move from Config
+        if not self.rectify:
+            kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
-        # TODO if False, I can skip computing the normals !!!
-        if Config.rectify():
+            Timer.end_check_point("processing img")
+            return ImageData(img=img,
+                             K=K,
+                             key_points=kps,
+                             descriptions=descs,
+                             normals=None,
+                             components_indices=None,
+                             valid_components_dict=None)
 
-            matching_out_dir = "{}/matching".format(self.output_dir)
-            Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
+        else:
+
+            img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
+            if os.path.isfile(img_data_path):
+                Timer.start_check_point("reading img processing data")
+                with open(img_data_path, "rb") as f:
+                    print("img data for {} already computed, reading: {}".format(img_name, img_data_path))
+                    img_serialized_data: ImageSerializedData = pickle.load(f)
+                Timer.end_check_point("reading img processing data")
+                return ImageData.from_serialized_data(img, K, img_serialized_data)
+
+            Timer.start_check_point("processing img from scratch")
+
+            filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+
+            sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name[:-4])
+            show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
+
+            normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask)
+
+            show_or_save_clusters(normals,
+                                  normal_indices,
+                                  normals_clusters_repr,
+                                  img_processing_dir,
+                                  depth_data_file_name,
+                                  show=self.show_clusters,
+                                  save=self.save_clusters)
+
+            # normal indices => cluster indices (maybe safe here?)
+            # TODO after the call to get_connected_components?
+            normal_indices = possibly_upsample_normals(img, normal_indices)
+
+            valid_normal_indices = []
+            for i, normal in enumerate(normals_clusters_repr):
+                angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
+                angle_degrees = angle_rad * 180 / math.pi
+                #print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
+                if angle_degrees >= Config.plane_threshold_degrees:
+                #print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
+                    continue
+                else:
+                    #print("angle ok")
+                    valid_normal_indices.append(i)
+
+            components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices)
+
+            components_out_path = "{}/{}_cluster_connected_components.jpg".format(img_processing_dir, img_name[:-4])
+            get_and_show_components(components_indices,
+                                    valid_components_dict,
+                                    normals=normals_clusters_repr,
+                                    show=self.show_clustered_components,
+                                    save=self.save_clustered_components,
+                                    path=components_out_path,
+                                    file_name=depth_data_file_name[:-4])
+
+
+            # matching_out_dir = "{}/matching".format(self.output_dir)
+            # Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
 
             # get rectification
-            kps, descs = get_rectified_keypoints(normals,
+            rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name[:-4])
+            kps, descs = get_rectified_keypoints(normals_clusters_repr,
                                                  components_indices,
                                                  valid_components_dict,
                                                  img,
                                                  K,
                                                  descriptor=self.feature_descriptor,
                                                  img_name=img_name,
-                                                 out_dir=matching_out_dir,
-                                                 show=self.show_rectification)
+                                                 show=self.show_rectification,
+                                                 save=self.save_rectification,
+                                                 out_prefix=rectification_path_prefix
+                                                 )
 
-        else:
-            kps, descs = self.feature_descriptor.detectAndCompute(img, None)
+            img_data = ImageData(img=img, K=K, key_points=kps, descriptions=descs, normals=normals_clusters_repr, components_indices=components_indices, valid_components_dict=valid_components_dict)
 
-        Timer.end_check_point("processing img")
-        return ImageData(img=img, K=K, key_points=kps, descriptions=descs, normals=normals, components_indices=components_indices, valid_components_dict=valid_components_dict)
+            Timer.end_check_point("processing img from scratch")
+
+            Timer.start_check_point("saving img data")
+            with open(img_data_path, "wb") as f:
+                print("img data for {} saving into: {}".format(img_name, img_data_path))
+                pickle.dump(img_data.to_serialized_data(), f)
+            Timer.end_check_point("saving img data")
+
+            Timer.end_check_point("processing img")
+            return img_data
 
     def run_sequential_pipeline(self):
 
@@ -359,17 +423,27 @@ def main():
     "frame_0000001535_4_frame_0000000305_1",
     "frame_0000001625_4_frame_0000001520_4"]
 
-    pipeline.matching_pairs = "frame_0000000045_1_frame_0000001465_4"
+    # pipeline.matching_pairs = "frame_0000000045_1_frame_0000001465_4"
+
+    pipeline.matching_pairs = [
+        "frame_0000000045_1_frame_0000001465_4",
+        "frame_0000000045_1_frame_0000001460_4",
+        "frame_0000000675_1_frame_0000000045_1",
+        ]
+
     #pipeline.chosen_depth_files = ["frame_0000001465_4.npy"]
     pipeline.chosen_depth_files = ["frame_0000000045_1.npy"]
 
     pipeline.matching_limit = 100
-    pipeline.rectify = False
+    pipeline.rectify = True
 
-    pipeline.run_sequential_pipeline()
-    #pipeline.run_matching_pipeline()
+    #pipeline.run_sequential_pipeline()
+    pipeline.run_matching_pipeline()
 
     Timer.end()
+
+    # TODO good example!!!
+    #"frame_0000000675_1_frame_0000000045_1",
 
 
 if __name__ == "__main__":

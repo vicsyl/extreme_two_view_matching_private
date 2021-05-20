@@ -218,8 +218,8 @@ def main():
 
 
 def points():
-    n = 100
-    points = clustering.n_points_across_sphere(n)
+    n = 20
+    points = clustering.n_points_across_half_sphere(n)
     show_3d_points(points)
 
 
@@ -259,8 +259,7 @@ def visualize_normals(impl, old_impl=False):
 
 
 if __name__ == "__main__":
-    #points()
+    points()
     #main()
 
-    Config.config_map[Config.show_normals_in_img] = True
-    visualize_normals(impl="svd")
+    # visualize_normals(impl="svd")

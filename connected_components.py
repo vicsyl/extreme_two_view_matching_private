@@ -5,6 +5,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import glob
 from utils import Timer, identity_map_from_range_of_iter, merge_keys_for_same_value
+from img_utils import show_or_close
 
 # original_input_dir - to scene info
 def read_img_normals_info(parent_dir, img_name_dir):
@@ -25,7 +26,7 @@ def read_img_normals_info(parent_dir, img_name_dir):
     return normals, normal_indices
 
 
-def show_components(cluster_indices, valid_component_dict, title=None, normals=None, show=True):
+def get_and_show_components(cluster_indices, valid_component_dict, title=None, normals=None, show=True, save=False, path=None, file_name=None):
 
     colors = [
         [255, 0, 0],
@@ -55,21 +56,26 @@ def show_components(cluster_indices, valid_component_dict, title=None, normals=N
     for i, c_index in enumerate(valid_component_dict.keys()):
         cluster_colors[np.where(cluster_indices == c_index)] = colors[i % 9]
 
-    if show:
-        if title is not None:
-            plt.title(title)
-        elif normals is not None:
-            desc = "Connected components: \n"
-            new_component_dict = {}
-            for i, c_index in enumerate(valid_component_dict.keys()):
-                new_component_dict[i] = valid_component_dict[c_index]
-            merged_dict = merge_keys_for_same_value(new_component_dict)
-            for merged_values in merged_dict:
-                cur_colors_names = ", ".join([color_names[val % 9] for val in merged_values])
-                desc = "{}[{}]={},\n".format(desc, cur_colors_names, normals[merged_dict[merged_values]])
-            plt.title(desc)
+    plt.figure(figsize=(9, 9))
+
+    if title is not None:
+        plt.title(title)
+    elif normals is not None:
+        title = "{} - connected components: \n".format(file_name)
+        new_component_dict = {}
+        for i, c_index in enumerate(valid_component_dict.keys()):
+            new_component_dict[i] = valid_component_dict[c_index]
+        merged_dict = merge_keys_for_same_value(new_component_dict)
+        for merged_values in merged_dict:
+            cur_colors_names = ", ".join([color_names[val % 9] for val in merged_values])
+            title = "{}[{}]={},\n".format(title, cur_colors_names, normals[merged_dict[merged_values]])
+        plt.title(title)
         plt.imshow(cluster_colors)
-        plt.show(block=False)
+
+    if save:
+        plt.savefig(path)
+
+    show_or_close(show)
     return cluster_colors
 
 
@@ -101,7 +107,7 @@ def get_connected_components(normal_indices, valid_indices, show=False, fraction
             out_valid_indices_counter = out_valid_indices_counter + max_valid_labels
 
         if show:
-            show_components(out, out_valid_indices_dict, "out after normal index={}".format(v_i))
+            get_and_show_components(out, out_valid_indices_dict, "out after normal index={}".format(v_i))
 
     return out, out_valid_indices_dict
 
@@ -120,7 +126,7 @@ def find_and_show_clusters(parent_dir, limit, interesting_dirs=None):
 
         print("Reading normals for img: {}".format(img_name))
         normals, normal_indices = read_img_normals_info(parent_dir, img_name)
-        show_components(normal_indices, range(len(normals)))
+        get_and_show_components(normal_indices, range(len(normals)))
 
     Timer.start_check_point("get_connected_components")
     clusters, valid_components_dict = get_connected_components(normal_indices, identity_map_from_range_of_iter(normals), True)

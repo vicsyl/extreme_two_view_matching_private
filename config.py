@@ -3,13 +3,8 @@ import cv2 as cv
 
 class Config:
 
-    key_rectify = "rectify"
     key_do_flann = "do_flann"
     key_planes_based_matching_merge_components = "key_planes_based_matching_merge_components"
-
-    show_sky_mask = "show_sky_mask"
-    show_normals_in_img = "show_normals_in_img"
-    save_normals_in_img = "save_normals_in_img"
 
     # Toft et al. use 80 (but the implementation details actually differ)
     plane_threshold_degrees = 75
@@ -24,12 +19,8 @@ class Config:
 
     # init the map and set the default values
     config_map = {}
-    config_map[key_rectify] = True
     config_map[key_do_flann] = True
     config_map[key_planes_based_matching_merge_components] = True
-    config_map[show_normals_in_img] = True
-    config_map[show_sky_mask] = True
-    config_map[save_normals_in_img] = True
     config_map[rectification_interpolation_key] = cv.INTER_LINEAR
 
     @staticmethod
@@ -45,14 +36,3 @@ class Config:
     def do_flann():
         return Config.config_map[Config.key_do_flann]
 
-    @staticmethod
-    def rectify():
-        return Config.config_map[Config.key_rectify]
-
-    @staticmethod
-    def set_rectify(bool_val):
-        Config.config_map[Config.key_rectify] = bool_val
-
-    @staticmethod
-    def set_save(bool_val):
-        Config.config_map[Config.save_normals_in_img] = bool_val

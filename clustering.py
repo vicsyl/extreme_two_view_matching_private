@@ -34,7 +34,7 @@ class Clustering:
 
 
 # https://web.archive.org/web/20120107030109/http://cgafaq.info/wiki/Evenly_distributed_points_on_sphere#Spirals
-def n_points_across_sphere(N):
+def n_points_across_half_sphere(N):
 
     s = 3.6 / math.sqrt(N)
     dz = 1.0 / N
@@ -55,7 +55,7 @@ def cluster(normals: torch.Tensor, filter_mask):
 
     timer_label = "clustering for N={}".format(Clustering.N_points)
     Timer.start_check_point(timer_label)
-    n_centers = n_points_across_sphere(Clustering.N_points)
+    n_centers = n_points_across_half_sphere(Clustering.N_points)
 
     n_centers = n_centers.expand(normals.shape[0], normals.shape[1], -1, -1)
     n_centers = n_centers.permute(2, 0, 1, 3)
