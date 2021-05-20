@@ -44,7 +44,7 @@ class Pipeline:
     chosen_depth_files = None
     sequential_files_limit = None
 
-    show_clustered_components = False
+    show_clustered_components = True
     show_rectification = False
 
     #matching
@@ -159,9 +159,23 @@ class Pipeline:
         # TODO - shouldn't the normals be persisted already with the connected components?
 
         # normal indices => cluster indices (maybe safe here?)
+        # TODO after the call to get_connected_components?
         normal_indices = possibly_upsample_normals(img, normal_indices)
-        components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)))
-        if self.show_clustered_components:
+
+        valid_normal_indices = []
+        for i, normal in enumerate(normals):
+            angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
+            angle_degrees = angle_rad * 180 / math.pi
+            #print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
+            if angle_degrees >= Config.plane_threshold_degrees:
+            #print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
+                continue
+            else:
+                #print("angle ok")
+                valid_normal_indices.append(i)
+
+        components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices)
+        if Pipeline.show_clustered_components:
             show_components(components_indices, valid_components_dict, normals=normals)
 
         # TODO if False, I can skip computing the normals !!!
@@ -308,10 +322,52 @@ def main():
     Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
     pipeline = Pipeline.configure("config.txt", args)
-    #pipeline.matching_pairs = "frame_0000000650_2_frame_0000001285_2"
 
-    #pipeline.run_sequential_pipeline()
-    pipeline.run_matching_pipeline()
+    # RECT
+    # frame_0000000750_1_frame_0000001460_3 : 0.2975730073440412 : 0
+    # frame_0000001280_2_frame_0000000435_1 : 0.3117467900844886 : 0
+    # frame_0000000045_1_frame_0000001465_4 : 0.3475394532917147 : 0
+    # frame_0000001670_1_frame_0000000705_3 : 0.35030656173324887 : 0
+    # frame_0000000695_3_frame_0000000535_4 : 0.38110056845168916 : 0
+    # frame_0000001155_1_frame_0000001330_1 : 0.396294848576985 : 0
+    # frame_0000001650_1_frame_0000000730_3 : 0.41452517328156235 : 0
+    # frame_0000000045_2_frame_0000002230_1 : 0.8421649629297145 : 0
+    # frame_0000000045_1_frame_0000001460_4 : 1.2111855989905465 : 0
+    # frame_0000001535_4_frame_0000000305_1 : 1.6491643182932554 : 0
+    # frame_0000001625_4_frame_0000001520_4 : 3.1229108422181784 : 0
+
+    # NO RECT
+    # frame_0000000420_2_frame_0000000755_3 : 0.2395142577686067 : 0
+    # frame_0000001935_1_frame_0000000640_3 : 0.2710834091883783 : 0
+    # frame_0000000770_4_frame_0000000685_4 : 0.2774820857254884 : 0
+    # frame_0000001480_3_frame_0000001190_2 : 0.3206430790811858 : 0
+    # frame_0000001145_2_frame_0000001430_3 : 0.32928574716602327 : 0
+    # frame_0000000660_3_frame_0000001890_1 : 0.3412612633633496 : 0
+    # frame_0000001650_1_frame_0000000730_3 : 0.4171382008287733 : 0
+    #
+
+    #pipeline.matching_pairs = "frame_0000000650_2_frame_0000001285_2"
+    pipeline.matching_pairs = ["frame_0000000750_1_frame_0000001460_3",
+    "frame_0000001280_2_frame_0000000435_1",
+    "frame_0000000045_1_frame_0000001465_4",
+    "frame_0000001670_1_frame_0000000705_3",
+    "frame_0000000695_3_frame_0000000535_4",
+    "frame_0000001155_1_frame_0000001330_1",
+    "frame_0000001650_1_frame_0000000730_3",
+    "frame_0000000045_2_frame_0000002230_1",
+    "frame_0000000045_1_frame_0000001460_4",
+    "frame_0000001535_4_frame_0000000305_1",
+    "frame_0000001625_4_frame_0000001520_4"]
+
+    pipeline.matching_pairs = "frame_0000000045_1_frame_0000001465_4"
+    #pipeline.chosen_depth_files = ["frame_0000001465_4.npy"]
+    pipeline.chosen_depth_files = ["frame_0000000045_1.npy"]
+
+    pipeline.matching_limit = 100
+    pipeline.rectify = False
+
+    pipeline.run_sequential_pipeline()
+    #pipeline.run_matching_pipeline()
 
     Timer.end()
 

@@ -213,7 +213,8 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         title = "{}:\n".format(img_name)
         np.set_printoptions(suppress=True, precision=3)
         for i in range(cluster_repr_normal_np.shape[0]):
-            title = "{}{}={},".format(title, color_names[i], cluster_repr_normal_np[i])
+            degrees = math.acos(np.dot(np.array([0, 0, -1]), cluster_repr_normal_np[i])) * 180 / math.pi
+            title = "{}{}={} - {} deg.,".format(title, color_names[i], cluster_repr_normal_np[i], degrees)
         plt.title(title)
         plt.imshow(img)
         if save:

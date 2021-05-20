@@ -105,17 +105,8 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
 
         normal_index = valid_components_dict[component_index]
         normal = normals[normal_index]
-        threshold_degrees = 80 # [degrees]
-        angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
-        angle_degrees = angle_rad * 180 / math.pi
-        print("angle: {} vs. angle threshold: {}".format(angle_degrees, threshold_degrees))
-        if angle_degrees >= threshold_degrees:
-            print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
-            continue
-        else:
-            print("angle ok")
 
-        R = get_rectification_rotation(normals[valid_components_dict[component_index]])
+        R = get_rectification_rotation(normal)
 
         T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
         #TODO this is too defensive (and wrong) I think, I can warp only the plane
@@ -142,6 +133,7 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
             first = np.where(first < w, first, 0)
             seconds = kps_int_coords[:, 1]
             seconds = np.where(0 <= seconds, seconds, 0)
+            # TODO: :, 0) => this I think is bad!!!
             seconds = np.where(seconds < h, seconds, 0)
             kps_int_coords[:, 0] = first
             kps_int_coords[:, 1] = seconds
@@ -151,7 +143,9 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
 
             descs = descs[cluster_mask_bool]
 
-            # TODO new_kps[:, 0, 0/1] still out of bounds (i.e. negative)
+            # TODO a) add assert
+            # TODO b) on a clean WC, debug and rename the local vars (also, possibly speed up)
+            # TODO c) new_kps[:, 0, 0/1] still out of bounds (i.e. negative)
             new_kps = new_kps[cluster_mask_bool]
 
             kps = [kp for i, kp in enumerate(kps) if cluster_mask_bool[i]]
@@ -184,6 +178,50 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
         # img_rectified = cv.polylines(decolorize(img), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
         # plt.imshow(img_rectified)
         # plt.show(block=False)
+
+    kps, descs = descriptor.detectAndCompute(img, None)
+
+    kps_floats = np.float32([kp.pt for kp in kps])
+    # TODO is this the way to round it?
+    kps_ints = np.int32(kps_floats)
+    in_img_mask = kps_ints[:, 0] >= 0
+    in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 0] < img.shape[1])
+    in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 1] >= 0)
+    in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 1] < img.shape[0])
+    kps_ints = kps_ints[in_img_mask]
+    kps = [kp for i, kp in enumerate(kps) if in_img_mask[i]]
+    descs = descs[in_img_mask]
+
+    valid_keys_set = set(valid_components_dict.keys())
+    all_indices_set = set(range(np.max(components_indices) + 1))
+    non_valid_indices = list(all_indices_set - valid_keys_set)
+
+    filter_non_valid = np.zeros(kps_ints.shape[0])
+    for non_valid_index in non_valid_indices:
+        filter_non_valid = np.logical_or(filter_non_valid, components_indices[kps_ints[:, 1], kps_ints[:, 0]] == non_valid_index)
+
+    kps = [kp for i, kp in enumerate(kps) if filter_non_valid[i]]
+    descs = descs[filter_non_valid]
+
+    all_kps.extend(kps)
+
+    if all_descs is None:
+        all_descs = descs
+    else:
+        all_descs = np.vstack((all_descs, descs))
+
+    #print()
+
+    show_all = True
+    if show_all:
+        all_img = img.copy()
+        cv.drawKeypoints(all_img, all_kps, all_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        plt.figure(figsize=(10, 10))
+        plt.title("All keypoints")
+        plt.imshow(all_img)
+        plt.show()
+        print("{} keypoints found".format(len(all_kps)))
+
     return all_kps, all_descs
 
 
@@ -321,11 +359,11 @@ def play_main():
 
     Timer.start()
 
-    # interesting_files = interests
-    #
-    # scene_info = SceneInfo.read_scene("scene1", lazy=True)
-    #
-    # play_iterate(scene_info, "original_dataset/scene1/images", limit=20, interesting_files=interesting_files)
+    interesting_files = []
+
+    scene_info = SceneInfo.read_scene("scene1", lazy=True)
+
+    #play_iterate(scene_info, "original_dataset/scene1/images", limit=20, interesting_files=interesting_files)
 
     Timer.end()
 
@@ -397,14 +435,13 @@ if __name__ == "__main__":
 
     play_main()
 
-    # Timer.start()
-    #
-    # #interesting_dirs = ["frame_0000000145_2"]
-    # interesting_dirs = ["frame_0000000015_4"]
-    #
-    # scene_info = SceneInfo.read_scene("scene1", lazy=True)
-    #
-    # show_rectifications(scene_info, "work/scene1/normals/svd", "original_dataset/scene1/images", limit=1, interesting_dirs=None)
-    #
-    # Timer.end()
+    Timer.start()
 
+    #interesting_dirs = ["frame_0000000145_2"]
+    #interesting_dirs = ["frame_0000000015_4"]
+
+    scene_info = SceneInfo.read_scene("scene1", lazy=True)
+
+    show_rectifications(scene_info, "work/scene1/normals/svd", "original_dataset/scene1/images", limit=1, interesting_dirs=interesting_dirs)
+
+    Timer.end()

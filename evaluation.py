@@ -561,8 +561,15 @@ def evaluate_file(scene_name, file_name):
 
 
     #items_in_list = list(stats_map.items())
-    val = sorted(stats_map.items(), key=lambda key_value: key_value[1].error_R)
-    vals = list(map(lambda v: v[1].error_R, val))
+    sorted_by_err_R = sorted(stats_map.items(), key=lambda key_value: key_value[1].error_R)
+    sorted_by_diff_err_R = sorted(sorted_by_err_R, key=lambda key_value: scene_info.find_img_pair_from_key(key=key_value[0])[1])
+
+    for (key, value) in sorted_by_diff_err_R:
+        print("{} : {} : {}".format(key, value.error_R, scene_info.find_img_pair_from_key(key=key)[1]))
+
+
+
+    vals = list(map(lambda v: v[1].error_R, sorted_by_err_R))
     vals1 = np.array(vals)
     hist1 = np.histogram(vals1)
     avg1 = np.average(vals1)
@@ -659,6 +666,8 @@ def main():
 
 if __name__ == "__main__":
 
-    evaluate_file("scene1", "work/pipeline_scene1_2021_05_12_18_49_55_115656/all.stats.pkl")
+#    evaluate_file("scene1", "work/pipeline_scene1_2021_05_12_18_49_55_115656/all.stats.pkl")
+    #evaluate_file("scene1", "all.stats.pkl")
+    evaluate_file("scene1", "all.stats_last_rect.pkl")
 
     #evaluate_last("scene1")

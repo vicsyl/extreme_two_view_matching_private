@@ -59,7 +59,7 @@ def show_components(cluster_indices, valid_component_dict, title=None, normals=N
         if title is not None:
             plt.title(title)
         elif normals is not None:
-            desc = ""
+            desc = "Connected components: \n"
             new_component_dict = {}
             for i, c_index in enumerate(valid_component_dict.keys()):
                 new_component_dict[i] = valid_component_dict[c_index]

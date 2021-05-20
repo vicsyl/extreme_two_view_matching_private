@@ -11,6 +11,9 @@ class Config:
     show_normals_in_img = "show_normals_in_img"
     save_normals_in_img = "save_normals_in_img"
 
+    # Toft et al. use 80 (but the implementation details actually differ)
+    plane_threshold_degrees = 75
+
     svd_smoothing = False
     svd_smoothing_sigma = 1.33
     svd_weighted = True
