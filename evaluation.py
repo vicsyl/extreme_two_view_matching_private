@@ -559,6 +559,12 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     return checks
 
 
+def evaluate_all(stats_map_all: dict, scene_info: SceneInfo):
+    for diff, stats_map in stats_map_all.items():
+        print("Stats for difficulty {}:".format(diff))
+        evaluate(stats_map, scene_info)
+
+
 def evaluate(stats_map: dict, scene_info: SceneInfo):
 
     l_entries = []

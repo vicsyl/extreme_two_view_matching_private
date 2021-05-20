@@ -39,21 +39,25 @@ class Pipeline:
     scene_name = None
     output_dir = None
 
+    # actually unused
     show_save_normals = False
     show_orig_image = True
 
     chosen_depth_files = None
     sequential_files_limit = None
 
-    show_clusters = True
-    show_clustered_components = True
-    show_rectification = False
-    show_sky_mask = True
+    show_input_img = True
 
-    save_sky_mask = True
+    show_clusters = True
     save_clusters = True
+    show_clustered_components = True
     save_clustered_components = True
+    show_rectification = True
     save_rectification = True
+    show_sky_mask = True
+    save_sky_mask = True
+    show_matching = True
+    save_matching = True
 
     #matching
     feature_descriptor = None
@@ -103,17 +107,38 @@ class Pipeline:
                     pipeline.output_dir = append_timestamp(v)
                 elif k == "output_dir":
                     pipeline.output_dir = v
-                elif k == "show_save_normals":
-                    pipeline.show_save_normals = v.lower() == "true"
+
+                elif k == "show_input_img":
+                    pipeline.show_input_img = v.lower() == "true"
+
+                elif k == "show_matching":
+                    pipeline.show_matching = v.lower() == "true"
+                elif k == "save_matching":
+                    pipeline.save_matching = v.lower() == "true"
+                elif k == "show_clusters":
+                    pipeline.show_clusters = v.lower() == "true"
+                elif k == "save_clusters":
+                    pipeline.save_clusters = v.lower() == "true"
+                elif k == "show_clustered_components":
+                    pipeline.show_clustered_components = v.lower() == "true"
+                elif k == "save_clustered_components":
+                    pipeline.save_clustered_components = v.lower() == "true"
                 elif k == "show_rectification":
                     pipeline.show_rectification = v.lower() == "true"
+                elif k == "save_rectification":
+                    pipeline.save_rectification = v.lower() == "true"
+                elif k == "show_sky_mask":
+                    pipeline.show_sky_mask = v.lower() == "true"
+                elif k == "save_sky_mask":
+                    pipeline.save_sky_mask = v.lower() == "true"
                 elif k == "do_flann":
                     Config.config_map[Config.key_do_flann] = v.lower() == "true"
                 elif k == "image_pairs":
                     pipeline.matching_pairs = parse_list(v)
                 elif k == "chosen_depth_files":
                     pipeline.chosen_depth_files = parse_list(v)
-
+                else:
+                    print("WARNING - unrecognized param: {}".format(k))
 
         pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
 
@@ -145,15 +170,17 @@ class Pipeline:
 
         Timer.start_check_point("processing img")
         print("Processing: {}".format(img_name))
-        img_processing_dir = "{}/normals".format(self.output_dir)
+        img_processing_dir = "{}/imgs".format(self.output_dir)
+        Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
 
         # input image & K
         img_file_path = self.scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path, None)
-        plt.figure()
-        plt.title(img_name)
-        plt.imshow(img)
-        show_or_close(self.show_orig_image)
+        if self.show_input_img:
+            plt.figure()
+            plt.title(img_name)
+            plt.imshow(img)
+            plt.show(block=False)
 
         K = self.scene_info.get_img_K(img_name)
 
@@ -282,6 +309,8 @@ class Pipeline:
         for difficulty in self.matching_difficulties:
             print("Difficulty: {}".format(difficulty))
 
+            stats_map_diff = {}
+
             processed_pairs = 0
             for img_pair in self.scene_info.img_pairs_lists[difficulty]:
 
@@ -327,8 +356,8 @@ class Pipeline:
                         images_info=self.scene_info.img_info_map,
                         img_pair=img_pair,
                         out_dir=matching_out_dir,
-                        show=True,
-                        save=True)
+                        show=self.show_matching,
+                        save=self.save_matching)
 
                 else:
                     E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_and_keypoints(
@@ -342,8 +371,8 @@ class Pipeline:
                         image_data2.K,
                         img_pair,
                         matching_out_dir,
-                        show=True,
-                        save=True)
+                        show=self.show_matching,
+                        save=self.save_matching)
 
                 evaluate_matching(self.scene_info,
                                   E,
@@ -353,7 +382,7 @@ class Pipeline:
                                   inlier_mask,
                                   img_pair,
                                   matching_out_dir,
-                                  stats_map,
+                                  stats_map_diff,
                                   image_data1.normals,
                                   image_data2.normals,
                                   )
@@ -361,11 +390,19 @@ class Pipeline:
                 processed_pairs = processed_pairs + 1
                 Timer.end_check_point("complete image pair matching")
 
+            if len(stats_map_diff) > 0:
+                stats_map[difficulty] = stats_map_diff
+                stats_file_name = "{}/stats_diff_{}.pkl".format(self.output_dir, difficulty)
+                with open(stats_file_name, "wb") as f:
+                    pickle.dump(stats_map_diff, f)
+                print("Stats for difficulty {}:".format(difficulty))
+                evaluate(stats_map_diff, self.scene_info)
+
         all_stats_file_name = "{}/all.stats.pkl".format(self.output_dir)
         with open(all_stats_file_name, "wb") as f:
             pickle.dump(stats_map, f)
 
-        evaluate(stats_map, self.scene_info)
+        evaluate_all(stats_map, self.scene_info)
 
 
 def append_timestamp(str):
@@ -382,10 +419,12 @@ def main():
 
     Timer.start()
 
-    Config.set_rectify(False)
     Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
     pipeline = Pipeline.configure("config.txt", args)
+    pipeline.run_matching_pipeline()
+
+    Timer.end()
 
     # RECT
     # frame_0000000750_1_frame_0000001460_3 : 0.2975730073440412 : 0
@@ -411,36 +450,33 @@ def main():
     #
 
     #pipeline.matching_pairs = "frame_0000000650_2_frame_0000001285_2"
-    pipeline.matching_pairs = ["frame_0000000750_1_frame_0000001460_3",
-    "frame_0000001280_2_frame_0000000435_1",
-    "frame_0000000045_1_frame_0000001465_4",
-    "frame_0000001670_1_frame_0000000705_3",
-    "frame_0000000695_3_frame_0000000535_4",
-    "frame_0000001155_1_frame_0000001330_1",
-    "frame_0000001650_1_frame_0000000730_3",
-    "frame_0000000045_2_frame_0000002230_1",
-    "frame_0000000045_1_frame_0000001460_4",
-    "frame_0000001535_4_frame_0000000305_1",
-    "frame_0000001625_4_frame_0000001520_4"]
+    # pipeline.matching_pairs = ["frame_0000000750_1_frame_0000001460_3",
+    # "frame_0000001280_2_frame_0000000435_1",
+    # "frame_0000000045_1_frame_0000001465_4",
+    # "frame_0000001670_1_frame_0000000705_3",
+    # "frame_0000000695_3_frame_0000000535_4",
+    # "frame_0000001155_1_frame_0000001330_1",
+    # "frame_0000001650_1_frame_0000000730_3",
+    # "frame_0000000045_2_frame_0000002230_1",
+    # "frame_0000000045_1_frame_0000001460_4",
+    # "frame_0000001535_4_frame_0000000305_1",
+    # "frame_0000001625_4_frame_0000001520_4"]
 
     # pipeline.matching_pairs = "frame_0000000045_1_frame_0000001465_4"
 
-    pipeline.matching_pairs = [
-        "frame_0000000045_1_frame_0000001465_4",
-        "frame_0000000045_1_frame_0000001460_4",
-        "frame_0000000675_1_frame_0000000045_1",
-        ]
+    # pipeline.matching_pairs = [
+    #     "frame_0000000045_1_frame_0000001465_4",
+    #     "frame_0000000045_1_frame_0000001460_4",
+    #     "frame_0000000675_1_frame_0000000045_1",
+    #     ]
 
     #pipeline.chosen_depth_files = ["frame_0000001465_4.npy"]
-    pipeline.chosen_depth_files = ["frame_0000000045_1.npy"]
-
-    pipeline.matching_limit = 100
-    pipeline.rectify = True
+    # pipeline.chosen_depth_files = ["frame_0000000045_1.npy"]
+    #
+    # pipeline.matching_limit = 100
+    # pipeline.rectify = True
 
     #pipeline.run_sequential_pipeline()
-    pipeline.run_matching_pipeline()
-
-    Timer.end()
 
     # TODO good example!!!
     #"frame_0000000675_1_frame_0000000045_1",
