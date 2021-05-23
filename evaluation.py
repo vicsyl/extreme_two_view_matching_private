@@ -762,6 +762,8 @@ def main():
 
 if __name__ == "__main__":
 
+    print("Started")
+
     parser = argparse.ArgumentParser(prog='evaluation')
     parser.add_argument('--input_dir', help='input dir')
     args = parser.parse_args()
@@ -773,9 +775,11 @@ if __name__ == "__main__":
     #evaluate_file("scene1", "all.stats_last_rect.pkl")
     #evaluate_file("scene1", "work/pipeline_scene1_333/all.stats.pkl")
 
-    for diff in range(6):
-        file_path = "{}/stats_diff_{}".format(args.input_dir, diff)
+    for diff in range(18):
+        file_path = "{}/stats_diff_{}.pkl".format(args.input_dir, diff)
         if os.path.isfile(file_path):
-            evaluate_percentage_correct("".format(diff), diff)
+            evaluate_percentage_correct(file_path, diff)
+        else:
+            print("{} not found".format(file_path))
 
     #evaluate_last("scene1")
