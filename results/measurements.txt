@@ -1,0 +1,55 @@
+21/5/2021 measurement on 5d1b819:
+
+    scene1
+
+    0   0.9
+    1   0.82
+    2   0.7
+    3   0.635
+
+    Clustering: angle_distance_threshold: 30 degrees
+    Clustering: angle_distance_inter_cluster_threshold_degrees: 75.0
+    Clustering: distance_threshold: 0.5176380902050415
+    Clustering: distance_inter_cluster_threshold: 1.2175228580174413
+    Clustering: points_threshold: 20000
+    Clustering: N_points: 300
+    Pipeline config:
+      chosen_depth_files = None
+      depth_input_dir = depth_data/mega_depth/scene1
+      feature_descriptor = <SIFT 0x7fb87f46e3d0>
+      matching_difficulties = [0, 1]
+      matching_limit = 10000
+      matching_pairs = None
+      output_dir = work/pipeline_scene1_2021_05_20_19_49_15_952294311/
+      planes_based_matching = False
+      rectify = True
+      save_clustered_components = False
+      save_clusters = False
+      save_matching = False
+      save_rectification = False
+      save_sky_mask = False
+      scene_name = scene1
+      sequential_files_limit = None
+      show_clustered_components = False
+      show_clusters = False
+      show_input_img = False
+      show_matching = False
+      show_orig_image = True
+      show_rectification = False
+      show_save_normals = False
+      show_sky_mask = False
+
+    Config:
+      do_flann: False,
+      key_planes_based_matching_merge_components: False,
+      rectification_interpolation_key: 1,
+      config_map = {'do_flann': False, 'key_planes_based_matching_merge_components': False, 'rectification_interpolation_key': 1}
+      key_do_flann = do_flann
+      key_planes_based_matching_merge_components = key_planes_based_matching_merge_components
+      plane_threshold_degrees = 75
+      rectification_interpolation_key = rectification_interpolation_key
+      svd_smoothing = False
+      svd_smoothing_sigma = 1.33
+      svd_weighted = True
+      svd_weighted_sigma = 0.8
+

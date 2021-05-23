@@ -1,5 +1,6 @@
 import numpy as np
 
+import argparse
 from scene_info import *
 from utils import quaternions_to_R
 import cv2 as cv
@@ -626,6 +627,21 @@ def evaluate_last(scene_name):
     evaluate(stats_map, scene_info)
 
 
+def evaluate_percentage_correct(file_name, difficulty):
+
+    with open(file_name, "rb") as f:
+        #print("reading: {}".format(file_name))
+        stats_map = pickle.load(f)
+
+    degrees_th = 5
+    rad_th = degrees_th * math.pi / 180
+    filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
+    filtered_len = len(filtered)
+    all_len = len(stats_map.items())
+    #print("percentage of correct {}/{} = {}".format(filtered_len, all_len, filtered_len/all_len))
+    print("{}   {}".format(difficulty, filtered_len/all_len))
+
+
 def evaluate_file(scene_name, file_name):
 
     scene_info = SceneInfo.read_scene(scene_name)
@@ -633,6 +649,12 @@ def evaluate_file(scene_name, file_name):
         print("reading: {}".format(file_name))
         stats_map = pickle.load(f)
 
+    degrees_th = 5
+    rad_th = degrees_th * math.pi / 180
+    filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
+    filtered_len = len(filtered)
+    all_len = len(stats_map.items())
+    print("percentage of correct {}/{} = {}".format(filtered_len, all_len, filtered_len/all_len))
 
     #items_in_list = list(stats_map.items())
     sorted_by_err_R = sorted(stats_map.items(), key=lambda key_value: key_value[1].error_R)
@@ -740,9 +762,20 @@ def main():
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(prog='evaluation')
+    parser.add_argument('--input_dir', help='input dir')
+    args = parser.parse_args()
+
+    assert args.input_dir is not None
+
 #    evaluate_file("scene1", "work/pipeline_scene1_2021_05_12_18_49_55_115656/all.stats.pkl")
     #evaluate_file("scene1", "all.stats.pkl")
     #evaluate_file("scene1", "all.stats_last_rect.pkl")
-    evaluate_file("scene1", "work/pipeline_scene1_333/all.stats.pkl")
+    #evaluate_file("scene1", "work/pipeline_scene1_333/all.stats.pkl")
+
+    for diff in range(6):
+        file_path = "{}/stats_diff_{}".format(args.input_dir, diff)
+        if os.path.isfile(file_path):
+            evaluate_percentage_correct("".format(diff), diff)
 
     #evaluate_last("scene1")
