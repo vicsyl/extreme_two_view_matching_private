@@ -642,6 +642,32 @@ def evaluate_percentage_correct(file_name, difficulty):
     print("{}   {}".format(difficulty, filtered_len/all_len))
 
 
+def make_light_value(v: Stats):
+    v.src_pts_inliers = None
+    v.dsrc_pts_inliers = None
+    v.kpts1 = None
+    v.kpts2 = None
+
+
+def make_light(file_name, difficulty):
+
+    with open(file_name, "rb") as f:
+        #print("reading: {}".format(file_name))
+        stats_map = pickle.load(f)
+
+    for key_value in stats_map.items():
+        make_light_value(key_value[1])
+
+    #light = dict(map(lambda v: (v[0], make_light_value(v)), stats_map))
+
+    with open("{}_light".format(file_name), "wb") as f:
+        pickle.dump(stats_map, f)
+
+    with open("{}_light".format(file_name), "rb") as f:
+        #print("reading: {}".format(file_name))
+        stats_map2 = pickle.load(f)
+        print()
+
 def evaluate_file(scene_name, file_name):
 
     scene_info = SceneInfo.read_scene(scene_name)
@@ -766,6 +792,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='evaluation')
     parser.add_argument('--input_dir', help='input dir')
+    parser.add_argument('--method', help='method')
     args = parser.parse_args()
 
     assert args.input_dir is not None
@@ -778,7 +805,10 @@ if __name__ == "__main__":
     for diff in range(18):
         file_path = "{}/stats_diff_{}.pkl".format(args.input_dir, diff)
         if os.path.isfile(file_path):
-            evaluate_percentage_correct(file_path, diff)
+            if args.method == "make_light":
+                make_light(file_path, diff)
+            else:
+                evaluate_percentage_correct(file_path, diff)
         else:
             print("{} not found".format(file_path))
 
