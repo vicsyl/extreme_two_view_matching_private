@@ -70,6 +70,10 @@ class Pipeline:
 
     rectify = True
 
+    knn_ratio_threshold = 0.85
+
+    use_cached_img_data = True
+
     @staticmethod
     def configure(config_file_name: str, args):
 
@@ -91,8 +95,10 @@ class Pipeline:
 
                 if k == "scene_name":
                     pipeline.scene_name = v
-                if k == "rectify":
+                elif k == "rectify":
                     pipeline.rectify = v.lower() == "true"
+                elif k == "knn_ratio_threshold":
+                    pipeline.knn_ratio_threshold = float(v)
                 elif k == "matching_difficulties_min":
                     matching_difficulties_min = int(v)
                 elif k == "matching_difficulties_max":
@@ -107,10 +113,8 @@ class Pipeline:
                     pipeline.output_dir = append_timestamp(v)
                 elif k == "output_dir":
                     pipeline.output_dir = v
-
                 elif k == "show_input_img":
                     pipeline.show_input_img = v.lower() == "true"
-
                 elif k == "show_matching":
                     pipeline.show_matching = v.lower() == "true"
                 elif k == "save_matching":
@@ -137,6 +141,8 @@ class Pipeline:
                     pipeline.matching_pairs = parse_list(v)
                 elif k == "chosen_depth_files":
                     pipeline.chosen_depth_files = parse_list(v)
+                elif k == "use_cached_img_data":
+                    pipeline.use_cached_img_data = v.lower() == "true"
                 else:
                     print("WARNING - unrecognized param: {}".format(k))
 
@@ -161,6 +167,8 @@ class Pipeline:
         print("Pipeline config:")
         attr_list = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__")]
         for attr_name in attr_list:
+            if attr_name in ["scene_info"]:
+                continue
             print("  {} = {}".format(attr_name, getattr(self, attr_name)))
         print()
 
@@ -187,8 +195,6 @@ class Pipeline:
         # depth => indices
         depth_data_file_name = "{}.npy".format(img_name)
 
-        normals = compute_only_normals(self.scene_info, self.depth_input_dir, depth_data_file_name)
-
         img_name = depth_data_file_name[0:-4]
         img_file_path = self.scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path)
@@ -209,7 +215,7 @@ class Pipeline:
         else:
 
             img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
-            if os.path.isfile(img_data_path):
+            if self.use_cached_img_data and os.path.isfile(img_data_path):
                 Timer.start_check_point("reading img processing data")
                 with open(img_data_path, "rb") as f:
                     print("img data for {} already computed, reading: {}".format(img_name, img_data_path))
@@ -219,6 +225,7 @@ class Pipeline:
 
             Timer.start_check_point("processing img from scratch")
 
+            normals = compute_only_normals(self.scene_info, self.depth_input_dir, depth_data_file_name)
             filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
 
             sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name[:-4])
@@ -372,7 +379,8 @@ class Pipeline:
                         img_pair,
                         matching_out_dir,
                         show=self.show_matching,
-                        save=self.save_matching)
+                        save=self.save_matching,
+                        ratio_thresh=self.knn_ratio_threshold)
 
                 evaluate_matching(self.scene_info,
                                   E,
@@ -396,13 +404,13 @@ class Pipeline:
                 with open(stats_file_name, "wb") as f:
                     pickle.dump(stats_map_diff, f)
                 print("Stats for difficulty {}:".format(difficulty))
-                evaluate(stats_map_diff, self.scene_info)
+                evaluate_percentage_correct(stats_map_diff, difficulty, n_worst_examples=10)
 
         all_stats_file_name = "{}/all.stats.pkl".format(self.output_dir)
         with open(all_stats_file_name, "wb") as f:
             pickle.dump(stats_map, f)
 
-        evaluate_all(stats_map, self.scene_info)
+        evaluate_all(stats_map, n_worst_examples=10)
 
 
 def append_timestamp(str):
@@ -417,12 +425,25 @@ def main():
     parser.add_argument('--output_dir', help='ouput dir')
     args = parser.parse_args()
 
+    # hurts
+    # "frame_0000001650_1_frame_0000000730_3"
+    # "frame_0000000200_4_frame_0000001845_1"
+    # helps
+    # "frame_0000000730_4_frame_0000000390_4"
+
     Timer.start()
 
     Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
     pipeline = Pipeline.configure("config.txt", args)
+
+    #pipeline.matching_pairs = "frame_0000000730_4_frame_0000000390_4"
+    #pipeline.rectify = True
+
     pipeline.run_matching_pipeline()
+
+    # pipeline.rectify = False
+    # pipeline.run_matching_pipeline()
 
     Timer.end()
 
@@ -469,6 +490,19 @@ def main():
     #     "frame_0000000045_1_frame_0000001460_4",
     #     "frame_0000000675_1_frame_0000000045_1",
     #     ]
+
+    # relict hurts
+    # frame_0000000175_1_frame_0000000845_1: 3.134319304222711
+    # frame_0000000200_4_frame_0000001845_1: 3.1340711124831624
+    # frame_0000001350_2_frame_0000001015_1: 3.0998686019217874
+    # frame_0000001075_3_frame_0000001365_4: 3.079703309390179
+    # frame_0000001720_1_frame_0000000030_2: 3.0589784436231784
+    # frame_0000001740_3_frame_0000001020_1: 3.044786897719698
+    # frame_0000000640_4_frame_0000000055_4: 3.0038974081353076
+    # frame_0000001590_4_frame_0000000840_1: 2.994597958434275
+    # frame_0000000990_1_frame_0000001565_4: 2.9864855661578193
+    # frame_0000000585_2_frame_0000002160_1: 2.9804281328592155
+
 
     #pipeline.chosen_depth_files = ["frame_0000001465_4.npy"]
     # pipeline.chosen_depth_files = ["frame_0000000045_1.npy"]

@@ -83,32 +83,27 @@ def rich_split_points(tentative_matches, kps1, dsc1, kps2, dsc2):
     return src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc
 
 
-def get_simple_matches(knn_matches, ratio_thresh):
-    return [m for m, n in knn_matches if m.distance < ratio_thresh * n.distance]
+def get_cross_checked_tentatives(matcher, descs1, descs2, ratio_threshold):
 
-
-def get_simple_cross_checked_matches(knn_matches, ratio_thresh):
-
+    knn_matches = matcher.knnMatch(descs1, descs2, k=2)
+    # For cross-check - TODO does is work for flann?
+    matches2 = matcher.match(descs2, descs1)
     tentative_matches = []
-    tentative_matches_dict = {}
+    # TODO what about this?
+    # if len(matches) < 10:
+    #     return None, [], []
     for m, n in knn_matches:
-        if m.distance < ratio_thresh * n.distance:
-            if not tentative_matches_dict.__contains__(m.trainIdx):
-                tentative_matches_dict[m.trainIdx] = []
-            tentative_matches_dict[m.trainIdx].append(m)
+        if matches2[m.trainIdx].trainIdx != m.queryIdx:
+            continue
+        if m.distance < ratio_threshold * n.distance: # ratio_threshold was 0.85
+            tentative_matches.append(m)
 
-    # simple cross check without ratio test
-    for key, values in tentative_matches_dict.items():
-        min_value = None
-        for value in values:
-            if min_value is None or value.distance < min_value.distance:
-                min_value = value
-        tentative_matches.append(value)
     return tentative_matches
 
 
-def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, save_suffix=None, ratio_thresh=0.8, show=True, save=True):
+def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, save_suffix=None, ratio_thresh=None, show=True, save=True):
 
+    # TODO aren't we doing cross check down below?
     crossCheck = False
     if Config.do_flann():
         FLANN_INDEX_KDTREE = 1
@@ -120,12 +115,8 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, s
 
     assert descs1 is not None and len(descs1) != 0
     assert descs2 is not None and len(descs2) != 0
-    knn_matches = matcher.knnMatch(descs1, descs2, 2)
 
-    tentative_matches = get_simple_matches(knn_matches, ratio_thresh)
-    # TODO to not end up with one-to-many relationship
-    #tentative_matches = get_simple_cross_checked_matches(knn_matches, ratio_thresh)
-    print("tentative_matches: {}".format(len(tentative_matches)))
+    tentative_matches = get_cross_checked_tentatives(matcher, descs1, descs2, ratio_thresh)
 
     if show or save:
         tentative_matches_in_singleton_list = [[m] for m in tentative_matches]
@@ -372,12 +363,13 @@ def show_save_matching(img1,
 #     return src_pts_inliers, dst_pts_inliers
 #
 
-def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save):
+def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save, ratio_thresh):
 
     Timer.start_check_point("matching")
 
     save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
-    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, save_suffix, ratio_thresh=0.75, show=show, save=save)
+
+    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
@@ -450,7 +442,7 @@ def img_correspondences(scene_info: SceneInfo, output_dir, descriptor, normals_d
             img1, K_1, kps1, descs1 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img1, normal_indices1, normals1, descriptor, out_dir, rectify)
             img2, K_2, kps2, descs2 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img2, normal_indices2, normals2, descriptor, out_dir, rectify)
 
-            return match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True)
+            return match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True, ratio_thresh=0.85)
 
 
 def main():

@@ -264,110 +264,22 @@ class ImageSerializedData:
 class Stats:
     error_R: float
     error_T: float
-    src_tentatives: np.ndarray
-    dst_tentatives: np.ndarray
     tentative_matches: int
     inliers: int
     all_features_1: int
     all_features_2: int
-    src_pts_inliers: np.ndarray
-    dst_pts_inliers: np.ndarray
     E: np.ndarray
     normals1: np.ndarray
     normals2: np.ndarray
-    kpts1: list
-    kpts2: list
 
-
-    # can be made to a constructor?
-    # @staticmethod
-    # def read_from_dict(d):
-    #     stats = Stats.load_from_array(d["stats"])
-    #     stats.src_pts_inliers = d["src_pts_inliers"]
-    #     stats.dsrc_pts_inliers = d["dst_pts_inliers"]
-    #     stats.E = d["E"]
-    #     return stats
-
-    @staticmethod
-    def read_from_file(file_path):
-        np_array = np.loadtxt(file_path, delimiter=";\n,")
-        return Stats.load_from_array(np_array)
-
-    @staticmethod
-    def load_from_array(np_array: np.ndarray):
-        return Stats(error_R=np_array[0],
-                     error_T=np_array[1],
-                     tentative_matches=int(np_array[2]),
-                     inliers=int(np_array[3]),
-                     all_features_1=int(np_array[4]),
-                     all_features_2=int(np_array[5]),
-                     src_pts_inliers=None,
-                     dst_pts_inliers=None,
-                     E=None,
-                     normals=None
-                     )
-
-    @staticmethod
-    def get_field_descs():
-        l = ["error in R", "error in T", "tentative matches", "inliers", "all features in 1st", "all features in 2nd"]
-        return ";\n".join(l)
-
-    def to_numpy(self):
-        return np.array([self.error_R, self.error_T, self.tentative_matches, self.inliers, self.all_features_1, self.all_features_2])
-
-    def save_brief(self, file_path: str):
-        val = self.to_numpy()
-        np.savetxt(file_path, val, delimiter=';\n', fmt='%1.8f', header=Stats.get_field_descs())
-
-    @staticmethod
-    def save_parts(out_dir,
-                   save_suffix,
-                   E,
-                   src_tentative,
-                   dst_tentative,
-                   src_inliers,
-                   dst_inliers,
-                   error_R,
-                   error_T,
-                   n_tentative_matches,
-                   n_inliers,
-                   n_all_features_1,
-                   n_all_features_2,
-                   normals1,
-                   normals2,
-                   whole_kpts1,
-                   whole_kpts2,
-                   ):
-
-        Path(out_dir).mkdir(parents=True, exist_ok=True)
-        # np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
-        # np.savetxt("{}/src_inliers_{}.txt".format(out_dir, save_suffix), src_inliers, delimiter=',', fmt='%1.8f')
-        # np.savetxt("{}/dst_inliers_{}.txt".format(out_dir, save_suffix), dst_inliers, delimiter=',', fmt='%1.8f')
-        # np.savetxt("{}/src_tentative_{}.txt".format(out_dir, save_suffix), src_tentative, delimiter=',', fmt='%1.8f')
-        # np.savetxt("{}/dst_tentative_{}.txt".format(out_dir, save_suffix), dst_tentative, delimiter=',', fmt='%1.8f')
-        # np.savetxt("{}/normals_1_{}.txt".format(out_dir, save_suffix), normals1, delimiter=',', fmt='%1.8f')
-        # np.savetxt("{}/normals_2_{}.txt".format(out_dir, save_suffix), normals2, delimiter=',', fmt='%1.8f')
-
-        stats = Stats(error_R=error_R,
-                      error_T=error_T,
-                      src_tentatives=src_tentative,
-                      dst_tentatives=dst_tentative,
-                      tentative_matches=n_tentative_matches,
-                      inliers=n_inliers,
-                      all_features_1=n_all_features_1,
-                      all_features_2=n_all_features_2,
-                      E=E,
-                      src_pts_inliers=src_inliers,
-                      dst_pts_inliers=dst_inliers,
-                      normals1=normals1,
-                      normals2=normals2,
-                      kpts1=whole_kpts1,
-                      kpts2=whole_kpts2
-                      )
-
-        #stats.save_brief("{}/stats_{}.txt".format(out_dir, save_suffix))
-
-        return stats
+    # legacy
+    def make_brief(self):
+        self.src_pts_inliers = None
+        self.dst_pts_inliers = None
+        self.src_tentatives = None
+        self.dst_tentatives = None
+        self.kpts1 = None
+        self.kpts2 = None
 
 
 def evaluate_matching(scene_info,
@@ -385,8 +297,8 @@ def evaluate_matching(scene_info,
     save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
     print("Image pair: {} <-> {}:".format(img_pair.img1, img_pair.img2))
-    print("Number of correspondences: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
-    print("Number of not-correspondences: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
+    print("Number of inliers: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
+    print("Number of outliers: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
 
     src_tentative, dst_tentative = split_points(tentative_matches, kps1, kps2)
     src_pts_inliers = src_tentative[inlier_mask[:, 0] == [1]]
@@ -395,66 +307,57 @@ def evaluate_matching(scene_info,
     error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
-    stats = Stats.save_parts(out_dir,
-                             save_suffix,
-                             E,
-                             src_tentative,
-                             dst_tentative,
-                             src_pts_inliers,
-                             dst_pts_inliers,
-                             error_R,
-                             error_T,
-                             len(tentative_matches),
-                             inliers,
-                             len(kps1),
-                             len(kps2),
-                             normals1,
-                             normals2,
-                             kps1,
-                             kps2
-                             )
+    stats = Stats(error_R=error_R,
+                  error_T=error_T,
+                  tentative_matches=len(tentative_matches),
+                  inliers=inliers,
+                  all_features_1=len(kps1),
+                  all_features_2=len(kps2),
+                  E=E,
+                  normals1=normals1,
+                  normals2=normals2,
+                  )
 
     key = "{}_{}".format(img_pair.img1, img_pair.img2)
-    #stats_map[key] = inner_map
     stats_map[key] = stats
     return stats
 
 
-def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
-
-    dirs = [dirname for dirname in sorted(os.listdir(input_dir)) if os.path.isdir("{}/{}".format(input_dir, dirname))]
-    dirs = sorted(dirs)
-    if limit is not None:
-        dirs = dirs[0:limit]
-
-    flattened_img_pairs = [pair for diff in scene_info.img_pairs_lists for pair in diff]
-    img_pair_map = {"{}_{}".format(img_pair.img1, img_pair.img2): img_pair for img_pair in flattened_img_pairs}
-
-    result_map = {}
-
-    for dir in dirs:
-
-        if not img_pair_map.__contains__(dir):
-            print("dir '{}' not recognized!!!".format(dir))
-            continue
-
-        whole_path = "{}/{}".format(input_dir, dir)
-
-        img_pair = img_pair_map[dir]
-        E = np.loadtxt("{}/essential_matrix.txt".format(whole_path), delimiter=',')
-        dst_pts = np.loadtxt("{}/dst_pts.txt".format(whole_path), delimiter=',')
-        src_pts = np.loadtxt("{}/src_pts.txt".format(whole_path), delimiter=',')
-        stats = np.loadtxt("{}/stats.txt".format(whole_path), delimiter=',')
-        tentative_matches = stats[0]
-        inliers = stats[1]
-        all_features_1 = stats[2]
-        all_features_2 = stats[3]
-
-        print("Evaluating: {}".format(dir))
-        errors = compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
-        result_map[dir] = Stats(errors[0], errors[1], tentative_matches, inliers, all_features_1, all_features_2)
-
-    return result_map
+# def evaluate_all(scene_info: SceneInfo, input_dir, limit=None):
+#
+#     dirs = [dirname for dirname in sorted(os.listdir(input_dir)) if os.path.isdir("{}/{}".format(input_dir, dirname))]
+#     dirs = sorted(dirs)
+#     if limit is not None:
+#         dirs = dirs[0:limit]
+#
+#     flattened_img_pairs = [pair for diff in scene_info.img_pairs_lists for pair in diff]
+#     img_pair_map = {"{}_{}".format(img_pair.img1, img_pair.img2): img_pair for img_pair in flattened_img_pairs}
+#
+#     result_map = {}
+#
+#     for dir in dirs:
+#
+#         if not img_pair_map.__contains__(dir):
+#             print("dir '{}' not recognized!!!".format(dir))
+#             continue
+#
+#         whole_path = "{}/{}".format(input_dir, dir)
+#
+#         img_pair = img_pair_map[dir]
+#         E = np.loadtxt("{}/essential_matrix.txt".format(whole_path), delimiter=',')
+#         dst_pts = np.loadtxt("{}/dst_pts.txt".format(whole_path), delimiter=',')
+#         src_pts = np.loadtxt("{}/src_pts.txt".format(whole_path), delimiter=',')
+#         stats = np.loadtxt("{}/stats.txt".format(whole_path), delimiter=',')
+#         tentative_matches = stats[0]
+#         inliers = stats[1]
+#         all_features_1 = stats[2]
+#         all_features_2 = stats[3]
+#
+#         print("Evaluating: {}".format(dir))
+#         errors = compare_poses(E, img_pair, scene_info, src_pts, dst_pts)
+#         result_map[dir] = Stats(errors[0], errors[1], tentative_matches, inliers, all_features_1, all_features_2)
+#
+#     return result_map
 
 
 def read_last():
@@ -560,113 +463,114 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     return checks
 
 
-def evaluate_all(stats_map_all: dict, scene_info: SceneInfo):
+def evaluate_all(stats_map_all: dict, n_worst_examples=None):
     for diff, stats_map in stats_map_all.items():
         print("Stats for difficulty {}:".format(diff))
-        evaluate(stats_map, scene_info)
+        evaluate_percentage_correct(stats_map, diff, n_worst_examples=n_worst_examples)
 
 
-def evaluate(stats_map: dict, scene_info: SceneInfo):
-
-    l_entries = []
-    n_entries = 0
-
-    error_R = []
-    error_T = []
-    tentative_matches = []
-    inliers = []
-    all_features_1 = []
-    all_features_2 = []
-    #matched_points = []
-    all_checks = []
-    x2_F_x1_thresholds = np.array([0.05, 0.01, 0.005])
-
-    for img_pair_str, stats in stats_map.items():
-
-        n_entries += 1
-        img_pair, diff = scene_info.find_img_pair_from_key(img_pair_str)
-
-        l_entries.append(str(img_pair))
-
-        error_R.append(stats.error_R)
-        error_T.append(stats.error_T)
-        tentative_matches.append(stats.tentative_matches)
-        inliers.append(stats.inliers)
-        all_features_1.append(stats.all_features_1)
-        all_features_2.append(stats.all_features_2)
-
-        checks = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, stats.src_tentatives, stats.dst_tentatives, x2_F_x1_thresholds)
-        all_checks.append(checks)
-
-        # matched_points_local = correctly_matched_point_for_image_pair(stats.src_pts_inliers,
-        #                                                 stats.dst_pts_inliers,
-        #                                                 scene_info.img_info_map,
-        #                                                 img_pair)
-        # matched_points.append(matched_points_local.shape[0])
-
-    print("Image entries (img name, difficulty)")
-    print(",\n".join(l_entries))
-
-    print("Stats report")
-    print_stats("error_R", error_R)
-    print_stats("error_T", error_T)
-    print_stats("tentative_matches", tentative_matches)
-    print_stats("inliers", inliers)
-    print_stats("all_features_1", all_features_1)
-    print_stats("all_features_2", all_features_2)
-
-    all_checks = np.array(all_checks)
-    all_checks_avgs = np.sum(all_checks, axis=0) / all_checks.shape[0]
-    print("F ground truth checks averages (for thresholds: {}): {}".format(x2_F_x1_thresholds, all_checks_avgs))
-
-
-def evaluate_last(scene_name):
-
-    scene_info = SceneInfo.read_scene(scene_name)
-    stats_map = read_last()
-    evaluate(stats_map, scene_info)
+# def evaluate(stats_map: dict, scene_info: SceneInfo):
+#
+#     l_entries = []
+#     n_entries = 0
+#
+#     error_R = []
+#     error_T = []
+#     tentative_matches = []
+#     inliers = []
+#     all_features_1 = []
+#     all_features_2 = []
+#     #matched_points = []
+#     all_checks = []
+#     x2_F_x1_thresholds = np.array([0.05, 0.01, 0.005])
+#
+#     for img_pair_str, stats in stats_map.items():
+#
+#         n_entries += 1
+#         img_pair, diff = scene_info.find_img_pair_from_key(img_pair_str)
+#
+#         l_entries.append(str(img_pair))
+#
+#         error_R.append(stats.error_R)
+#         error_T.append(stats.error_T)
+#         tentative_matches.append(stats.tentative_matches)
+#         inliers.append(stats.inliers)
+#         all_features_1.append(stats.all_features_1)
+#         all_features_2.append(stats.all_features_2)
+#
+#         checks = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, stats.src_tentatives, stats.dst_tentatives, x2_F_x1_thresholds)
+#         all_checks.append(checks)
+#
+#         # matched_points_local = correctly_matched_point_for_image_pair(stats.src_pts_inliers,
+#         #                                                 stats.dst_pts_inliers,
+#         #                                                 scene_info.img_info_map,
+#         #                                                 img_pair)
+#         # matched_points.append(matched_points_local.shape[0])
+#
+#     print("Image entries (img name, difficulty)")
+#     print(",\n".join(l_entries))
+#
+#     print("Stats report")
+#     print_stats("error_R", error_R)
+#     print_stats("error_T", error_T)
+#     print_stats("tentative_matches", tentative_matches)
+#     print_stats("inliers", inliers)
+#     print_stats("all_features_1", all_features_1)
+#     print_stats("all_features_2", all_features_2)
+#
+#     all_checks = np.array(all_checks)
+#     all_checks_avgs = np.sum(all_checks, axis=0) / all_checks.shape[0]
+#     print("F ground truth checks averages (for thresholds: {}): {}".format(x2_F_x1_thresholds, all_checks_avgs))
 
 
-def evaluate_percentage_correct(file_name, difficulty):
+# def evaluate_last(scene_name):
+#
+#     scene_info = SceneInfo.read_scene(scene_name)
+#     stats_map = read_last()
+#     evaluate(stats_map, scene_info)
+#
+#
 
-    with open(file_name, "rb") as f:
-        #print("reading: {}".format(file_name))
-        stats_map = pickle.load(f)
+def evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=None):
+    sorted_by_err_R = list(sorted(stats_map.items(), key=lambda key_value: -key_value[1].error_R))
+
+    if n_worst_examples is not None:
+        print("{} worst examples for diff={}".format(n_worst_examples, difficulty))
+        for k, v in sorted_by_err_R[:n_worst_examples]:
+            print("{}: {}".format(k, v.error_R))
 
     degrees_th = 5
     rad_th = degrees_th * math.pi / 180
     filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
     filtered_len = len(filtered)
     all_len = len(stats_map.items())
-    #print("percentage of correct {}/{} = {}".format(filtered_len, all_len, filtered_len/all_len))
-    print("{}   {}".format(difficulty, filtered_len/all_len))
+    perc = filtered_len/all_len
+    print("Diff     Perc.")
+    print("{}   {}".format(difficulty, perc))
+    return difficulty, perc
 
 
-def make_light_value(v: Stats):
-    v.src_pts_inliers = None
-    v.dsrc_pts_inliers = None
-    v.kpts1 = None
-    v.kpts2 = None
-
-
-def make_light(file_name, difficulty):
+def evaluate_percentage_correct_from_file(file_name, difficulty, n_worst_examples=None):
 
     with open(file_name, "rb") as f:
         #print("reading: {}".format(file_name))
         stats_map = pickle.load(f)
 
-    for key_value in stats_map.items():
-        make_light_value(key_value[1])
+    return evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=n_worst_examples)
 
-    #light = dict(map(lambda v: (v[0], make_light_value(v)), stats_map))
+
+def make_light(file_name):
+
+    with open(file_name, "rb") as f:
+        print("reading: {}".format(file_name))
+        stats_map = pickle.load(f)
+
+    for key_value in stats_map.items():
+        key_value[1].make_brief()
 
     with open("{}_light".format(file_name), "wb") as f:
         pickle.dump(stats_map, f)
 
-    with open("{}_light".format(file_name), "rb") as f:
-        #print("reading: {}".format(file_name))
-        stats_map2 = pickle.load(f)
-        print()
 
 def evaluate_file(scene_name, file_name):
 
@@ -689,8 +593,6 @@ def evaluate_file(scene_name, file_name):
     for (key, value) in sorted_by_diff_err_R:
         print("{} : {} : {}".format(key, value.error_R, scene_info.find_img_pair_from_key(key=key)[1]))
 
-
-
     vals = list(map(lambda v: v[1].error_R, sorted_by_err_R))
     vals1 = np.array(vals)
     hist1 = np.histogram(vals1)
@@ -704,86 +606,86 @@ def evaluate_file(scene_name, file_name):
     #evaluate(stats_map_read, scene_info)
 
 
-def main():
-    start = time.time()
-
-    scene = "scene1"
-    scene_info = SceneInfo.read_scene(scene)
-    with_map = evaluate_all(scene_info, "work/{}/matching/with_rectification".format(scene), limit=None)
-    without_map = evaluate_all(scene_info, "work/{}/matching/without_rectification".format(scene), limit=None)
-
-    with_r_err = 0
-    with_t_err = 0
-    without_t_err = 0
-    without_r_err = 0
-
-    diff_r = []
-    diff_t = []
-
-    with_inlier_ratio = 0.0
-    without_inlier_ratio = 0.0
-
-    with_tentative_matches = 0
-    without_tentative_matches = 0
-
-    common_enties = 0
-
-    for key in with_map:
-        if not without_map.__contains__(key):
-            continue
-        common_enties += 1
-        with_r_err += with_map[key].error_R
-        with_t_err += with_map[key].error_T
-        without_r_err += without_map[key].error_R
-        without_t_err += without_map[key].error_T
-        diff_r.append((with_map[key].error_R - without_map[key].error_R, key))
-        diff_t.append((with_map[key].error_T - without_map[key].error_T, key))
-
-        with_tentative_matches_p = with_map[key].tentative_matches
-        without_tentative_matches_p = without_map[key].tentative_matches
-        print("with tentative matches for {}: {}".format(key, with_tentative_matches_p))
-        print("without tentative matches for {}: {}".format(key, without_tentative_matches_p))
-        with_tentative_matches += with_tentative_matches_p
-        without_tentative_matches += without_tentative_matches_p
-
-        with_inlier_ratio_p = (with_map[key].inliers / with_map[key].tentative_matches)
-        without_inlier_ratio_p = (without_map[key].inliers / without_map[key].tentative_matches)
-        print("with inlier ratio_p for {}: {}".format(key, with_inlier_ratio_p))
-        print("without inlier ratio_p for {}: {}".format(key, without_inlier_ratio_p))
-        with_inlier_ratio += with_inlier_ratio_p
-        without_inlier_ratio += without_inlier_ratio_p
-
-        #print("with: {}, without: {}".format(with_map[key], without_map[key]))
-
-
-    with_inlier_ratio /= float(common_enties)
-    without_inlier_ratio /= float(common_enties)
-    with_tentative_matches /= float(common_enties)
-    without_tentative_matches /= float(common_enties)
-
-
-    diff_r.sort(key=lambda x: x[0])
-    diff_t.sort(key=lambda x: x[0])
-
-    for r_diff in diff_r:
-        print("R diff: {} in {}".format(r_diff[0], r_diff[1]))
-
-    for t_diff in diff_t:
-        print("T diff: {} in {}".format(t_diff[0], t_diff[1]))
-
-
-    print("common entries: {}".format(common_enties))
-    print("with rectification errors. R: {}, T: {}".format(with_r_err, with_t_err))
-    print("without rectification errors. R: {}, T: {}".format(without_r_err, without_t_err))
-    print("with tentative matches: {}".format(with_tentative_matches))
-    print("without tentative_matches: {}".format(without_tentative_matches))
-    print("with inlier ratio: {}".format(with_inlier_ratio))
-    print("without inlier ratio: {}".format(without_inlier_ratio))
-
-
-    print("All done")
-    end = time.time()
-    print("Time elapsed: {}".format(end - start))
+# def main():
+#     start = time.time()
+#
+#     scene = "scene1"
+#     scene_info = SceneInfo.read_scene(scene)
+#     with_map = evaluate_all(scene_info, "work/{}/matching/with_rectification".format(scene), limit=None)
+#     without_map = evaluate_all(scene_info, "work/{}/matching/without_rectification".format(scene), limit=None)
+#
+#     with_r_err = 0
+#     with_t_err = 0
+#     without_t_err = 0
+#     without_r_err = 0
+#
+#     diff_r = []
+#     diff_t = []
+#
+#     with_inlier_ratio = 0.0
+#     without_inlier_ratio = 0.0
+#
+#     with_tentative_matches = 0
+#     without_tentative_matches = 0
+#
+#     common_enties = 0
+#
+#     for key in with_map:
+#         if not without_map.__contains__(key):
+#             continue
+#         common_enties += 1
+#         with_r_err += with_map[key].error_R
+#         with_t_err += with_map[key].error_T
+#         without_r_err += without_map[key].error_R
+#         without_t_err += without_map[key].error_T
+#         diff_r.append((with_map[key].error_R - without_map[key].error_R, key))
+#         diff_t.append((with_map[key].error_T - without_map[key].error_T, key))
+#
+#         with_tentative_matches_p = with_map[key].tentative_matches
+#         without_tentative_matches_p = without_map[key].tentative_matches
+#         print("with tentative matches for {}: {}".format(key, with_tentative_matches_p))
+#         print("without tentative matches for {}: {}".format(key, without_tentative_matches_p))
+#         with_tentative_matches += with_tentative_matches_p
+#         without_tentative_matches += without_tentative_matches_p
+#
+#         with_inlier_ratio_p = (with_map[key].inliers / with_map[key].tentative_matches)
+#         without_inlier_ratio_p = (without_map[key].inliers / without_map[key].tentative_matches)
+#         print("with inlier ratio_p for {}: {}".format(key, with_inlier_ratio_p))
+#         print("without inlier ratio_p for {}: {}".format(key, without_inlier_ratio_p))
+#         with_inlier_ratio += with_inlier_ratio_p
+#         without_inlier_ratio += without_inlier_ratio_p
+#
+#         #print("with: {}, without: {}".format(with_map[key], without_map[key]))
+#
+#
+#     with_inlier_ratio /= float(common_enties)
+#     without_inlier_ratio /= float(common_enties)
+#     with_tentative_matches /= float(common_enties)
+#     without_tentative_matches /= float(common_enties)
+#
+#
+#     diff_r.sort(key=lambda x: x[0])
+#     diff_t.sort(key=lambda x: x[0])
+#
+#     for r_diff in diff_r:
+#         print("R diff: {} in {}".format(r_diff[0], r_diff[1]))
+#
+#     for t_diff in diff_t:
+#         print("T diff: {} in {}".format(t_diff[0], t_diff[1]))
+#
+#
+#     print("common entries: {}".format(common_enties))
+#     print("with rectification errors. R: {}, T: {}".format(with_r_err, with_t_err))
+#     print("without rectification errors. R: {}, T: {}".format(without_r_err, without_t_err))
+#     print("with tentative matches: {}".format(with_tentative_matches))
+#     print("without tentative_matches: {}".format(without_tentative_matches))
+#     print("with inlier ratio: {}".format(with_inlier_ratio))
+#     print("without inlier ratio: {}".format(without_inlier_ratio))
+#
+#
+#     print("All done")
+#     end = time.time()
+#     print("Time elapsed: {}".format(end - start))
 
 
 if __name__ == "__main__":
@@ -793,23 +695,29 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='evaluation')
     parser.add_argument('--input_dir', help='input dir')
     parser.add_argument('--method', help='method')
+    parser.add_argument('--n_worst', help='method')
     args = parser.parse_args()
 
     assert args.input_dir is not None
 
-#    evaluate_file("scene1", "work/pipeline_scene1_2021_05_12_18_49_55_115656/all.stats.pkl")
-    #evaluate_file("scene1", "all.stats.pkl")
-    #evaluate_file("scene1", "all.stats_last_rect.pkl")
-    #evaluate_file("scene1", "work/pipeline_scene1_333/all.stats.pkl")
-
-    for diff in range(18):
-        file_path = "{}/stats_diff_{}.pkl".format(args.input_dir, diff)
-        if os.path.isfile(file_path):
-            if args.method == "make_light":
-                make_light(file_path, diff)
+    if args.method == "make_light":
+        for diff in range(18):
+            file_path = "{}/stats_diff_{}.pkl".format(args.input_dir, diff)
+            if os.path.isfile(file_path):
+                make_light(file_path)
             else:
-                evaluate_percentage_correct(file_path, diff)
-        else:
-            print("{} not found".format(file_path))
+                print("{} not found".format(file_path))
 
-    #evaluate_last("scene1")
+    else:
+        diff_percs = []
+        for diff in range(18):
+            file_path = "{}/stats_diff_{}.pkl".format(args.input_dir, diff)
+            if os.path.isfile(file_path):
+                diff_perc = evaluate_percentage_correct_from_file(file_path, diff, n_worst_examples=args.n_worst)
+                diff_percs.append(diff_perc)
+            else:
+                print("{} not found".format(file_path))
+
+        print("Diff     Perc.")
+        for diff, perc in diff_percs:
+            print("{}    {}".format(diff, perc))

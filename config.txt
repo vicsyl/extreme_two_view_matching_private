@@ -12,17 +12,21 @@ feature_descriptor = SIFT
 rectify = True
 do_flann = False
 
+knn_ratio_threshold = 0.85
+
 #show and save
 show_input_img = False
 
-show_matching = False
-save_matching = False
+show_matching = True
+show_clusters = True
+show_clustered_components = True
+show_rectification = True
+show_sky_mask = True
 
-show_clusters = False
 save_clusters = False
-show_clustered_components = False
+save_matching = False
 save_clustered_components = False
-show_rectification = False
 save_rectification = False
-show_sky_mask = False
 save_sky_mask = False
+
+use_cached_img_data = True

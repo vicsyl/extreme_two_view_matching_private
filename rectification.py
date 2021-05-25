@@ -49,6 +49,8 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
         coords = np.array([coords[1], coords[0]])
         coords = add_third_row(coords)
 
+        # TODO rethink if I really need K
+        # (I can guess)
         P = K @ R @ K_inv
         if scale != 1.0:
             unscaled = False
