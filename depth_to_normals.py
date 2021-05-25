@@ -317,8 +317,7 @@ def compute_normals(scene: SceneInfo,
 
     normals = compute_only_normals(scene,
                                    depth_data_read_directory,
-                                   depth_data_file_name,
-                                   output_directory)
+                                   depth_data_file_name)
 
     img_name = depth_data_file_name[0:-4]
     img_file_path = scene.get_img_file_path(img_name)
@@ -326,10 +325,7 @@ def compute_normals(scene: SceneInfo,
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
     show_sky_mask(img, filter_mask, img_name, show=True)
 
-    clustered_normals_np, normal_indices_np = cluster_normals(normals,
-                                                              depth_data_file_name,
-                                                              output_directory,
-                                                              filter_mask=filter_mask)
+    clustered_normals_np, normal_indices_np = cluster_normals(normals, filter_mask=filter_mask)
     return clustered_normals_np, normal_indices_np
 
 

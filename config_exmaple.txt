@@ -1,0 +1,28 @@
+scene_name = scene1
+matching_difficulties_min = 0
+matching_difficulties_max = 2
+matching_limit = 3
+# image_pairs = frame_0000000905_1_frame_0000001200_1
+# chosen_depth_files = frame_0000001200_1.npy
+planes_based_matching = False
+# SIFT so far
+feature_descriptor = SIFT
+#output_dir_prefix = work/pipeline_scene1
+#output_dir = work/pipeline_scene1_11112222
+rectify = True
+do_flann = False
+
+#show and save
+show_input_img = False
+
+show_matching = True
+save_matching = False
+
+show_clusters = True
+save_clusters = False
+show_clustered_components = True
+save_clustered_components = False
+show_rectification = True
+save_rectification = False
+show_sky_mask = True
+save_sky_mask = False
