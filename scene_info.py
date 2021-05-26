@@ -1,5 +1,4 @@
 import numpy as np
-import google_urban
 import glob
 import h5py
 import os
