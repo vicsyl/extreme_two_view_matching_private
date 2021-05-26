@@ -2,9 +2,9 @@
 scene_name = edinburgh
 # or 'orig'
 scene_type = google
-matching_difficulties_min = 0
-matching_difficulties_max = 1
-matching_limit = 1
+matching_difficulties_min = 8
+matching_difficulties_max = 10
+matching_limit = 2
 # image_pairs = frame_0000000905_1_frame_0000001200_1
 # chosen_depth_files = frame_0000001200_1.npy
 planes_based_matching = False
@@ -18,6 +18,8 @@ do_flann = False
 knn_ratio_threshold = 0.85
 
 use_degensac = True
+estimate_k = True
+focal_point_mean_factor = 0.5
 
 #show and save
 show_input_img = False
@@ -28,10 +30,10 @@ show_clustered_components = True
 show_rectification = True
 show_sky_mask = True
 
-save_clusters = False
-save_matching = False
-save_clustered_components = False
-save_rectification = False
-save_sky_mask = False
+save_clusters = True
+save_matching = True
+save_clustered_components = True
+save_rectification = True
+save_sky_mask = True
 
-use_cached_img_data = True
+use_cached_img_data = False

@@ -275,18 +275,15 @@ def show_sky_mask(img, filter_mask, img_name, show, save=False, path=None):
     show_or_close(show)
 
 
-def compute_only_normals(scene: SceneInfo,
-                    depth_data_read_directory,
-                    depth_data_file_name):
-
-    img_name = depth_data_file_name[0:-4]
-    K = scene.get_img_K(img_name)
+def compute_only_normals(
+        focal_length,
+        orig_height,
+        orig_width,
+        depth_data_read_directory,
+        depth_data_file_name):
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
-
-    normals = compute_normals_from_svd(K, depth_data)
-    #  normals = compute_normals_convolution(camera, depth_data, output_directory, depth_data_file_name, old_implementation=old_impl)
-
+    normals = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data)
     return normals
 
 
@@ -306,7 +303,17 @@ def compute_normals(scene: SceneInfo,
     :return: (normals, normal_indices)
     """
 
-    normals = compute_only_normals(scene,
+    if True:
+        raise Exception("not implemented - need 'img_name' as a parameter")
+
+    K = scene.get_img_K("img_name")
+    focal_length = K[0, 0]
+    orig_height = img.shape[0]
+    orig_width = img.shape[1]
+
+    normals = compute_only_normals(focal_length,
+                                   orig_height,
+                                   orig_width,
                                    depth_data_read_directory,
                                    depth_data_file_name)
 
@@ -369,10 +376,10 @@ def pad_normals(normals, window_size, mode="replicate"):
 
 
 def compute_normals_from_svd(
-        K: np.ndarray,
+        focal_length,
+        orig_height,
+        orig_width,
         depth_data,
-        output_directory=None,
-        img_name=None
 ):
 
     window_size = 5
@@ -384,13 +391,13 @@ def compute_normals_from_svd(
     depth_width = depth_data.shape[3]
 
     # depth_data shapes
-    f_factor_x = depth_width / (K[0, 2] * 2)
-    f_factor_y = depth_height / (K[1, 2] * 2)
+    f_factor_x = depth_width / orig_width
+    f_factor_y = depth_height / orig_height
     if abs(f_factor_y - f_factor_x) > 0.001:
         print("WARNING: downsampled anisotropically")
     f_factor = (f_factor_x + f_factor_y) / 2
-    real_focal_length_x = K[0, 0] * f_factor_x
-    real_focal_length_y = K[0, 0] * f_factor_y
+    real_focal_length_x = focal_length * f_factor_x
+    real_focal_length_y = focal_length * f_factor_y
 
     # or I need to handle odd numbers (see linspace)
     assert depth_height % 2 == 0

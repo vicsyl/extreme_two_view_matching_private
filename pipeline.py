@@ -69,6 +69,8 @@ class Pipeline:
 
     planes_based_matching = False
     use_degensac = False
+    estimate_k = False
+    focal_point_mean_factor = 0.5
 
     rectify = True
 
@@ -103,6 +105,10 @@ class Pipeline:
                     pipeline.rectify = v.lower() == "true"
                 elif k == "use_degensac":
                     pipeline.use_degensac = v.lower() == "true"
+                elif k == "estimate_k":
+                    pipeline.estimate_k = v.lower() == "true"
+                elif k == "focal_point_mean_factor":
+                    pipeline.focal_point_mean_factor = float(v)
                 elif k == "knn_ratio_threshold":
                     pipeline.knn_ratio_threshold = float(v)
                 elif k == "matching_difficulties_min":
@@ -187,7 +193,6 @@ class Pipeline:
         img_processing_dir = "{}/imgs".format(self.output_dir)
         Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
 
-        # input image & K
         img_file_path = self.scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path, None)
         if self.show_input_img:
@@ -196,17 +201,21 @@ class Pipeline:
             plt.imshow(img)
             plt.show(block=False)
 
-        K = self.scene_info.get_img_K(img_name)
+        orig_height = img.shape[0]
+        orig_width = img.shape[1]
+        if self.estimate_k:
+            focal_length = (orig_width + orig_height) * self.focal_point_mean_factor
+            K = np.array([
+                [focal_length, 0,            orig_width / 2.0],
+                [0,            focal_length, orig_height / 2.0],
+                [0,            0,            1]
+            ])
+        else:
+            K = self.scene_info.get_img_K(img_name)
+            focal_length = K[0, 0]
+            assert abs(K[0, 2] * 2 - orig_width) < 0.5
+            assert abs(K[1, 2] * 2 - orig_height) < 0.5
 
-        # depth => indices
-        depth_data_file_name = "{}.npy".format(img_name)
-
-        # TODO fixme - img read twice !!!
-        img_name = depth_data_file_name[0:-4]
-        img_file_path = self.scene_info.get_img_file_path(img_name)
-        img = cv.imread(img_file_path)
-
-        # TODO move from Config
         if not self.rectify:
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
@@ -232,7 +241,8 @@ class Pipeline:
 
             Timer.start_check_point("processing img from scratch")
 
-            normals = compute_only_normals(self.scene_info, self.depth_input_dir, depth_data_file_name)
+            depth_data_file_name = "{}.npy".format(img_name)
+            normals = compute_only_normals(focal_length, orig_height, orig_width, self.depth_input_dir, depth_data_file_name)
             filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
 
             sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name[:-4])

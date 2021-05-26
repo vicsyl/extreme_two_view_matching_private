@@ -9,15 +9,11 @@ from utils import Timer, quaternions_to_R
 
 def read_google_scene(scene_name):
 
-    paths_h5 = glob.glob("googleurban/{}/set_100/calibration/*.h5".format(scene_name))
-    f = h5py.File(paths_h5[0], "r")
-    print(f.keys())
-    for key in f.keys():
-        print("{}: {}".format(key, f[key][()]))
-
     img_pairs_lists = {}
     img_pairs_maps = {}
     image_info_map = {}
+
+
 
     for diff in range(10):
 
@@ -27,6 +23,9 @@ def read_google_scene(scene_name):
         print("Diff: {}".format(diff))
         file_name = "googleurban/{}/set_100/new-vis-pairs/keys-th-0.{}.npy".format(scene_name, diff)
         data_np = np.load(file_name)
+
+        if diff == 0:
+            cache = data_np
 
         counter = 0
         for i in range(data_np.shape[0]):

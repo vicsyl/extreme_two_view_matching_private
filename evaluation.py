@@ -190,6 +190,7 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     K1 = scene_info.get_img_K(img_pair.img1)
     K2 = scene_info.get_img_K(img_pair.img2)
 
+    # TODO Q: what is actually this? if I remove it, I can remove the call to scene_info.get_img_K
     p1n = normalize_keypoints(pts1, K1).astype(np.float64)
     p2n = normalize_keypoints(pts2, K2).astype(np.float64)
     # Q: this doesn't change the result!!!
@@ -433,6 +434,7 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     T1 = np.array(img_entry_1.t)
     R1 = img_entry_1.R
     K1 = scene_info.get_img_K(img_pair.img1)
+    # TODO we use the real K here, right?
     K1_inv = np.linalg.inv(K1)
     src_tentative = np.ndarray((src_tentatives_2d.shape[0], 3))
     src_tentative[:, :2] = src_tentatives_2d
