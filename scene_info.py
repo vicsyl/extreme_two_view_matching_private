@@ -1,6 +1,71 @@
 import numpy as np
+import google_urban
+import glob
+import h5py
+import os
+
 from dataclasses import dataclass
-from utils import Timer
+from utils import Timer, quaternions_to_R
+
+
+def read_google_scene(scene_name):
+
+    paths_h5 = glob.glob("googleurban/{}/set_100/calibration/*.h5".format(scene_name))
+    f = h5py.File(paths_h5[0], "r")
+    print(f.keys())
+    for key in f.keys():
+        print("{}: {}".format(key, f[key][()]))
+
+    img_pairs_lists = {}
+    img_pairs_maps = {}
+    image_info_map = {}
+
+    for diff in range(10):
+
+        img_pairs_lists[diff] = []
+        img_pairs_maps[diff] = {}
+
+        print("Diff: {}".format(diff))
+        file_name = "googleurban/{}/set_100/new-vis-pairs/keys-th-0.{}.npy".format(scene_name, diff)
+        data_np = np.load(file_name)
+
+        counter = 0
+        for i in range(data_np.shape[0]):
+            pair = data_np[i].split("-")
+            img1_exists = os.path.isfile("googleurban/{}/set_100/images/{}.png".format(scene_name, pair[0]))
+            img2_exists = os.path.isfile("googleurban/{}/set_100/images/{}.png".format(scene_name, pair[1]))
+            cal1_file = "googleurban/{}/set_100/calibration/calibration_{}.h5".format(scene_name, pair[0])
+            cal1_exists = os.path.isfile(cal1_file)
+            cal2_file = "googleurban/{}/set_100/calibration/calibration_{}.h5".format(scene_name, pair[1])
+            cal2_exists = os.path.isfile(cal2_file)
+            if img1_exists and img2_exists and cal1_exists and cal2_exists:
+                counter = counter + 1
+
+                entry = ImagePairEntry(pair[0], pair[1], diff)
+                img_pairs_maps[diff][data_np[i]] = entry
+                img_pairs_lists[diff].append(entry)
+
+                if not image_info_map.__contains__(pair[0]):
+                    h5_data = h5py.File(cal1_file, "r")
+                    K = h5_data["K"][()]
+                    R = h5_data["R"][()]
+                    T = h5_data["T"][()]
+                    q = h5_data["q"][()]
+                    cal1_file
+                    image_info_map[pair[0]] = ImageEntry(pair[0], image_id=None, camera_id=None, qs=q, t=T, R=R, K=K)
+
+        print("{} valid pair for diff {}".format(counter, diff))
+    #
+    # img_pair = ImagePairEntry(img1, img2, diff)
+    #
+    # img_pairs_lists[img_pair.difficulty].append(img_pair)
+    # key = "{}_{}".format(img_pair.img1, img_pair.img2)
+    # img_pairs_maps[img_pair.difficulty][key] = img_pair
+
+    #image_info_map[name] = ImageEntry(name, image_id, camera_id, qs, ts)
+
+    return SceneInfo(img_pairs_lists, img_pairs_maps, image_info_map, cameras=None, name=scene_name, type="google")
+
 
 """
 Classes to read info about the data sets (info about matching pairs of images, cameras and points in the images)
@@ -18,8 +83,18 @@ class ImageEntry:
     image_name: str
     image_id: int
     camera_id: int
+
     qs: (float, float, float, float)
     t: (float, float, float)
+
+    # let's check that or qs
+    R: np.ndarray
+    K: np.ndarray
+
+    def __post_init__(self):
+        if self.R is None:
+            assert self.qs is not None
+            self.R = quaternions_to_R(self.qs)
 
     def read_data_from_line(self, line):
         data = np.fromstring(line.strip(), dtype=np.float32, sep=" ")
@@ -66,16 +141,58 @@ class SceneInfo:
     img_info_map: dict
     cameras: dict
     name: str
+    type: str # "orig", "google"
 
     def get_input_dir(self):
-        return "original_dataset/{}/images".format(self.name)
+        if self.type == "orig":
+            return "original_dataset/{}/images".format(self.name)
+        elif self.type == "google":
+            return "googleurban/{}/set_100/images".format(self.name)
+        else:
+            raise Exception("unexpected type: {}".format(self.type))
 
     def get_img_file_path(self, img_name):
-        return '{}/{}.jpg'.format(self.get_input_dir(), img_name)
+        if self.type == "orig":
+            return '{}/{}.jpg'.format(self.get_input_dir(), img_name)
+        elif self.type == "google":
+            return '{}/{}.png'.format(self.get_input_dir(), img_name)
+        else:
+            raise Exception("unexpected type: {}".format(self.type))
 
     def get_img_K(self, img_name):
-        camera_id = self.img_info_map[img_name].camera_id
-        return self.cameras[camera_id].get_K()
+        img = self.img_info_map[img_name]
+        if img.K is not None:
+            return img.K
+        else:
+            return self.cameras[img.camera_id].get_K()
+
+    def depth_input_dir(self):
+        if self.type == "orig":
+            return "depth_data/mega_depth/{}".format(self.name)
+        elif self.type == "google":
+            return "depth_data/googleurban/{}".format(self.name)
+        else:
+            raise Exception("unexpected type: {}".format(self.type))
+
+    def get_megadepth_file_names_and_dir(self, limit, interesting_files):
+        directory = self.depth_input_dir()
+        file_names = SceneInfo.get_file_names_from_dir(directory, limit, interesting_files, ".npy")
+        return file_names, directory
+
+    @staticmethod
+    def get_file_names_from_dir(input_dir: str, limit: int, interesting_files: list, suffix: str):
+        if interesting_files is not None:
+            return interesting_files
+        else:
+            return SceneInfo.get_file_names(input_dir, suffix, limit)
+
+    @staticmethod
+    def get_file_names(dir, suffix, limit=None):
+        filenames = [filename for filename in sorted(os.listdir(dir)) if filename.endswith(suffix)]
+        filenames = sorted(filenames)
+        if limit is not None:
+            filenames = filenames[0:limit]
+        return filenames
 
     @staticmethod
     def get_key(img1_name: str, img2_name: str):
@@ -91,15 +208,20 @@ class SceneInfo:
         return None
 
     @staticmethod
-    def read_scene(scene_name):
-        Timer.start_check_point("reading scene info")
-        print("scene={}".format(scene_name))
-        img_pairs_lists, img_pairs_maps = read_image_pairs(scene_name)
-        lazy = True
-        img_info_map = read_images(scene_name, lazy=lazy)
-        cameras = read_cameras(scene_name)
-        Timer.end_check_point("reading scene info")
-        return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name)
+    def read_scene(scene_name, type="orig"):
+        if type == "orig":
+            Timer.start_check_point("reading scene info")
+            print("scene={}".format(scene_name))
+            img_pairs_lists, img_pairs_maps = read_image_pairs(scene_name)
+            lazy = True
+            img_info_map = read_images(scene_name, lazy=lazy)
+            cameras = read_cameras(scene_name)
+            Timer.end_check_point("reading scene info")
+            return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name, type="orig")
+        elif type == "google":
+            return read_google_scene(scene_name)
+        else:
+            raise Exception("unexpected type: {}".format(type))
 
     def get_camera_from_img(self, img: str):
         return self.cameras[self.img_info_map[img].camera_id]

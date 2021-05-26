@@ -60,6 +60,7 @@ def get_gauss_weighted_coeffs_for_window(window_size=5, sigma=1.33):
 
 def get_rotation_matrices_across_img(camera: CameraEntry, depth_data: np.ndarray):
 
+    # TODO remove, camera.get_K() is obsolete
     K = camera.get_K()
     down_sample_factor_x = depth_data.shape[3] / camera.height_width[1]
     down_sample_factor_y = depth_data.shape[2] / camera.height_width[0]
@@ -252,21 +253,11 @@ def cluster_normals(normals, filter_mask=None):
     return cluster_repr_normal_np, normal_indices_np
 
 
-def megadepth_input_dir(scene_name: str):
-    return "depth_data/mega_depth/{}".format(scene_name)
-
-
 def get_file_names_from_dir(input_dir: str, limit: int, interesting_files: list, suffix: str):
     if interesting_files is not None:
         return interesting_files
     else:
         return get_file_names(input_dir, suffix, limit)
-
-
-def get_megadepth_file_names_and_dir(scene_name, limit, interesting_files):
-    directory = megadepth_input_dir(scene_name)
-    file_names = get_file_names_from_dir(directory, limit, interesting_files, ".npy")
-    return file_names, directory
 
 
 def show_sky_mask(img, filter_mask, img_name, show, save=False, path=None):
@@ -289,11 +280,11 @@ def compute_only_normals(scene: SceneInfo,
                     depth_data_file_name):
 
     img_name = depth_data_file_name[0:-4]
-    camera = scene.get_camera_from_img(img_name)
+    K = scene.get_img_K(img_name)
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
 
-    normals = compute_normals_from_svd(camera, depth_data)
+    normals = compute_normals_from_svd(K, depth_data)
     #  normals = compute_normals_convolution(camera, depth_data, output_directory, depth_data_file_name, old_implementation=old_impl)
 
     return normals
@@ -378,7 +369,7 @@ def pad_normals(normals, window_size, mode="replicate"):
 
 
 def compute_normals_from_svd(
-        camera: CameraEntry,
+        K: np.ndarray,
         depth_data,
         output_directory=None,
         img_name=None
@@ -395,13 +386,13 @@ def compute_normals_from_svd(
     depth_width = depth_data.shape[3]
 
     # depth_data shapes
-    f_factor_x = depth_width / camera.height_width[1]
-    f_factor_y = depth_height / camera.height_width[0]
+    f_factor_x = depth_width / (K[0, 2] * 2)
+    f_factor_y = depth_height / (K[1, 2] * 2)
     if abs(f_factor_y - f_factor_x) > 0.001:
         print("WARNING: downsampled anisotropically")
     f_factor = (f_factor_x + f_factor_y) / 2
-    real_focal_length_x = camera.focal_length * f_factor_x
-    real_focal_length_y = camera.focal_length * f_factor_y
+    real_focal_length_x = K[0, 0] * f_factor_x
+    real_focal_length_y = K[0, 0] * f_factor_y
 
     # or I need to handle odd numbers (see linspace)
     assert depth_height % 2 == 0
@@ -517,9 +508,8 @@ def main():
     interesting_files = ["frame_0000000015_4.npy"]
 
     scene_name = "scene1"
-    file_names, input_directory = get_megadepth_file_names_and_dir(scene_name, limit=20, interesting_files=interesting_files)
-
     scene_info = SceneInfo.read_scene(scene_name, lazy=True)
+    file_names, input_directory = scene_info.get_megadepth_file_names_and_dir(limit=20, interesting_files=interesting_files)
 
     impl = "svd"
     #impl = "not svd"

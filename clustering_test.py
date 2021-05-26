@@ -9,7 +9,7 @@ import torch
 from config import Config
 
 from scene_info import SceneInfo
-from depth_to_normals import get_megadepth_file_names_and_dir, compute_normals_from_svd, show_or_save_clusters, compute_normals_all
+from depth_to_normals import compute_normals_from_svd, show_or_save_clusters, compute_normals_all
 from utils import *
 import clustering
 from sky_filter import get_nonsky_mask
@@ -188,9 +188,9 @@ def main():
     #interesting_files = ["frame_0000001285_2.npy"]
 
     scene_name = "scene1"
-    file_names, depth_input_directory = get_megadepth_file_names_and_dir(scene_name, limit=20, interesting_files=interesting_files)
 
     scene_info = SceneInfo.read_scene(scene_name, lazy=True)
+    file_names, depth_input_directory = scene_info.get_megadepth_file_names_and_dir(limit=20, interesting_files=interesting_files)
 
     for depth_input_file_name in file_names:
 

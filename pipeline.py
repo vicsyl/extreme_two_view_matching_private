@@ -13,9 +13,9 @@ import argparse
 
 from config import Config
 from connected_components import get_connected_components, get_and_show_components
-from depth_to_normals import compute_normals, compute_only_normals, get_megadepth_file_names_and_dir, megadepth_input_dir
+from depth_to_normals import compute_normals, compute_only_normals
 from depth_to_normals import show_sky_mask, cluster_normals, show_or_save_clusters
-from matching import match_images_and_keypoints, match_images_with_dominant_planes
+from matching import match_find_E, match_find_F_degensac, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from scene_info import SceneInfo
 from utils import Timer
@@ -37,6 +37,7 @@ def parse_list(list_str: str):
 class Pipeline:
 
     scene_name = None
+    scene_type = None
     output_dir = None
 
     # actually unused
@@ -67,6 +68,7 @@ class Pipeline:
     matching_pairs = None
 
     planes_based_matching = False
+    use_degensac = False
 
     rectify = True
 
@@ -95,8 +97,12 @@ class Pipeline:
 
                 if k == "scene_name":
                     pipeline.scene_name = v
+                elif k == "scene_type":
+                    pipeline.scene_type = v
                 elif k == "rectify":
                     pipeline.rectify = v.lower() == "true"
+                elif k == "use_degensac":
+                    pipeline.use_degensac = v.lower() == "true"
                 elif k == "knn_ratio_threshold":
                     pipeline.knn_ratio_threshold = float(v)
                 elif k == "matching_difficulties_min":
@@ -155,13 +161,13 @@ class Pipeline:
 
     def start(self):
         print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
-        self.depth_input_dir = megadepth_input_dir(self.scene_name)
 
         if self.matching_pairs is not None:
             self.matching_difficulties = range(0, 18)
 
         self.log()
-        self.scene_info = SceneInfo.read_scene(self.scene_name)
+        self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type)
+        self.depth_input_dir = self.scene_info.depth_input_dir()
 
     def log(self):
         print("Pipeline config:")
@@ -195,6 +201,7 @@ class Pipeline:
         # depth => indices
         depth_data_file_name = "{}.npy".format(img_name)
 
+        # TODO fixme - img read twice !!!
         img_name = depth_data_file_name[0:-4]
         img_file_path = self.scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path)
@@ -303,7 +310,7 @@ class Pipeline:
 
         self.start()
 
-        file_names, _ = get_megadepth_file_names_and_dir(self.scene_name, self.sequential_files_limit, self.chosen_depth_files)
+        file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
         for depth_data_file_name in file_names:
             self.process_image(depth_data_file_name[:-4])
 
@@ -366,8 +373,24 @@ class Pipeline:
                         show=self.show_matching,
                         save=self.save_matching)
 
+                elif self.use_degensac:
+                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
+                        image_data1.img,
+                        image_data1.key_points,
+                        image_data1.descriptions,
+                        image_data1.K,
+                        image_data2.img,
+                        image_data2.key_points,
+                        image_data2.descriptions,
+                        image_data2.K,
+                        img_pair,
+                        matching_out_dir,
+                        show=self.show_matching,
+                        save=self.save_matching,
+                        ratio_thresh=self.knn_ratio_threshold)
+
                 else:
-                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_and_keypoints(
+                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_E(
                         image_data1.img,
                         image_data1.key_points,
                         image_data1.descriptions,

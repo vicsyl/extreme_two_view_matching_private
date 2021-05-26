@@ -9,6 +9,7 @@ from config import Config
 from evaluation import ImageData
 from copy import deepcopy, copy
 import itertools
+import pydegensac
 
 from img_utils import show_or_close
 from depth_to_normals import compute_normals
@@ -363,7 +364,7 @@ def show_save_matching(img1,
 #     return src_pts_inliers, dst_pts_inliers
 #
 
-def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save, ratio_thresh):
+def match_find_E(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save, ratio_thresh):
 
     Timer.start_check_point("matching")
 
@@ -375,6 +376,37 @@ def match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2,
 
     # TODO threshold and prob params left to default values
     E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K_1, None, K_2, None, cv.RANSAC)
+
+    Timer.end_check_point("matching")
+
+    show_save_matching(img1,
+                       kps1,
+                       img2,
+                       kps2,
+                       tentative_matches,
+                       inlier_mask,
+                       out_dir,
+                       save_suffix,
+                       show,
+                       save)
+
+    return E, inlier_mask, src_pts, dst_pts, tentative_matches
+
+
+def match_find_F_degensac(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save, ratio_thresh):
+
+    Timer.start_check_point("matching")
+
+    save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
+
+    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
+
+    src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
+
+    n_iter = 2000
+    th = 0.5
+    F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, th, 0.999, n_iter, enable_degeneracy_check=True)
+    E = K_2.T @ F @ K_1
 
     Timer.end_check_point("matching")
 
@@ -442,7 +474,7 @@ def img_correspondences(scene_info: SceneInfo, output_dir, descriptor, normals_d
             img1, K_1, kps1, descs1 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img1, normal_indices1, normals1, descriptor, out_dir, rectify)
             img2, K_2, kps2, descs2 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img2, normal_indices2, normals2, descriptor, out_dir, rectify)
 
-            return match_images_and_keypoints(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True, ratio_thresh=0.85)
+            return match_find_E(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True, ratio_thresh=0.85)
 
 
 def main():

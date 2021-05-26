@@ -1,7 +1,10 @@
-scene_name = scene1
+# scene_name = scene1
+scene_name = edinburgh
+# or 'orig'
+scene_type = google
 matching_difficulties_min = 0
-matching_difficulties_max = 2
-matching_limit = 3
+matching_difficulties_max = 1
+matching_limit = 1
 # image_pairs = frame_0000000905_1_frame_0000001200_1
 # chosen_depth_files = frame_0000001200_1.npy
 planes_based_matching = False
@@ -13,6 +16,8 @@ rectify = True
 do_flann = False
 
 knn_ratio_threshold = 0.85
+
+use_degensac = True
 
 #show and save
 show_input_img = False

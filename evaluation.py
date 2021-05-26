@@ -178,19 +178,17 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
 
     img_entry_1: ImageEntry = scene_info.img_info_map[img_pair.img1]
     T1 = img_entry_1.t
-    R1 = quaternions_to_R(img_entry_1.qs)
+    R1 = img_entry_1.R
 
     img_entry_2: ImageEntry = scene_info.img_info_map[img_pair.img2]
     T2 = img_entry_2.t
-    R2 = quaternions_to_R(img_entry_2.qs)
+    R2 = img_entry_2.R
 
     dR = R2 @ R1.T
     dT = T2 - dR @ T1
 
-    camera_1_id = scene_info.img_info_map[img_pair.img1].camera_id
-    K1 = scene_info.cameras[camera_1_id].get_K()
-    camera_2_id = scene_info.img_info_map[img_pair.img2].camera_id
-    K2 = scene_info.cameras[camera_2_id].get_K()
+    K1 = scene_info.get_img_K(img_pair.img1)
+    K2 = scene_info.get_img_K(img_pair.img2)
 
     p1n = normalize_keypoints(pts1, K1).astype(np.float64)
     p2n = normalize_keypoints(pts2, K2).astype(np.float64)
@@ -433,7 +431,7 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
 
     img_entry_1: ImageEntry = scene_info.img_info_map[img_pair.img1]
     T1 = np.array(img_entry_1.t)
-    R1 = quaternions_to_R(img_entry_1.qs)
+    R1 = img_entry_1.R
     K1 = scene_info.get_img_K(img_pair.img1)
     K1_inv = np.linalg.inv(K1)
     src_tentative = np.ndarray((src_tentatives_2d.shape[0], 3))
@@ -442,7 +440,7 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
 
     img_entry_2: ImageEntry = scene_info.img_info_map[img_pair.img2]
     T2 = np.array(img_entry_2.t)
-    R2 = quaternions_to_R(img_entry_2.qs)
+    R2 = img_entry_2.R
     K2 = scene_info.get_img_K(img_pair.img2)
     K2_inv = np.linalg.inv(K2)
     dst_tentative = np.ndarray((dst_tentatives_2d.shape[0], 3))
