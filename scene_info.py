@@ -53,7 +53,9 @@ def read_google_scene(scene_name):
                     cal1_file
                     image_info_map[pair[0]] = ImageEntry(pair[0], image_id=None, camera_id=None, qs=q, t=T, R=R, K=K)
 
-        print("{} valid pair for diff {}".format(counter, diff))
+                #print("{} valid pair for diff {}".format(pair, diff))
+
+        print("{} valid pairs for diff {}".format(counter, diff))
     #
     # img_pair = ImagePairEntry(img1, img2, diff)
     #

@@ -30,8 +30,8 @@ def rectify_play(scene_info, img_name, rectify, use_default_dict=True):
     feature_descriptor = cv.SIFT_create()
 
     valid_components_dicts = {
+        "frame_0000000535_3": {3: 0},
         "frame_0000000450_3": {5: 1},
-        "frame_0000000535_3": {2: 0}
     }
 
     if valid_components_dicts.__contains__(img_name) and not use_default_dict:
@@ -49,7 +49,7 @@ def rectify_play(scene_info, img_name, rectify, use_default_dict=True):
 
     if rectify:
         kps, descs = show_rectification_play(normals, valid_components_dict_new, img_name, img, K, components_indices, feature_descriptor,
-                                             show_all=True, show_all_regions=use_default_dict)
+                                             show_all=True, show_all_regions=False)
 
     else:
 
@@ -235,6 +235,44 @@ def match_images_and_keypoints_foo(img1, kps1, descs1, img2, kps2, descs2, ratio
     return H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc
 
 
+def rect_play(rectify, use_original_valid_components_dict=True):
+    files_to_match = [
+                # "frame_0000001670_1.jpg",
+                # "frame_0000000705_3.jpg",
+                "frame_0000000535_3.jpg",
+                "frame_0000000450_3.jpg",
+        # "frame_0000001465_4.jpg",
+        # "frame_0000001220_3.jpg",
+    ]
+
+    scene_info = SceneInfo.read_scene("scene1")
+
+    # rectify_iterate_play(scene_info, files_to_match=interesting_files)
+
+    #     Config.config_map[Config.save_normals_in_img] = False
+    #     Config.config_map[Config.show_normals_in_img] = False
+
+    title = "rectified" if rectify else "not rectified"
+
+    img1, kps1, descs1 = rectify_play(scene_info, rectify=rectify, img_name=files_to_match[0][:-4],
+                                      use_default_dict=use_original_valid_components_dict)
+    img2, kps2, descs2 = rectify_play(scene_info, rectify=rectify, img_name=files_to_match[1][:-4],
+                                      use_default_dict=use_original_valid_components_dict)
+
+    H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc = \
+        match_images_and_keypoints_foo(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.75, show=True,
+                                       title="without rectification")
+
+#     # rectified
+#     img1, kps1, descs1 = rectify_play(scene_info, rectify=True, img_name=files_to_match[0][:-4])
+#     img2, kps2, descs2 = rectify_play(scene_info, rectify=True, img_name=files_to_match[1][:-4])
+
+#     H, tentative_matches, src_kps, src_dsc, dst_kps, dst_dsc = \
+#         match_images_and_keypoints_foo(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh=0.75, show=True, title="with rectification")
+
+#     print()
+
+
 def play_main():
 
     Timer.start()
@@ -245,7 +283,7 @@ def play_main():
         # "frame_0000000450_3.jpg",
     ]
 
-    scene_info = SceneInfo.read_scene("scene1", lazy=True)
+    scene_info = SceneInfo.read_scene("scene1")
 
     #"original_dataset/scene1/images", limit = 20,
     rectify_iterate_play(scene_info, files_to_match=interesting_files)
@@ -254,4 +292,8 @@ def play_main():
 
 
 if __name__ == "__main__":
-    play_main()
+    Config.config_map[Config.key_do_flann] = False
+    Config.config_map[Config.rectification_interpolation_key] = cv.INTER_LINEAR
+    rect_play(rectify=True, use_original_valid_components_dict=False)
+
+    #play_main()

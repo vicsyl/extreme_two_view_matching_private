@@ -4,6 +4,10 @@ work
 depth_data
 sent
 ignore
+googleurban
+.ipynb_checkpoints
+.semseg
+stats
 .DS_Store
 *.pyc
 poc.py

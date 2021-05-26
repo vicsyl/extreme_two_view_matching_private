@@ -1,0 +1,7 @@
+ - notes: commit 9ec12ec
+
+
+to be investigated:
+- frame_0000000200_4_frame_0000001845_1
+- normals & rectification seem fishy
+
