@@ -406,6 +406,7 @@ def match_find_F_degensac(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_
     n_iter = 2000
     th = 0.5
     F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, th, 0.999, n_iter, enable_degeneracy_check=True)
+    inlier_mask = np.expand_dims(inlier_mask, axis=1)
     E = K_2.T @ F @ K_1
 
     Timer.end_check_point("matching")

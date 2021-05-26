@@ -377,8 +377,6 @@ def compute_normals_from_svd(
 
     window_size = 5
 
-    hist = torch.histc(depth_data, bins=100, min=torch.min(depth_data), max=torch.max(depth_data))
-
     if Config.svd_smoothing:
         depth_data = gaussian_filter2d(depth_data, Config.svd_smoothing_sigma)
 
