@@ -39,6 +39,7 @@ class Pipeline:
     scene_name = None
     scene_type = None
     output_dir = None
+    output_dir_prefix = None
 
     # actually unused
     show_save_normals = False
@@ -121,8 +122,6 @@ class Pipeline:
                     pipeline.planes_based_matching = v.lower() == "true"
                 elif k == "feature_descriptor":
                     pipeline.feature_descriptor = feature_descriptors_str_map[v]
-                elif k == "output_dir_prefix":
-                    pipeline.output_dir = append_timestamp(v)
                 elif k == "output_dir":
                     pipeline.output_dir = v
                 elif k == "show_input_img":
@@ -155,6 +154,8 @@ class Pipeline:
                     pipeline.chosen_depth_files = parse_list(v)
                 elif k == "use_cached_img_data":
                     pipeline.use_cached_img_data = v.lower() == "true"
+                elif k == "output_dir_prefix":
+                    pipeline.output_dir_prefix = v
                 else:
                     print("WARNING - unrecognized param: {}".format(k))
 
@@ -162,6 +163,8 @@ class Pipeline:
 
         if args.__contains__("output_dir"):
             pipeline.output_dir = args.output_dir
+        else:
+            pipeline.output_dir = append_all(pipeline, pipeline.output_dir_prefix)
 
         return pipeline
 
@@ -443,13 +446,16 @@ class Pipeline:
         with open(all_stats_file_name, "wb") as f:
             pickle.dump(stats_map, f)
 
-        evaluate_all(stats_map, n_worst_examples=10)
+        evaluate_all(stats_map, n_worst_examples=None)
 
 
-def append_timestamp(str):
+def append_all(pipeline, str):
+    use_degensac = "DEGENSAC" if pipeline.use_degensac else "RANSAC"
+    estimate_K = "estimatedK" if pipeline.estimate_k else "GTK"
+    rectified = "rectified" if pipeline.rectify else "unrectified"
     now = datetime.now()
     timestamp = now.strftime("%Y_%m_%d_%H_%M_%S_%f")
-    return "{}_{}".format(str, timestamp)
+    return "{}_{}_{}_{}_{}_{}_{}".format(str, pipeline.scene_type, pipeline.scene_name, use_degensac, estimate_K, rectified, timestamp)
 
 
 def main():

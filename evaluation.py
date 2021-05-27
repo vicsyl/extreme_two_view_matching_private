@@ -464,9 +464,10 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
 
 
 def evaluate_all(stats_map_all: dict, n_worst_examples=None):
+    print("Stats for all difficulties")
+    print("Diff     Perc.")
     for diff, stats_map in stats_map_all.items():
-        print("Stats for difficulty {}:".format(diff))
-        evaluate_percentage_correct(stats_map, diff, n_worst_examples=n_worst_examples)
+        evaluate_percentage_correct(stats_map, diff, n_worst_examples=n_worst_examples, header=False)
 
 
 # def evaluate(stats_map: dict, scene_info: SceneInfo):
@@ -531,7 +532,7 @@ def evaluate_all(stats_map_all: dict, n_worst_examples=None):
 #
 #
 
-def evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=None, th_degrees=5):
+def evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=None, th_degrees=5, header=True):
     sorted_by_err_R = list(sorted(stats_map.items(), key=lambda key_value: -key_value[1].error_R))
 
     if n_worst_examples is not None:
@@ -544,7 +545,8 @@ def evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=None, th
     filtered_len = len(filtered)
     all_len = len(stats_map.items())
     perc = filtered_len/all_len
-    print("Diff     Perc.")
+    if header:
+        print("Diff     Perc.")
     print("{}   {}".format(difficulty, perc))
     return difficulty, perc
 
