@@ -19,7 +19,7 @@ def add_google_image(img_name, image_info_map, calibration_file):
         image_info_map[img_name] = ImageEntry(img_name, image_id=None, camera_id=None, qs=q, t=T, R=R, K=K)
 
 
-def read_google_scene(scene_name, show_first=0):
+def read_google_scene(scene_name, file_name_suffix, show_first=0):
 
     img_pairs_lists = {}
     img_pairs_maps = {}
@@ -31,7 +31,7 @@ def read_google_scene(scene_name, show_first=0):
         img_pairs_maps[diff] = {}
 
         print("Diff: {}".format(diff))
-        file_name = "googleurban/{}/set_100/new-vis-pairs/keys-th-0.{}.npy".format(scene_name, diff)
+        file_name = "{}/set_100/new-vis-pairs/keys-th-0.{}.npy".format(scene_name, diff)
         data_np = np.load(file_name)
 
         # just to check first couple of tuples in the "easiest" level
@@ -42,11 +42,11 @@ def read_google_scene(scene_name, show_first=0):
         for i in range(data_np.shape[0]):
 
             img_name_tuple = data_np[i].split("-")
-            img1_exists = os.path.isfile("googleurban/{}/set_100/images/{}.png".format(scene_name, img_name_tuple[0]))
-            img2_exists = os.path.isfile("googleurban/{}/set_100/images/{}.png".format(scene_name, img_name_tuple[1]))
-            cal1_file = "googleurban/{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[0])
+            img1_exists = os.path.isfile("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[0], file_name_suffix))
+            img2_exists = os.path.isfile("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[1], file_name_suffix))
+            cal1_file = "{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[0])
             cal1_exists = os.path.isfile(cal1_file)
-            cal2_file = "googleurban/{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[1])
+            cal2_file = "{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[1])
             cal2_exists = os.path.isfile(cal2_file)
             if img1_exists and img2_exists and cal1_exists and cal2_exists:
                 counter = counter + 1
@@ -61,11 +61,11 @@ def read_google_scene(scene_name, show_first=0):
                 if i < show_first and (diff == 9):
                     plt.figure(figsize=(10, 10))
                     plt.subplot(1, 2, 1)
-                    img = plt.imread("googleurban/{}/set_100/images/{}.png".format(scene_name, img_name_tuple[0]))
+                    img = plt.imread("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[0], file_name_suffix))
                     plt.title("{} from difficulty {}".format(i, diff))
                     plt.imshow(img)
                     plt.subplot(1, 2, 2)
-                    img = plt.imread("googleurban/{}/set_100/images/{}.png".format(scene_name, img_name_tuple[1]))
+                    img = plt.imread("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[1], file_name_suffix))
                     plt.title("{} from difficulty {}".format(i, diff))
                     plt.imshow(img)
                     plt.show()
@@ -75,7 +75,7 @@ def read_google_scene(scene_name, show_first=0):
 
         print("{} valid pairs for diff {}".format(counter, diff))
 
-    return SceneInfo(img_pairs_lists, img_pairs_maps, image_info_map, cameras=None, name=scene_name, type="google")
+    return SceneInfo(img_pairs_lists, img_pairs_maps, image_info_map, cameras=None, name=scene_name, type="google", file_name_suffix=file_name_suffix)
 
 
 """
@@ -153,22 +153,21 @@ class SceneInfo:
     cameras: dict
     name: str
     type: str # "orig", "google"
+    file_name_suffix: str
 
     def get_input_dir(self):
         if self.type == "orig":
             return "original_dataset/{}/images".format(self.name)
         elif self.type == "google":
-            return "googleurban/{}/set_100/images".format(self.name)
+            return "{}/set_100/images".format(self.name)
         else:
             raise Exception("unexpected type: {}".format(self.type))
 
     def get_img_file_path(self, img_name):
-        if self.type == "orig":
-            return '{}/{}.jpg'.format(self.get_input_dir(), img_name)
-        elif self.type == "google":
-            return '{}/{}.png'.format(self.get_input_dir(), img_name)
-        else:
-            raise Exception("unexpected type: {}".format(self.type))
+        if self.file_name_suffix is None:
+            print("WARNING: file_name_suffix not set")
+            self.file_name_suffix = ".jpg"
+        return '{}/{}{}'.format(self.get_input_dir(), img_name, self.file_name_suffix)
 
     def get_img_K(self, img_name):
         img = self.img_info_map[img_name]
@@ -181,7 +180,7 @@ class SceneInfo:
         if self.type == "orig":
             return "depth_data/mega_depth/{}".format(self.name)
         elif self.type == "google":
-            return "depth_data/googleurban/{}".format(self.name)
+            return "depth_data/{}".format(self.name)
         else:
             raise Exception("unexpected type: {}".format(self.type))
 
@@ -219,7 +218,7 @@ class SceneInfo:
         return None
 
     @staticmethod
-    def read_scene(scene_name, type="orig", show_first=0):
+    def read_scene(scene_name, type="orig", file_name_suffix=".jpg", show_first=0):
         if type == "orig":
             Timer.start_check_point("reading scene info")
             print("scene={}".format(scene_name))
@@ -230,7 +229,7 @@ class SceneInfo:
             Timer.end_check_point("reading scene info")
             return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name, type="orig")
         elif type == "google":
-            return read_google_scene(scene_name, show_first)
+            return read_google_scene(scene_name, file_name_suffix, show_first)
         else:
             raise Exception("unexpected type: {}".format(type))
 
@@ -442,10 +441,10 @@ def show():
                 plt.figure(figsize=(10, 10))
                 plt.title("pair: {}".format(pair))
                 plt.subplot(1, 2, 1)
-                img = plt.imread("googleurban/{}/set_100/images/{}.png".format(scene.name, entry.img1))
+                img = plt.imread("{}/set_100/images/{}{}".format(scene.name, entry.img1, scene.file_name_suffix))
                 plt.imshow(img)
                 plt.subplot(1, 2, 2)
-                img = plt.imread("googleurban/{}/set_100/images/{}.png".format(scene.name, entry.img2))
+                img = plt.imread("{}/set_100/images/{}{}".format(scene.name, entry.img2, scene.file_name_suffix))
                 #plt.title("{} from difficulty {}".format(i, diff))
                 plt.imshow(img)
                 plt.show()

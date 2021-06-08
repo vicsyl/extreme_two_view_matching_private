@@ -38,6 +38,7 @@ class Pipeline:
 
     scene_name = None
     scene_type = None
+    file_name_suffix = None
     output_dir = None
     output_dir_prefix = None
 
@@ -93,6 +94,8 @@ class Pipeline:
 
                 if line.strip().startswith("#"):
                     continue
+                elif line.strip() == "":
+                    continue
 
                 k, v = line.partition("=")[::2]
                 k = k.strip()
@@ -102,6 +105,8 @@ class Pipeline:
                     pipeline.scene_name = v
                 elif k == "scene_type":
                     pipeline.scene_type = v
+                elif k == "file_name_suffix":
+                    pipeline.file_name_suffix = v
                 elif k == "rectify":
                     pipeline.rectify = v.lower() == "true"
                 elif k == "use_degensac":
@@ -175,7 +180,7 @@ class Pipeline:
             self.matching_difficulties = range(0, 18)
 
         self.log()
-        self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type)
+        self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type, file_name_suffix=self.file_name_suffix)
         self.depth_input_dir = self.scene_info.depth_input_dir()
 
     def log(self):
@@ -333,6 +338,8 @@ class Pipeline:
 
         stats_map = {}
 
+        already_processed = set()
+
         for difficulty in self.matching_difficulties:
             print("Difficulty: {}".format(difficulty))
 
@@ -342,11 +349,13 @@ class Pipeline:
             for img_pair in self.scene_info.img_pairs_lists[difficulty]:
 
                 key = SceneInfo.get_key(img_pair.img1, img_pair.img2)
-                if self.matching_pairs is not None and \
-                        key not in self.matching_pairs:
-                    continue
+                if self.matching_pairs is not None:
+                    if key not in self.matching_pairs or key in already_processed:
+                        continue
+                    else:
+                        already_processed.add(key)
 
-                if self.matching_limit is not None and processed_pairs >= self.matching_limit:
+                if self.matching_pairs is None and self.matching_limit is not None and processed_pairs >= self.matching_limit:
                     print("Reached matching limit of {} for difficulty {}".format(self.matching_limit, difficulty))
                     break
 
@@ -455,7 +464,7 @@ def append_all(pipeline, str):
     rectified = "rectified" if pipeline.rectify else "unrectified"
     now = datetime.now()
     timestamp = now.strftime("%Y_%m_%d_%H_%M_%S_%f")
-    return "{}_{}_{}_{}_{}_{}_{}".format(str, pipeline.scene_type, pipeline.scene_name, use_degensac, estimate_K, rectified, timestamp)
+    return "{}_{}_{}_{}_{}_{}_{}".format(str, pipeline.scene_type, pipeline.scene_name.replace("/", "_"), use_degensac, estimate_K, rectified, timestamp)
 
 
 def main():
@@ -476,7 +485,32 @@ def main():
 
     pipeline = Pipeline.configure("config.txt", args)
 
-    #pipeline.matching_pairs = "frame_0000000730_4_frame_0000000390_4"
+    #
+    # pipeline.matching_pairs = [
+    #     "5fd2c91236049babb753c6be7d99cdc_cb706ca5ce5c4625b7b29f1cced2418f",
+    #     "e153533ee59843e0bce5072cd9c13a35_423d856c619a42a3aa341e41972bcc18",
+    #     "f34c59d050448395101ac297d2fcf6_29c203e30ddd461cab3ed7a0225b0171",
+    #     "d023d86287e04da0a7239b93e7dd260c_b65d3668d39e46ca9330a2abeb7c5285",
+    #     "cb706ca5ce5c4625b7b29f1cced2418f_4a8e1cbfb45a45fc9e872b0e6b564741",
+    #     "a4a010b9ff7143b0aaee9f53e000b3e6_7ce20ade05044dffb0220dd2dcb31628",
+    #     "a3c549a16b4981bb400614da79ccac_0a2cccf4559a422bbb3f59c555793f31",
+    #     "d36717005c624a678ac1cfa9eb5a5190_c92027d4a43e45d0822e4fd932b9d1f1",
+    #     "d1f0979446ea68291618a2dc175_0a2cccf4559a422bbb3f59c555793f31",
+    #     "c92027d4a43e45d0822e4fd932b9d1f1_57050d1f0979446ea68291618a2dc175",
+    # ]
+
+    # pipeline.matching_pairs = [
+    #     "b0695cf27e3a45699cabafa926b6ad3f_2c18960517b24892a5ffb52341ece9eb"
+    #     "8d377076df88437daccbf07cdf4f3e5a_0b1ea4bbfbeb45428631265fb85ab89b",
+    #     "48767b964d9b49078e4015d02c98ce76_01bbad62912c4bde8586a16786c35db5",
+    #     "f5fd2c91236049babb753c6be7d99cdc_01522fc97a924bf1adec026152c6305f",
+    #     "cdd3fd3f2b4948438b715e1f7963cf77_9c453410e2ed4bd0bd288d7bf2308fe3",
+    #     "2c18960517b24892a5ffb52341ece9eb_2b5315968bc5468c995b978620879439",
+    #     "fe9eff017cbc45dca2ad0a7037b16e6b_d36717005c624a678ac1cfa9eb5a5190",
+    #     "ec28d890df844db48a3d20f5bd8ea80b_01522fc97a924bf1adec026152c6305f",
+    #     "9ccf06e9e3fe42f4933c09a55e632395_043f6f1c4dba43a5b99a81ff3b8780e8",
+    #     "e4c503ff3448479db49f90d833a8e2b6_043f6f1c4dba43a5b99a81ff3b8780e8",
+    # ]
     #pipeline.rectify = True
 
     pipeline.run_matching_pipeline()

@@ -241,12 +241,15 @@ def possibly_upsample_normals(img, normal_indices):
         # needs upsampling
         #epsilon = 0.0001
         epsilon = 0.003
+        hard_epsilon = 0.1
         aspect_ratio_diff = abs(img.shape[0] / normal_indices.shape[0] - img.shape[1] / normal_indices.shape[1])
         if img.shape[0] < normal_indices.shape[0]:
             raise Exception("img.shape[0] < normal_indices.shape[0] not expected")
-        elif aspect_ratio_diff >= epsilon:
+        elif aspect_ratio_diff >= hard_epsilon:
             raise Exception("{} and {} not of the same aspect ratio".format(normal_indices.shape, img.shape))
         else:
+            if aspect_ratio_diff >= epsilon:
+                print("WARNING: {} and {} not of the same aspect ratio".format(normal_indices.shape, img.shape))
             print("Will upsample the normals")
             normal_indices = upsample_nearest_numpy(normal_indices, img.shape[0], img.shape[1])
 
