@@ -539,6 +539,9 @@ def evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=None, th
         print("{} worst examples for diff={}".format(n_worst_examples, difficulty))
         for k, v in sorted_by_err_R[:n_worst_examples]:
             print("{}: {}".format(k, v.error_R))
+        print("{} best examples for diff={}".format(n_worst_examples, difficulty))
+        for k, v in sorted_by_err_R[-n_worst_examples:]:
+            print("{}: {}".format(k, v.error_R))
 
     rad_th = th_degrees * math.pi / 180
     filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
@@ -715,7 +718,8 @@ if __name__ == "__main__":
         for diff in range(18):
             file_path = "{}/stats_diff_{}.pkl".format(args.input_dir, diff)
             if os.path.isfile(file_path):
-                diff_perc = evaluate_percentage_correct_from_file(file_path, diff, n_worst_examples=args.n_worst, th_degrees=5)
+                n_worst = None if args.n_worst is None else int(args.n_worst)
+                diff_perc = evaluate_percentage_correct_from_file(file_path, diff, n_worst_examples=n_worst, th_degrees=5)
                 diff_percs.append(diff_perc)
             else:
                 print("{} not found".format(file_path))

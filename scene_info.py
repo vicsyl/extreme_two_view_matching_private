@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import glob
 import h5py
@@ -18,7 +19,7 @@ def add_google_image(img_name, image_info_map, calibration_file):
         image_info_map[img_name] = ImageEntry(img_name, image_id=None, camera_id=None, qs=q, t=T, R=R, K=K)
 
 
-def read_google_scene(scene_name):
+def read_google_scene(scene_name, show_first=0):
 
     img_pairs_lists = {}
     img_pairs_maps = {}
@@ -39,6 +40,7 @@ def read_google_scene(scene_name):
 
         counter = 0
         for i in range(data_np.shape[0]):
+
             img_name_tuple = data_np[i].split("-")
             img1_exists = os.path.isfile("googleurban/{}/set_100/images/{}.png".format(scene_name, img_name_tuple[0]))
             img2_exists = os.path.isfile("googleurban/{}/set_100/images/{}.png".format(scene_name, img_name_tuple[1]))
@@ -55,6 +57,21 @@ def read_google_scene(scene_name):
 
                 add_google_image(img_name_tuple[0], image_info_map, cal1_file)
                 add_google_image(img_name_tuple[1], image_info_map, cal2_file)
+
+                if i < show_first and (diff == 9):
+                    plt.figure(figsize=(10, 10))
+                    plt.subplot(1, 2, 1)
+                    img = plt.imread("googleurban/{}/set_100/images/{}.png".format(scene_name, img_name_tuple[0]))
+                    plt.title("{} from difficulty {}".format(i, diff))
+                    plt.imshow(img)
+                    plt.subplot(1, 2, 2)
+                    img = plt.imread("googleurban/{}/set_100/images/{}.png".format(scene_name, img_name_tuple[1]))
+                    plt.title("{} from difficulty {}".format(i, diff))
+                    plt.imshow(img)
+                    plt.show()
+            else:
+                print("WARNING: something missing for {}".format(img_name_tuple))
+
 
         print("{} valid pairs for diff {}".format(counter, diff))
 
@@ -202,7 +219,7 @@ class SceneInfo:
         return None
 
     @staticmethod
-    def read_scene(scene_name, type="orig"):
+    def read_scene(scene_name, type="orig", show_first=0):
         if type == "orig":
             Timer.start_check_point("reading scene info")
             print("scene={}".format(scene_name))
@@ -213,7 +230,7 @@ class SceneInfo:
             Timer.end_check_point("reading scene info")
             return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name, type="orig")
         elif type == "google":
-            return read_google_scene(scene_name)
+            return read_google_scene(scene_name, show_first)
         else:
             raise Exception("unexpected type: {}".format(type))
 
@@ -339,5 +356,107 @@ def test():
     print("cameras and images read")
 
 
+def calculate_overall_accuracy():
+
+    scene = SceneInfo.read_scene("edinburgh", type="google", show_first=0)
+
+# estimate_k = False
+#  rectify = True
+    s = """0   0.04664938911514254
+1   0.4222972972972973
+2   0.40202702702702703
+3   0.39864864864864863
+4   0.40202702702702703
+5   0.36486486486486486
+6   0.39864864864864863
+7   0.40202702702702703
+8   0.375
+9   0.40878378378378377"""
+    # overall: 0.27843223459511335
+
+# estimate_k = False
+#   rectify = False
+#     s = """0   0.056576576576576575
+# 1   0.4850498338870432
+# 2   0.47840531561461797
+# 3   0.49169435215946844
+# 4   0.4850498338870432
+# 5   0.4717607973421927
+# 6   0.48172757475083056
+# 7   0.4750830564784053
+# 8   0.49169435215946844
+# 9   0.48172757475083056"""
+    # overall: 0.33821554985963626
+
+    accs = [float(line.split("   ")[1].strip()) for line in s.split("\n")]
+
+    all = 0
+    acc = 0.0
+    for i in range(10):
+        assert 0 < accs[i] < 1
+        l = len(scene.img_pairs_lists[i])
+        all = all + l
+        acc = acc + accs[i] * l
+    acc = acc / all
+    print("Overall acurracy: {}".format(acc))
+
+
+def show():
+
+    scene = SceneInfo.read_scene("edinburgh", type="google", show_first=0)
+
+    matching_pairs = [
+        "5fd2c91236049babb753c6be7d99cdc_cb706ca5ce5c4625b7b29f1cced2418f",
+    "e153533ee59843e0bce5072cd9c13a35_423d856c619a42a3aa341e41972bcc18",
+    "f34c59d050448395101ac297d2fcf6_29c203e30ddd461cab3ed7a0225b0171",
+    "d023d86287e04da0a7239b93e7dd260c_b65d3668d39e46ca9330a2abeb7c5285",
+    "cb706ca5ce5c4625b7b29f1cced2418f_4a8e1cbfb45a45fc9e872b0e6b564741",
+    "a4a010b9ff7143b0aaee9f53e000b3e6_7ce20ade05044dffb0220dd2dcb31628",
+    "a3c549a16b4981bb400614da79ccac_0a2cccf4559a422bbb3f59c555793f31",
+    "d36717005c624a678ac1cfa9eb5a5190_c92027d4a43e45d0822e4fd932b9d1f1",
+    "d1f0979446ea68291618a2dc175_0a2cccf4559a422bbb3f59c555793f31",
+    "c92027d4a43e45d0822e4fd932b9d1f1_57050d1f0979446ea68291618a2dc175",
+    ]
+
+    # matching_pairs = [
+    #     "b0695cf27e3a45699cabafa926b6ad3f-2c18960517b24892a5ffb52341ece9eb",
+    #     "8d377076df88437daccbf07cdf4f3e5a-0b1ea4bbfbeb45428631265fb85ab89b",
+    #     "48767b964d9b49078e4015d02c98ce76-01bbad62912c4bde8586a16786c35db5",
+    #     "f5fd2c91236049babb753c6be7d99cdc-01522fc97a924bf1adec026152c6305f",
+    #     "cdd3fd3f2b4948438b715e1f7963cf77-9c453410e2ed4bd0bd288d7bf2308fe3",
+    #     "2c18960517b24892a5ffb52341ece9eb-2b5315968bc5468c995b978620879439",
+    #     "fe9eff017cbc45dca2ad0a7037b16e6b-d36717005c624a678ac1cfa9eb5a5190",
+    #     "ec28d890df844db48a3d20f5bd8ea80b-01522fc97a924bf1adec026152c6305f",
+    #     "9ccf06e9e3fe42f4933c09a55e632395-043f6f1c4dba43a5b99a81ff3b8780e8",
+    #     "e4c503ff3448479db49f90d833a8e2b6-043f6f1c4dba43a5b99a81ff3b8780e8",
+    # ]
+
+    for pair in matching_pairs:
+        pair = pair.replace("_", "-")
+        found = False
+        for i in range(9, 10):
+            m = scene.img_pairs_maps[i]
+            if m.__contains__(pair):
+                found = True
+                entry = m[pair]
+                plt.figure(figsize=(10, 10))
+                plt.title("pair: {}".format(pair))
+                plt.subplot(1, 2, 1)
+                img = plt.imread("googleurban/{}/set_100/images/{}.png".format(scene.name, entry.img1))
+                plt.imshow(img)
+                plt.subplot(1, 2, 2)
+                img = plt.imread("googleurban/{}/set_100/images/{}.png".format(scene.name, entry.img2))
+                #plt.title("{} from difficulty {}".format(i, diff))
+                plt.imshow(img)
+                plt.show()
+                break
+        if not found:
+            print("{} not found!!!".format(pair))
+
+
+
+
 if __name__ == "__main__":
-    test()
+    scene = SceneInfo.read_scene("edinburgh", type="google", show_first=5)
+    #test()
+    #show()
