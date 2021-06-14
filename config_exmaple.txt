@@ -1,28 +1,38 @@
 scene_name = scene1
+# scene_name = phototourism/st_peters_square
+file_name_suffix = .jpg
+# or 'orig'
+scene_type = orig
+output_dir_prefix = work/pipeline
 matching_difficulties_min = 0
 matching_difficulties_max = 2
-matching_limit = 3
-# image_pairs = frame_0000000905_1_frame_0000001200_1
-# chosen_depth_files = frame_0000001200_1.npy
+matching_limit = 1
+
+
 planes_based_matching = False
-# SIFT so far
 feature_descriptor = SIFT
-#output_dir_prefix = work/pipeline_scene1
-#output_dir = work/pipeline_scene1_11112222
 rectify = True
 do_flann = False
 
+knn_ratio_threshold = 0.85
+
+use_degensac = True
+estimate_k = False
+focal_point_mean_factor = 0.5
+
 #show and save
-show_input_img = False
+show_input_img = True
 
 show_matching = True
-save_matching = False
-
 show_clusters = True
-save_clusters = False
 show_clustered_components = True
-save_clustered_components = False
 show_rectification = True
-save_rectification = False
-show_sky_mask = True
+show_sky_mask = False
+
+save_clusters = True
+save_matching = True
+save_clustered_components = True
+save_rectification = True
 save_sky_mask = False
+
+use_cached_img_data = False
