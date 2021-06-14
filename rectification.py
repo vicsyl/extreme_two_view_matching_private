@@ -15,7 +15,7 @@ from config import Config
 #from matching import rich_split_points, find_correspondences, draw_matches, find_and_draw_homography, apply_inliers_on_list
 
 
-def get_rectification_rotation(normal):
+def get_rectification_rotation(normal, rotation_factor=1.0):
 
     # now the normals will be "from" me, "inside" the surfaces
     normal = -normal
@@ -26,9 +26,10 @@ def get_rectification_rotation(normal):
 
     assert normal[2] > 0
     rotation_vector = np.cross(normal, z)
-    rotation_vector_norm = sin_theta = np.linalg.norm(rotation_vector)
+    rotation_vector_norm = abs_sin_theta = np.linalg.norm(rotation_vector)
     unit_rotation_vector = rotation_vector / rotation_vector_norm
-    theta = math.asin(sin_theta)
+    theta = math.asin(abs_sin_theta) * rotation_factor
+    theta = min(theta, math.pi * 4.0/9.0)
 
     R = get_rotation_matrix(unit_rotation_vector, theta)
     det = np.linalg.det(R)
@@ -94,7 +95,17 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
 
 
 # FIXME: keypoints not belonging to any component are simply disregarded
-def get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, show=False, save=False, out_prefix=None):
+def get_rectified_keypoints(normals,
+                            components_indices,
+                            valid_components_dict,
+                            img,
+                            K,
+                            descriptor,
+                            img_name,
+                            show=False,
+                            save=False,
+                            out_prefix=None,
+                            rotation_factor=1.0):
 
     K_inv = np.linalg.inv(K)
 
@@ -109,7 +120,7 @@ def get_rectified_keypoints(normals, components_indices, valid_components_dict, 
         normal_index = valid_components_dict[component_index]
         normal = normals[normal_index]
 
-        R = get_rectification_rotation(normal)
+        R = get_rectification_rotation(normal, rotation_factor)
 
         T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
         #TODO this is too defensive (and wrong) I think, I can warp only the plane
