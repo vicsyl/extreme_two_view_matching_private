@@ -25,11 +25,12 @@ class Config:
 
     @staticmethod
     def log():
-        print("Config:\n  {}".format("\n  ".join("{}: {},".format(k, v) for k, v in Config.config_map.items())))
+        print("Config:")
+        print("\t{}".format("\n\t".join("{}\t{}".format(k, v) for k, v in Config.config_map.items())))
 
         attr_list = [attr for attr in dir(Config) if not callable(getattr(Config, attr)) and not attr.startswith("__")]
         for attr_name in attr_list:
-            print("  {} = {}".format(attr_name, getattr(Config, attr_name)))
+            print("\t{}\t{}".format(attr_name, getattr(Config, attr_name)))
         print()
 
     @staticmethod

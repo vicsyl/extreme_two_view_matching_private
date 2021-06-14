@@ -25,12 +25,15 @@ class Clustering:
 
     points_threshold = 20000
 
-    print("Clustering: angle_distance_threshold: {} degrees".format(angle_distance_threshold_degrees))
-    print("Clustering: angle_distance_inter_cluster_threshold_degrees: {}".format(angle_distance_intra_cluster_threshold_degrees))
-    print("Clustering: distance_threshold: {}".format(distance_threshold))
-    print("Clustering: distance_inter_cluster_threshold: {}".format(distance_intra_cluster_threshold))
-    print("Clustering: points_threshold: {}".format(points_threshold))
-    print("Clustering: N_points: {}".format(N_points))
+    @staticmethod
+    def log():
+        print("Clustering:")
+        print("\tangle_distance_threshold\t{} degrees".format(Clustering.angle_distance_threshold_degrees))
+        print("\tangle_distance_inter_cluster_threshold_degrees\t{}".format(Clustering.angle_distance_intra_cluster_threshold_degrees))
+        print("\tdistance_threshold\t{}".format(Clustering.distance_threshold))
+        print("\tdistance_inter_cluster_threshold\t{}".format(Clustering.distance_intra_cluster_threshold))
+        print("\tpoints_threshold\t{}".format(Clustering.points_threshold))
+        print("\tN_points\t{}".format(Clustering.N_points))
 
 
 # https://web.archive.org/web/20120107030109/http://cgafaq.info/wiki/Evenly_distributed_points_on_sphere#Spirals

@@ -304,9 +304,10 @@ def compute_normals(scene: SceneInfo,
     """
 
     if True:
-        raise Exception("not implemented - need 'img_name' as a parameter")
+        raise Exception("not implemented - need 'img_name' as a parameter as in 'K = scene.get_img_K(img_name)'")
 
     K = scene.get_img_K("img_name")
+
     focal_length = K[0, 0]
     orig_height = img.shape[0]
     orig_width = img.shape[1]

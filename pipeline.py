@@ -13,7 +13,7 @@ import argparse
 
 from config import Config
 from connected_components import get_connected_components, get_and_show_components
-from depth_to_normals import compute_normals, compute_only_normals
+from depth_to_normals import compute_only_normals
 from depth_to_normals import show_sky_mask, cluster_normals, show_or_save_clusters
 from matching import match_find_E, match_find_F_degensac, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
@@ -22,6 +22,7 @@ from utils import Timer
 from img_utils import show_or_close
 from evaluation import *
 from sky_filter import get_nonsky_mask
+from clustering import Clustering
 
 import matplotlib.pyplot as plt
 
@@ -189,10 +190,11 @@ class Pipeline:
         for attr_name in attr_list:
             if attr_name in ["scene_info"]:
                 continue
-            print("  {} = {}".format(attr_name, getattr(self, attr_name)))
+            print("\t{}\t{}".format(attr_name, getattr(self, attr_name)))
         print()
 
         Config.log()
+        Clustering.log()
 
     def process_image(self, img_name):
 
@@ -337,7 +339,6 @@ class Pipeline:
         self.start()
 
         stats_map = {}
-
         already_processed = set()
 
         for difficulty in self.matching_difficulties:
@@ -449,12 +450,14 @@ class Pipeline:
                 with open(stats_file_name, "wb") as f:
                     pickle.dump(stats_map_diff, f)
                 print("Stats for difficulty {}:".format(difficulty))
-                evaluate_percentage_correct(stats_map_diff, difficulty, n_worst_examples=10)
+                print("Group\tAcc.(5º)")
+                evaluate_percentage_correct(stats_map_diff, difficulty, n_worst_examples=10, th_degrees=5)
 
         all_stats_file_name = "{}/all.stats.pkl".format(self.output_dir)
         with open(all_stats_file_name, "wb") as f:
             pickle.dump(stats_map, f)
 
+        self.log()
         evaluate_all(stats_map, n_worst_examples=None)
 
 
@@ -512,6 +515,8 @@ def main():
     #     "e4c503ff3448479db49f90d833a8e2b6_043f6f1c4dba43a5b99a81ff3b8780e8",
     # ]
     #pipeline.rectify = True
+
+    #pipeline.matching_pairs = "frame_0000000535_3_frame_0000000450_3"
 
     pipeline.run_matching_pipeline()
 

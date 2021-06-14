@@ -42,12 +42,14 @@ def read_google_scene(scene_name, file_name_suffix, show_first=0):
         for i in range(data_np.shape[0]):
 
             img_name_tuple = data_np[i].split("-")
-            img1_exists = os.path.isfile("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[0], file_name_suffix))
-            img2_exists = os.path.isfile("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[1], file_name_suffix))
-            cal1_file = "{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[0])
-            cal1_exists = os.path.isfile(cal1_file)
-            cal2_file = "{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[1])
-            cal2_exists = os.path.isfile(cal2_file)
+            img1_path = "{}/set_100/images/{}{}".format(scene_name, img_name_tuple[0], file_name_suffix)
+            img1_exists = os.path.isfile(img1_path)
+            img2_path = "{}/set_100/images/{}{}".format(scene_name, img_name_tuple[1], file_name_suffix)
+            img2_exists = os.path.isfile(img2_path)
+            cal1_path = "{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[0])
+            cal1_exists = os.path.isfile(cal1_path)
+            cal2_path = "{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[1])
+            cal2_exists = os.path.isfile(cal2_path)
             if img1_exists and img2_exists and cal1_exists and cal2_exists:
                 counter = counter + 1
 
@@ -55,8 +57,8 @@ def read_google_scene(scene_name, file_name_suffix, show_first=0):
                 img_pairs_maps[diff][data_np[i]] = entry
                 img_pairs_lists[diff].append(entry)
 
-                add_google_image(img_name_tuple[0], image_info_map, cal1_file)
-                add_google_image(img_name_tuple[1], image_info_map, cal2_file)
+                add_google_image(img_name_tuple[0], image_info_map, cal1_path)
+                add_google_image(img_name_tuple[1], image_info_map, cal2_path)
 
                 if i < show_first and (diff == 9):
                     plt.figure(figsize=(10, 10))
@@ -70,7 +72,7 @@ def read_google_scene(scene_name, file_name_suffix, show_first=0):
                     plt.imshow(img)
                     plt.show()
             else:
-                print("WARNING: something missing for {}".format(img_name_tuple))
+                print("WARNING: something missing for {}: {}, {}, {}, {}".format(img_name_tuple, img1_path, img2_path, cal1_path, cal2_path))
 
 
         print("{} valid pairs for diff {}".format(counter, diff))
@@ -227,7 +229,7 @@ class SceneInfo:
             img_info_map = read_images(scene_name, lazy=lazy)
             cameras = read_cameras(scene_name)
             Timer.end_check_point("reading scene info")
-            return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name, type="orig")
+            return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name, type="orig", file_name_suffix=".jpg")
         elif type == "google":
             return read_google_scene(scene_name, file_name_suffix, show_first)
         else:
@@ -295,7 +297,7 @@ def read_images(scene, lazy=True):
             camera_id = int(bits[8])
             name = bits[9].strip()[:-4]
 
-            image_map[name] = ImageEntry(name, image_id, camera_id, qs, ts)
+            image_map[name] = ImageEntry(name, image_id, camera_id, qs, ts, R=None, K=None)
             # {
             #     "image_id": image_id,
             #     "camera_id": camera_id,
@@ -456,6 +458,6 @@ def show():
 
 
 if __name__ == "__main__":
-    scene = SceneInfo.read_scene("edinburgh", type="google", show_first=5)
+    scene = SceneInfo.read_scene("phototourism/st_peters_square", type="google", show_first=5)
     #test()
     #show()
