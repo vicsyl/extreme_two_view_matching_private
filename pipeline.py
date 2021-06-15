@@ -390,7 +390,6 @@ class Pipeline:
                     match_images_with_dominant_planes(
                         image_data1,
                         image_data2,
-                        images_info=self.scene_info.img_info_map,
                         img_pair=img_pair,
                         out_dir=matching_out_dir,
                         show=self.show_matching,

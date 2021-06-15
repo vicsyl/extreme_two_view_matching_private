@@ -1,4 +1,5 @@
  - notes: commit 9ec12ec
+ - https://realpython.com/python-matplotlib-guide/
 
 
 to be investigated:
