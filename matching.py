@@ -254,9 +254,27 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
 
     merge_components = Config.config_map[Config.key_planes_based_matching_merge_components]
     kpts_desc_list1, rest_kpts1, rest_descs1 = get_kts_desc_normal_list(image_data1, merge_components)
-    assert len(kpts_desc_list1) > 0
     kpts_desc_list2, rest_kpts2, rest_descs2 = get_kts_desc_normal_list(image_data2, merge_components)
-    assert len(kpts_desc_list2) > 0
+
+    if len(kpts_desc_list1) == 0 or len(kpts_desc_list2) == 0:
+        print("NO VALID CLUSTER - fallback to plain degensac")
+        return match_find_F_degensac(
+            image_data1.img,
+            image_data1.key_points,
+            image_data1.descriptions,
+            image_data1.K,
+            image_data2.img,
+            image_data2.key_points,
+            image_data2.descriptions,
+            image_data2.K,
+            img_pair,
+            out_dir,
+            show=show,
+            save=save,
+            ratio_thresh=ratio_thresh)
+
+        # assert len(kpts_desc_list1) > 0
+        # assert len(kpts_desc_list2) > 0
 
     # (id1, id2) => (homography, inlier_kps1, inlier_dsc1, inlier_kps2, inlier_dsc2)
     homography_matching_dict = {}
