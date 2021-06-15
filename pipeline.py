@@ -386,7 +386,7 @@ class Pipeline:
                     continue
 
                 if self.planes_based_matching:
-                    # E, inlier_mask, src_pts, dst_pts, kps1, kps2, tentative_matches =
+                    E, inlier_mask, src_pts, dst_pts, tentative_matches = \
                     match_images_with_dominant_planes(
                         image_data1,
                         image_data2,
@@ -394,7 +394,8 @@ class Pipeline:
                         img_pair=img_pair,
                         out_dir=matching_out_dir,
                         show=self.show_matching,
-                        save=self.save_matching)
+                        save=self.save_matching,
+                        ratio_thresh=self.knn_ratio_threshold)
 
                 elif self.use_degensac:
                     E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
@@ -484,7 +485,8 @@ def main():
 
     Timer.start()
 
-    Config.config_map[Config.key_planes_based_matching_merge_components] = False
+    # TODO add to config
+    #Config.config_map[Config.key_planes_based_matching_merge_components] = False
 
     pipeline = Pipeline.configure("config.txt", args)
 
@@ -516,7 +518,7 @@ def main():
     # ]
     #pipeline.rectify = True
 
-    #pipeline.matching_pairs = "frame_0000000535_3_frame_0000000450_3"
+    pipeline.matching_pairs = "frame_0000000535_3_frame_0000000450_3"
 
     pipeline.run_matching_pipeline()
 

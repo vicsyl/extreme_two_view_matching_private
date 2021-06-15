@@ -244,10 +244,8 @@ class ImageData:
         return ImageSerializedData(kpts=self.key_points,
                                    descs=self.descriptions,
                                    normals=self.normals,
-                                   components_indices=None,
-                                   valid_components_dict=None)
-                                   # components_indices=self.components_indices,
-                                   # valid_components_dict=self.valid_components_dict)
+                                   components_indices=self.components_indices,
+                                   valid_components_dict=self.valid_components_dict)
 
 
 @dataclass
@@ -296,8 +294,8 @@ def evaluate_matching(scene_info,
     save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
     print("Image pair: {} <-> {}:".format(img_pair.img1, img_pair.img2))
-    print("Number of inliers: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
-    print("Number of outliers: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
+    print("Number of inliers: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
+    print("Number of outliers: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
 
     src_tentative, dst_tentative = split_points(tentative_matches, kps1, kps2)
     src_pts_inliers = src_tentative[inlier_mask[:, 0] == [1]]
