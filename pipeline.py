@@ -517,7 +517,7 @@ def main():
     # ]
     #pipeline.rectify = True
 
-    pipeline.matching_pairs = "frame_0000000535_3_frame_0000000450_3"
+    #pipeline.matching_pairs = "frame_0000000535_3_frame_0000000450_3"
 
     pipeline.run_matching_pipeline()
 
