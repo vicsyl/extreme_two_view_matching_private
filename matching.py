@@ -212,12 +212,18 @@ def apply_inliers_on_list(l: list, inlier_mask):
     return [i for idx, i in enumerate(l) if inlier_mask[idx, 0] == 1]
 
 
-def find_and_draw_homography(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh, ransac_thresh, ransac_confidence, title, out_dir):
+def find_and_draw_homography_or_fallback(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh, ransac_thresh, ransac_confidence, title, out_dir):
 
     tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, None, show=False, save=False, ratio_thresh=ratio_thresh)
     src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc = rich_split_points(tentative_matches, kps1, descs1, kps2, descs2)
 
-    H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransacReprojThreshold=ransac_thresh, confidence=ransac_confidence)
+    points = len(src_pts)
+    if points >=4:
+        H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransacReprojThreshold=ransac_thresh, confidence=ransac_confidence)
+    else:
+        print("WARNING: not enough matches ({}) for finding a homography".format(points))
+        H = None
+        inlier_mask = np.ones((points, 1))
 
     # img = draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
     # plt.title("{} - {}".format(title, np.sum(inlier_mask)))
@@ -284,17 +290,17 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
             kps1, desc1, _, _ = kpts_desc_list1[ix1]
             kps2, desc2, _, _ = kpts_desc_list2[ix2]
             print("matching component/normal {} from 1st image against {} component/normal from 2nd image".format(ix1, ix2))
-            H, matches, src_kps, src_dsc, dst_kps, dst_dsc = find_and_draw_homography(image_data1.img,
-                                                                                      kps1,
-                                                                                      desc1,
-                                                                                      image_data2.img,
-                                                                                      kps2,
-                                                                                      desc2,
-                                                                                      ratio_thresh=ratio_thresh,
-                                                                                      ransac_thresh=ransac_thresh,
-                                                                                      ransac_confidence=ransac_conf,
-                                                                                      title="homography{}_{}".format(ix1, ix2),
-                                                                                      out_dir=out_dir)
+            H, matches, src_kps, src_dsc, dst_kps, dst_dsc = find_and_draw_homography_or_fallback(image_data1.img,
+                                                                                                  kps1,
+                                                                                                  desc1,
+                                                                                                  image_data2.img,
+                                                                                                  kps2,
+                                                                                                  desc2,
+                                                                                                  ratio_thresh=ratio_thresh,
+                                                                                                  ransac_thresh=ransac_thresh,
+                                                                                                  ransac_confidence=ransac_conf,
+                                                                                                  title="homography{}_{}".format(ix1, ix2),
+                                                                                                  out_dir=out_dir)
 
             homography_matching_dict[(ix1, ix2)] = (H, matches, src_kps, src_dsc, dst_kps, dst_dsc)
 

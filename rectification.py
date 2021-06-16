@@ -12,7 +12,6 @@ from connected_components import get_and_show_components, read_img_normals_info,
 from img_utils import show_or_close
 from depth_to_normals import compute_normals
 from config import Config
-#from matching import rich_split_points, find_correspondences, draw_matches, find_and_draw_homography, apply_inliers_on_list
 
 
 def get_rectification_rotation(normal, rotation_factor=1.0):
