@@ -103,8 +103,11 @@ def cluster(normals: torch.Tensor, filter_mask):
     if len(cluster_centers) == 1:
         cluster_centers = cluster_centers[0]
         cluster_centers = torch.unsqueeze(cluster_centers, dim=0)
-    else:
+    elif len(cluster_centers) > 1:
         cluster_centers = torch.vstack(cluster_centers)
+    else:
+        # NOTE corner case - no clusters found
+        cluster_centers = torch.zeros((0, 3))
 
     Timer.end_check_point(timer_label)
 

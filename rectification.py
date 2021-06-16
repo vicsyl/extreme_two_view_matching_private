@@ -5,7 +5,7 @@ import cv2 as cv
 import matplotlib.pyplot as plt
 import torch
 from pathlib import Path
-from resize import upsample_nearest_numpy
+from resize import resample_nearest_numpy
 from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix
 from scene_info import SceneInfo, read_cameras
 from connected_components import get_and_show_components, read_img_normals_info, get_connected_components
@@ -254,15 +254,15 @@ def possibly_upsample_normals(img, normal_indices):
         epsilon = 0.003
         hard_epsilon = 0.1
         aspect_ratio_diff = abs(img.shape[0] / normal_indices.shape[0] - img.shape[1] / normal_indices.shape[1])
-        if img.shape[0] < normal_indices.shape[0]:
-            raise Exception("img.shape[0] < normal_indices.shape[0] not expected")
-        elif aspect_ratio_diff >= hard_epsilon:
+        if aspect_ratio_diff >= hard_epsilon:
             raise Exception("{} and {} not of the same aspect ratio".format(normal_indices.shape, img.shape))
         else:
+            if img.shape[0] < normal_indices.shape[0]:
+                print("WARNING: img.shape[0] < normal_indices.shape[0]")
             if aspect_ratio_diff >= epsilon:
                 print("WARNING: {} and {} not of the same aspect ratio".format(normal_indices.shape, img.shape))
             print("Will upsample the normals")
-            normal_indices = upsample_nearest_numpy(normal_indices, img.shape[0], img.shape[1])
+            normal_indices = resample_nearest_numpy(normal_indices, img.shape[0], img.shape[1])
 
     return normal_indices
 

@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 def upsample_bilinear(depth_data, height, width):
     upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
@@ -6,10 +7,20 @@ def upsample_bilinear(depth_data, height, width):
     return depth_data
 
 
-def upsample_nearest_numpy(data, height, width):
-    data = torch.from_numpy(data)
-    data = data.view(1, 1, data.shape[0], data.shape[1])
-    #data = upsample_bilinear(data, img.shape[0], img.shape[1])
-    upsampling = torch.nn.Upsample(size=(height, width), mode='nearest')
-    data = upsampling(data)
-    return data.squeeze(dim=0).squeeze(dim=0).numpy()
+def resample_nearest_numpy(data, height, width):
+
+    if data.shape[0] == height:
+        return data
+    else:
+        data_height = data.shape[0]
+        data = torch.from_numpy(data)
+        data = data.view(1, 1, data.shape[0], data.shape[1])
+        if data_height < height:
+            upsampling = torch.nn.Upsample(size=(height, width), mode='nearest')
+            data = upsampling(data)
+        else:
+            # (input, size=None, scale_factor=None, mode='nearest', align_corners=None, recompute_scale_factor=None):  # noqa: F811
+            # NOTE downsampling with nearest (it's the indices)
+            data = F.interpolate(data, size=(height, width), scale_factor=None, mode='nearest', align_corners=None)
+    ret = data.squeeze(dim=0).squeeze(dim=0).numpy()
+    return ret

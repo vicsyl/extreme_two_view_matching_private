@@ -177,11 +177,13 @@ class Pipeline:
     def start(self):
         print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
 
-        if self.matching_pairs is not None:
-            self.matching_difficulties = range(0, 18)
-
         self.log()
         self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type, file_name_suffix=self.file_name_suffix)
+
+        if self.matching_pairs is not None:
+            l = len(self.scene_info.img_pairs_lists)
+            self.matching_difficulties = range(0, l)
+
         self.depth_input_dir = self.scene_info.depth_input_dir()
 
     def log(self):
@@ -361,6 +363,7 @@ class Pipeline:
                     break
 
                 Timer.start_check_point("complete image pair matching")
+                print("Will be matching pair {}".format(key))
 
                 matching_out_dir = "{}/matching".format(self.output_dir)
                 Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
@@ -518,8 +521,15 @@ def main():
     #pipeline.rectify = True
 
     #pipeline.matching_pairs = "frame_0000000535_3_frame_0000000450_3"
+    #pipeline.matching_pairs = "99701302_4928134971_93418358_3108962558"
+    #pipeline.matching_pairs = "99701302_4928134971_83834049_2256627953"
+    #pipeline.matching_pairs = "99261069_5958624644_98295942_2072901703"
+
+    #pipeline.chosen_depth_files = ["83834049_2256627953.npy"]
+    #pipeline.chosen_depth_files = ["99701302_4928134971.npy"]
 
     pipeline.run_matching_pipeline()
+    #pipeline.run_sequential_pipeline()
 
     # pipeline.rectify = False
     # pipeline.run_matching_pipeline()
