@@ -167,9 +167,9 @@ class Pipeline:
 
         pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
 
-        if args.__contains__("output_dir"):
+        if args is not None and args.__contains__("output_dir"):
             pipeline.output_dir = args.output_dir
-        else:
+        elif pipeline.output_dir is None:
             pipeline.output_dir = append_all(pipeline, pipeline.output_dir_prefix)
 
         return pipeline
@@ -476,133 +476,15 @@ def append_all(pipeline, str):
 def main():
 
     parser = argparse.ArgumentParser(prog='pipeline')
-    parser.add_argument('--output_dir', help='ouput dir')
+    parser.add_argument('--output_dir', help='output dir')
     args = parser.parse_args()
-
-    # hurts
-    # "frame_0000001650_1_frame_0000000730_3"
-    # "frame_0000000200_4_frame_0000001845_1"
-    # helps
-    # "frame_0000000730_4_frame_0000000390_4"
 
     Timer.start()
 
-    # TODO add to config
-    #Config.config_map[Config.key_planes_based_matching_merge_components] = False
-
     pipeline = Pipeline.configure("config.txt", args)
-
-    #
-    # pipeline.matching_pairs = [
-    #     "5fd2c91236049babb753c6be7d99cdc_cb706ca5ce5c4625b7b29f1cced2418f",
-    #     "e153533ee59843e0bce5072cd9c13a35_423d856c619a42a3aa341e41972bcc18",
-    #     "f34c59d050448395101ac297d2fcf6_29c203e30ddd461cab3ed7a0225b0171",
-    #     "d023d86287e04da0a7239b93e7dd260c_b65d3668d39e46ca9330a2abeb7c5285",
-    #     "cb706ca5ce5c4625b7b29f1cced2418f_4a8e1cbfb45a45fc9e872b0e6b564741",
-    #     "a4a010b9ff7143b0aaee9f53e000b3e6_7ce20ade05044dffb0220dd2dcb31628",
-    #     "a3c549a16b4981bb400614da79ccac_0a2cccf4559a422bbb3f59c555793f31",
-    #     "d36717005c624a678ac1cfa9eb5a5190_c92027d4a43e45d0822e4fd932b9d1f1",
-    #     "d1f0979446ea68291618a2dc175_0a2cccf4559a422bbb3f59c555793f31",
-    #     "c92027d4a43e45d0822e4fd932b9d1f1_57050d1f0979446ea68291618a2dc175",
-    # ]
-
-    # pipeline.matching_pairs = [
-    #     "b0695cf27e3a45699cabafa926b6ad3f_2c18960517b24892a5ffb52341ece9eb"
-    #     "8d377076df88437daccbf07cdf4f3e5a_0b1ea4bbfbeb45428631265fb85ab89b",
-    #     "48767b964d9b49078e4015d02c98ce76_01bbad62912c4bde8586a16786c35db5",
-    #     "f5fd2c91236049babb753c6be7d99cdc_01522fc97a924bf1adec026152c6305f",
-    #     "cdd3fd3f2b4948438b715e1f7963cf77_9c453410e2ed4bd0bd288d7bf2308fe3",
-    #     "2c18960517b24892a5ffb52341ece9eb_2b5315968bc5468c995b978620879439",
-    #     "fe9eff017cbc45dca2ad0a7037b16e6b_d36717005c624a678ac1cfa9eb5a5190",
-    #     "ec28d890df844db48a3d20f5bd8ea80b_01522fc97a924bf1adec026152c6305f",
-    #     "9ccf06e9e3fe42f4933c09a55e632395_043f6f1c4dba43a5b99a81ff3b8780e8",
-    #     "e4c503ff3448479db49f90d833a8e2b6_043f6f1c4dba43a5b99a81ff3b8780e8",
-    # ]
-    #pipeline.rectify = True
-
-    #pipeline.matching_pairs = "frame_0000000535_3_frame_0000000450_3"
-    #pipeline.matching_pairs = "99701302_4928134971_93418358_3108962558"
-    #pipeline.matching_pairs = "99701302_4928134971_83834049_2256627953"
-    #pipeline.matching_pairs = "99261069_5958624644_98295942_2072901703"
-
-    #pipeline.chosen_depth_files = ["83834049_2256627953.npy"]
-    #pipeline.chosen_depth_files = ["99701302_4928134971.npy"]
-
     pipeline.run_matching_pipeline()
-    #pipeline.run_sequential_pipeline()
-
-    # pipeline.rectify = False
-    # pipeline.run_matching_pipeline()
 
     Timer.end()
-
-    # RECT
-    # frame_0000000750_1_frame_0000001460_3 : 0.2975730073440412 : 0
-    # frame_0000001280_2_frame_0000000435_1 : 0.3117467900844886 : 0
-    # frame_0000000045_1_frame_0000001465_4 : 0.3475394532917147 : 0
-    # frame_0000001670_1_frame_0000000705_3 : 0.35030656173324887 : 0
-    # frame_0000000695_3_frame_0000000535_4 : 0.38110056845168916 : 0
-    # frame_0000001155_1_frame_0000001330_1 : 0.396294848576985 : 0
-    # frame_0000001650_1_frame_0000000730_3 : 0.41452517328156235 : 0
-    # frame_0000000045_2_frame_0000002230_1 : 0.8421649629297145 : 0
-    # frame_0000000045_1_frame_0000001460_4 : 1.2111855989905465 : 0
-    # frame_0000001535_4_frame_0000000305_1 : 1.6491643182932554 : 0
-    # frame_0000001625_4_frame_0000001520_4 : 3.1229108422181784 : 0
-
-    # NO RECT
-    # frame_0000000420_2_frame_0000000755_3 : 0.2395142577686067 : 0
-    # frame_0000001935_1_frame_0000000640_3 : 0.2710834091883783 : 0
-    # frame_0000000770_4_frame_0000000685_4 : 0.2774820857254884 : 0
-    # frame_0000001480_3_frame_0000001190_2 : 0.3206430790811858 : 0
-    # frame_0000001145_2_frame_0000001430_3 : 0.32928574716602327 : 0
-    # frame_0000000660_3_frame_0000001890_1 : 0.3412612633633496 : 0
-    # frame_0000001650_1_frame_0000000730_3 : 0.4171382008287733 : 0
-    #
-
-    #pipeline.matching_pairs = "frame_0000000650_2_frame_0000001285_2"
-    # pipeline.matching_pairs = ["frame_0000000750_1_frame_0000001460_3",
-    # "frame_0000001280_2_frame_0000000435_1",
-    # "frame_0000000045_1_frame_0000001465_4",
-    # "frame_0000001670_1_frame_0000000705_3",
-    # "frame_0000000695_3_frame_0000000535_4",
-    # "frame_0000001155_1_frame_0000001330_1",
-    # "frame_0000001650_1_frame_0000000730_3",
-    # "frame_0000000045_2_frame_0000002230_1",
-    # "frame_0000000045_1_frame_0000001460_4",
-    # "frame_0000001535_4_frame_0000000305_1",
-    # "frame_0000001625_4_frame_0000001520_4"]
-
-    # pipeline.matching_pairs = "frame_0000000045_1_frame_0000001465_4"
-
-    # pipeline.matching_pairs = [
-    #     "frame_0000000045_1_frame_0000001465_4",
-    #     "frame_0000000045_1_frame_0000001460_4",
-    #     "frame_0000000675_1_frame_0000000045_1",
-    #     ]
-
-    # relict hurts
-    # frame_0000000175_1_frame_0000000845_1: 3.134319304222711
-    # frame_0000000200_4_frame_0000001845_1: 3.1340711124831624
-    # frame_0000001350_2_frame_0000001015_1: 3.0998686019217874
-    # frame_0000001075_3_frame_0000001365_4: 3.079703309390179
-    # frame_0000001720_1_frame_0000000030_2: 3.0589784436231784
-    # frame_0000001740_3_frame_0000001020_1: 3.044786897719698
-    # frame_0000000640_4_frame_0000000055_4: 3.0038974081353076
-    # frame_0000001590_4_frame_0000000840_1: 2.994597958434275
-    # frame_0000000990_1_frame_0000001565_4: 2.9864855661578193
-    # frame_0000000585_2_frame_0000002160_1: 2.9804281328592155
-
-
-    #pipeline.chosen_depth_files = ["frame_0000001465_4.npy"]
-    # pipeline.chosen_depth_files = ["frame_0000000045_1.npy"]
-    #
-    # pipeline.matching_limit = 100
-    # pipeline.rectify = True
-
-    #pipeline.run_sequential_pipeline()
-
-    # TODO good example!!!
-    #"frame_0000000675_1_frame_0000000045_1",
 
 
 if __name__ == "__main__":

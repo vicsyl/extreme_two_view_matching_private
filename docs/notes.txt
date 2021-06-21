@@ -1,0 +1,35 @@
+- keypoints locations out of the image - i.e. matching.py:191 (when 'if 0 <= x < sh1 and 0 <= y < sh0') fails
+    - just add an assert to the kpts before the rectification and afterwards and see what happens
+
+ - notes: commit 9ec12ec
+ - https://realpython.com/python-matplotlib-guide/
+
+- to be investigated:
+- frame_0000000200_4_frame_0000001845_1
+- normals & rectification seem fishy
+
+Questions:
+
+- what is the plan for the meeting with professor Matas
+
+- contribution:
+    - synthesis
+        - "impl tricks"?
+    - math analysis? - parameters
+    - contact Dr. Sattler - discuss impl details? (1st author - Toft )
+
+- what is this?
+    - https://github.com/ubc-vision/image-matching-benchmark/tree/master/utils
+
+- matches = bf.knnMatch(descs1, descs2, k=2)
+    # For cross-check
+    matches2 = bf.match(descs2, descs1)
+    good =[]
+    # corner case
+    if len(matches) < 10:
+        return None, [], []
+    for m,n in matches:
+        if matches2[m.trainIdx].trainIdx != m.queryIdx:
+            continue
+        if m.distance < 0.85 *n.distance:
+            good.append(m)

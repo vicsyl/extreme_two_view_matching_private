@@ -14,6 +14,7 @@ from cv2 import DMatch
 
 from rectification import read_img_normals_info, get_rectified_keypoints, possibly_upsample_normals
 from pathlib import Path
+from img_utils import show_or_close
 
 """
 These functions find correspondences using various feature descriptors
@@ -212,24 +213,28 @@ def apply_inliers_on_list(l: list, inlier_mask):
     return [i for idx, i in enumerate(l) if inlier_mask[idx, 0] == 1]
 
 
-def find_and_draw_homography_or_fallback(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh, ransac_thresh, ransac_confidence, title, out_dir):
+def find_and_draw_homography_or_fallback(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh, ransac_thresh, ransac_confidence, save_suffix, show, save, out_dir):
 
-    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, None, show=False, save=False, ratio_thresh=ratio_thresh)
+    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=out_dir, save_suffix=save_suffix, show=show, save=save, ratio_thresh=ratio_thresh)
     src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc = rich_split_points(tentative_matches, kps1, descs1, kps2, descs2)
 
     points = len(src_pts)
-    if points >=4:
+    if points >= 4:
         H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransacReprojThreshold=ransac_thresh, confidence=ransac_confidence)
     else:
+        # TODO CONTINUE OR DROP EVERYTHING
         print("WARNING: not enough matches ({}) for finding a homography".format(points))
         H = None
         inlier_mask = np.ones((points, 1))
 
-    # img = draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
-    # plt.title("{} - {}".format(title, np.sum(inlier_mask)))
-    # plt.imshow(img)
-    # plt.savefig("{}/{}".format(out_dir, title))
-    # plt.show(block=False)
+    if show or save:
+        img = draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2)
+        plt.figure(figsize=(10, 10))
+        plt.title("{} - {} inliers".format(save_suffix, np.sum(inlier_mask)))
+        plt.imshow(img)
+        if save:
+            plt.savefig("{}/{}.jpg".format(out_dir, save_suffix))
+        show_or_close(show)
 
     src_kps = apply_inliers_on_list(src_kps, inlier_mask)
     src_dsc = apply_inliers_on_list(src_dsc, inlier_mask)
@@ -258,12 +263,14 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
     ransac_conf = 0.999
     ransac_max_iters = 2000
 
+    img_pair_key = "{}_{}".format(img_pair.img1, img_pair.img2)
+
     merge_components = Config.config_map[Config.key_planes_based_matching_merge_components]
     kpts_desc_list1, rest_kpts1, rest_descs1 = get_kts_desc_normal_list(image_data1, merge_components)
     kpts_desc_list2, rest_kpts2, rest_descs2 = get_kts_desc_normal_list(image_data2, merge_components)
 
     if len(kpts_desc_list1) == 0 or len(kpts_desc_list2) == 0:
-        print("NO VALID CLUSTER - fallback to plain degensac")
+        print("WARNING: {}: NO VALID CLUSTER - fallback to plain degensac".format(img_pair_key))
         return match_find_F_degensac(
             image_data1.img,
             image_data1.key_points,
@@ -278,9 +285,6 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
             show=show,
             save=save,
             ratio_thresh=ratio_thresh)
-
-        # assert len(kpts_desc_list1) > 0
-        # assert len(kpts_desc_list2) > 0
 
     # (id1, id2) => (homography, inlier_kps1, inlier_dsc1, inlier_kps2, inlier_dsc2)
     homography_matching_dict = {}
@@ -299,21 +303,19 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                                                                                                   ratio_thresh=ratio_thresh,
                                                                                                   ransac_thresh=ransac_thresh,
                                                                                                   ransac_confidence=ransac_conf,
-                                                                                                  title="homography{}_{}".format(ix1, ix2),
+                                                                                                  save_suffix="{}_homography_{}_{}".format(img_pair_key, ix1, ix2),
+                                                                                                  show=show,
+                                                                                                  save=save,
                                                                                                   out_dir=out_dir)
 
             homography_matching_dict[(ix1, ix2)] = (H, matches, src_kps, src_dsc, dst_kps, dst_dsc)
 
     if len(kpts_desc_list1) <= len(kpts_desc_list2):
-        less_planes = 1
-        more_planes = 2
         perm_length = len(kpts_desc_list1)
         all_items_length = len(kpts_desc_list2)
         permutation_items = range(all_items_length)
         swap = False
     else:
-        less_planes = 2
-        more_planes = 1
         perm_length = len(kpts_desc_list2)
         all_items_length = len(kpts_desc_list1)
         permutation_items = range(all_items_length)
@@ -321,8 +323,6 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
 
     max_inliers = None
     for cur_permutation in itertools.permutations(permutation_items, perm_length):
-
-        print("matching permutation of {} against {}: {} <=> {}".format(cur_permutation, list(range(perm_length)), more_planes, less_planes))
 
         rest_kpts1_l = rest_kpts1
         rest_kpts2_l = rest_kpts2
@@ -332,12 +332,12 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
         kps1_l = []
         kps2_l = []
 
-        # if swap:
-        #     all_idxs_1 = list(cur_permutation)
-        #     all_idxs_2 = list(range(perm_length))
-        # else:
-        #     all_idxs_1 = list(range(perm_length))
-        #     all_idxs_2 = list(cur_permutation)
+        if swap:
+            all_idxs_1 = list(cur_permutation)
+            all_idxs_2 = list(range(perm_length))
+        else:
+            all_idxs_1 = list(range(perm_length))
+            all_idxs_2 = list(cur_permutation)
 
         for i in range(perm_length):
             if swap:
@@ -362,15 +362,18 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                     rest_kpts2_l.extend(kps2)
                     rest_descs2_l.extend(desc2)
 
+        pairing_str = "{}x{}".format(str(all_idxs_1).replace(" ", "").replace(",", "_"), str(all_idxs_2).replace(" ", "").replace(",", "_"))
+        save_suffix = "{}_{}".format(img_pair_key, pairing_str)
         tentative_matches_rest = find_correspondences(image_data1.img,
                                                       rest_kpts1_l,
                                                       np.array(rest_descs1_l),
                                                       image_data2.img,
                                                       rest_kpts2_l,
                                                       np.array(rest_descs2_l),
-                                                      None,
-                                                      show=False,
-                                                      save=False,
+                                                      out_dir=out_dir,
+                                                      save_suffix=save_suffix,
+                                                      show=show,
+                                                      save=save,
                                                       ratio_thresh=ratio_thresh)
 
         src_pts_rest, dst_pts_rest = split_points(tentative_matches_rest, rest_kpts1_l, rest_kpts2_l)
@@ -395,6 +398,7 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
         F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, px_th=ransac_thresh, conf=ransac_conf, max_iters=ransac_max_iters, enable_degeneracy_check=True)
         inlier_mask = np.expand_dims(inlier_mask, axis=1)
 
+        # TODO CONTINUE: for cv.findFundamentalMat use cv.USAC_MAGSAC (4.5)
         #F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.FM_RANSAC, ransacReprojThreshold=ransac_thresh, confidence=ransac_conf, maxIters=ransac_max_iters)
         E = image_data2.K.T @ F @ image_data1.K
 
@@ -409,20 +413,22 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
             best_kps1_l = kps1_l
             best_kps2_l = kps2_l
             best_tentative_matches = tentative_matches
-            # best_idxs_1 = all_idxs_1
-            # best_idxs_2 = all_idxs_2
+            best_idxs_1 = all_idxs_1
+            best_idxs_2 = all_idxs_2
 
-        # if show or save:
-        #     img_matches = draw_matches(kps1_l, kps2_l, tentative_matches, None, inlier_mask, image_data1.img, image_data2.img)
-        #     plt.figure()
-        #     plt.title("({} <=> {}) - {} inliers".format(all_idxs_1, all_idxs_2, inliers_count))
-        #     plt.imshow(img_matches)
-        #     if save:
-        #         plt.savefig("{}/planes_{}_{}_matches.jpg".format(out_dir, all_idxs_1, all_idxs_2))
-        #     if show:
-        #         plt.show(block=False)
+        if show or save:
+            img_matches = draw_matches(kps1_l, kps2_l, tentative_matches, None, inlier_mask, image_data1.img, image_data2.img)
+            plt.figure(figsize=(10, 10))
+            plt.title("{}({} <=> {}) - {} inliers".format(img_pair_key, all_idxs_1, all_idxs_2, inliers_count))
+            plt.imshow(img_matches)
+            if save:
+                plt.savefig("{}/matches_{}.jpg".format(out_dir, save_suffix))
+            show_or_close(show)
 
-    save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
+
+    best_pairing_str = "{}x{}".format(str(best_idxs_1).replace(" ", "").replace(",", "_"),
+                                 str(best_idxs_2).replace(" ", "").replace(",", "_"))
+    save_suffix = "{}_best_matching_{}".format(img_pair_key, best_pairing_str)
 
     show_save_matching(image_data1.img,
                        best_kps1_l,
@@ -435,19 +441,7 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                        show,
                        save)
 
-    # if show or save:
-    #     print("best indices: {} <=> {}".format(best_idxs_1, best_idxs_2))
-    #     img_matches = draw_matches(best_kps1_l, best_kps2_l, best_tentative_matches, None, best_inlier_mask, image_data1.img, image_data2.img)
-    #     plt.figure()
-    #     plt.title("best: ({} <=> {}) - {} inliers".format(list(best_idxs_1), best_idxs_2, max_inliers))
-    #     plt.imshow(img_matches)
-    #     if save:
-    #         plt.savefig("{}/planes_best_matches.jpg".format(out_dir))
-    #     if show:
-    #         plt.show(block=False)
-
     return best_E, best_inlier_mask, best_src_pts, best_dst_pts, best_tentative_matches
-
 
 
 def show_save_matching(img1,
@@ -472,29 +466,6 @@ def show_save_matching(img1,
         if show:
             plt.show(block=False)
 
-#
-# # TODO
-# #    unique = correctly_matched_point_for_image_pair(inlier_mask, tentative_matches, kps1, kps2,
-# #                                                    images_info, img_pair)
-#
-#     print("Image pair: {}x{}:".format(img_pair.img1, img_pair.img2))
-#     print("Number of correspondences: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
-#     print("Number of not-correspondences: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
-#     print("correctly_matched_point_for_image_pair: unique = {}".format(unique.shape[0]))
-#
-#     src_tentative, dst_tentative = split_points(tentative_matches, kps1, kps2)
-#     src_pts_inliers = src_tentative[inlier_mask[:, 0] == [1]]
-#     dst_pts_inliers = dst_tentative[inlier_mask[:, 0] == [1]]
-#
-#     Path(out_dir).mkdir(parents=True, exist_ok=True)
-#     np.savetxt("{}/essential_matrix_{}.txt".format(out_dir, save_suffix), E, delimiter=',', fmt='%1.8f')
-#     np.savetxt("{}/src_pts_{}.txt".format(out_dir, save_suffix), src_pts_inliers, delimiter=',',
-#                fmt='%1.8f')
-#     np.savetxt("{}/dst_pts_{}.txt".format(out_dir, save_suffix), dst_pts_inliers, delimiter=',',
-#                fmt='%1.8f')
-#
-#     return src_pts_inliers, dst_pts_inliers
-#
 
 def match_find_E(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save, ratio_thresh):
 
@@ -535,11 +506,12 @@ def match_find_F_degensac(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
-    # TODO externalize
+    # TODO CONTINUE: externalize
     n_iter = 2000
     th = 0.5
     F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, th, 0.999, n_iter, enable_degeneracy_check=True)
     inlier_mask = np.expand_dims(inlier_mask, axis=1)
+    # TODO CONTINUE: USE GT K's for findF (estimated K) and call findE for known K
     E = K_2.T @ F @ K_1
 
     Timer.end_check_point("matching")
