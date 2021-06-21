@@ -275,11 +275,11 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
             image_data1.img,
             image_data1.key_points,
             image_data1.descriptions,
-            image_data1.K,
+            image_data1.real_K,
             image_data2.img,
             image_data2.key_points,
             image_data2.descriptions,
-            image_data2.K,
+            image_data2.real_K,
             img_pair,
             out_dir,
             show=show,
@@ -400,7 +400,7 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
 
         # TODO CONTINUE: for cv.findFundamentalMat use cv.USAC_MAGSAC (4.5)
         #F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.FM_RANSAC, ransacReprojThreshold=ransac_thresh, confidence=ransac_conf, maxIters=ransac_max_iters)
-        E = image_data2.K.T @ F @ image_data1.K
+        E = image_data2.real_K.T @ F @ image_data1.real_K
 
         inliers_count = np.sum(inlier_mask)
 
@@ -467,7 +467,7 @@ def show_save_matching(img1,
             plt.show(block=False)
 
 
-def match_find_E(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save, ratio_thresh):
+def match_find_E(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real_K_2, img_pair, out_dir, show, save, ratio_thresh):
 
     Timer.start_check_point("matching")
 
@@ -478,7 +478,7 @@ def match_find_E(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
     # TODO threshold and prob params left to default values
-    E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, K_1, None, K_2, None, cv.RANSAC)
+    E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, real_K_1, None, real_K_2, None, cv.RANSAC)
 
     Timer.end_check_point("matching")
 
@@ -496,7 +496,7 @@ def match_find_E(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out
     return E, inlier_mask, src_pts, dst_pts, tentative_matches
 
 
-def match_find_F_degensac(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_pair, out_dir, show, save, ratio_thresh):
+def match_find_F_degensac(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real_K_2, img_pair, out_dir, show, save, ratio_thresh):
 
     Timer.start_check_point("matching")
 
@@ -511,8 +511,7 @@ def match_find_F_degensac(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, img_
     th = 0.5
     F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, th, 0.999, n_iter, enable_degeneracy_check=True)
     inlier_mask = np.expand_dims(inlier_mask, axis=1)
-    # TODO CONTINUE: USE GT K's for findF (estimated K) and call findE for known K
-    E = K_2.T @ F @ K_1
+    E = real_K_2.T @ F @ real_K_1
 
     Timer.end_check_point("matching")
 

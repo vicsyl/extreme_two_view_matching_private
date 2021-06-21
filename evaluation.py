@@ -225,15 +225,15 @@ class ImageData:
     img: np.ndarray
     key_points: List[cv.KeyPoint]
     descriptions: object
-    K: np.ndarray
+    real_K: np.ndarray
     normals: np.ndarray
     components_indices: np.ndarray
     valid_components_dict: dict
 
     @staticmethod
-    def from_serialized_data(img, K, img_serialized_data):
+    def from_serialized_data(img, real_K, img_serialized_data):
         return ImageData(img=img,
-                         K=K,
+                         real_K=real_K,
                          key_points=img_serialized_data.kpts,
                          descriptions=img_serialized_data.descs,
                          normals=img_serialized_data.normals,

@@ -215,25 +215,26 @@ class Pipeline:
 
         orig_height = img.shape[0]
         orig_width = img.shape[1]
+        real_K = self.scene_info.get_img_K(img_name)
         if self.estimate_k:
             focal_length = (orig_width + orig_height) * self.focal_point_mean_factor
-            K = np.array([
+            K_for_rectification = np.array([
                 [focal_length, 0,            orig_width / 2.0],
                 [0,            focal_length, orig_height / 2.0],
                 [0,            0,            1]
             ])
         else:
-            K = self.scene_info.get_img_K(img_name)
-            focal_length = K[0, 0]
-            assert abs(K[0, 2] * 2 - orig_width) < 0.5
-            assert abs(K[1, 2] * 2 - orig_height) < 0.5
+            K_for_rectification = real_K
+            focal_length = real_K[0, 0]
+            assert abs(real_K[0, 2] * 2 - orig_width) < 0.5
+            assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
 
         if not self.rectify:
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
             Timer.end_check_point("processing img")
             return ImageData(img=img,
-                             K=K,
+                             real_K=real_K,
                              key_points=kps,
                              descriptions=descs,
                              normals=None,
@@ -249,7 +250,9 @@ class Pipeline:
                     print("img data for {} already computed, reading: {}".format(img_name, img_data_path))
                     img_serialized_data: ImageSerializedData = pickle.load(f)
                 Timer.end_check_point("reading img processing data")
-                return ImageData.from_serialized_data(img, K, img_serialized_data)
+                return ImageData.from_serialized_data(img=img,
+                                                      real_K=real_K,
+                                                      img_serialized_data=img_serialized_data)
 
             Timer.start_check_point("processing img from scratch")
 
@@ -298,16 +301,13 @@ class Pipeline:
                                     file_name=depth_data_file_name[:-4])
 
 
-            # matching_out_dir = "{}/matching".format(self.output_dir)
-            # Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
-
             # get rectification
             rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name[:-4])
             kps, descs = get_rectified_keypoints(normals_clusters_repr,
                                                  components_indices,
                                                  valid_components_dict,
                                                  img,
-                                                 K,
+                                                 K_for_rectification,
                                                  descriptor=self.feature_descriptor,
                                                  img_name=img_name,
                                                  show=self.show_rectification,
@@ -315,7 +315,13 @@ class Pipeline:
                                                  out_prefix=rectification_path_prefix
                                                  )
 
-            img_data = ImageData(img=img, K=K, key_points=kps, descriptions=descs, normals=normals_clusters_repr, components_indices=components_indices, valid_components_dict=valid_components_dict)
+            img_data = ImageData(img=img,
+                                 real_K=real_K,
+                                 key_points=kps,
+                                 descriptions=descs,
+                                 normals=normals_clusters_repr,
+                                 components_indices=components_indices,
+                                 valid_components_dict=valid_components_dict)
 
             Timer.end_check_point("processing img from scratch")
 
@@ -389,8 +395,7 @@ class Pipeline:
                     continue
 
                 if self.planes_based_matching:
-                    E, inlier_mask, src_pts, dst_pts, tentative_matches = \
-                    match_images_with_dominant_planes(
+                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_with_dominant_planes(
                         image_data1,
                         image_data2,
                         img_pair=img_pair,
@@ -404,11 +409,11 @@ class Pipeline:
                         image_data1.img,
                         image_data1.key_points,
                         image_data1.descriptions,
-                        image_data1.K,
+                        image_data1.real_K,
                         image_data2.img,
                         image_data2.key_points,
                         image_data2.descriptions,
-                        image_data2.K,
+                        image_data2.real_K,
                         img_pair,
                         matching_out_dir,
                         show=self.show_matching,
@@ -416,15 +421,16 @@ class Pipeline:
                         ratio_thresh=self.knn_ratio_threshold)
 
                 else:
+                    # NOTE using img_datax.real_K for a call to findE
                     E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_E(
                         image_data1.img,
                         image_data1.key_points,
                         image_data1.descriptions,
-                        image_data1.K,
+                        image_data1.real_K,
                         image_data2.img,
                         image_data2.key_points,
                         image_data2.descriptions,
-                        image_data2.K,
+                        image_data2.real_K,
                         img_pair,
                         matching_out_dir,
                         show=self.show_matching,
