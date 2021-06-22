@@ -21,8 +21,7 @@ def show_point_cloud(points_x, points_y, points_z):
 
     ax.view_init(elev=10.0, azim=None)
 
-    plt.show(block=False)
-    plt.close()
+    show_or_close(True)
 
 
 def show_or_close(show):
@@ -100,4 +99,4 @@ def show_normals_components(normals, title, figsize=None):
         # row, columns, index
         ax = fig.add_subplot(131 + index)
         ax.imshow(img[:, :, index])
-    plt.show(block=False)
+    show_or_close(True)

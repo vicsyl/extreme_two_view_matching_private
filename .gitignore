@@ -8,7 +8,6 @@ googleurban
 phototourism
 .ipynb_checkpoints
 .semseg
-stats
 .DS_Store
 *.pyc
 poc.py

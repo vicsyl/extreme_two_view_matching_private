@@ -154,7 +154,7 @@ class Pipeline:
                     pipeline.save_sky_mask = v.lower() == "true"
                 elif k == "do_flann":
                     Config.config_map[Config.key_do_flann] = v.lower() == "true"
-                elif k == "image_pairs":
+                elif k == "matching_pairs":
                     pipeline.matching_pairs = parse_list(v)
                 elif k == "chosen_depth_files":
                     pipeline.chosen_depth_files = parse_list(v)
@@ -172,6 +172,8 @@ class Pipeline:
         elif pipeline.output_dir is None:
             pipeline.output_dir = append_all(pipeline, pipeline.output_dir_prefix)
 
+        assert not pipeline.planes_based_matching or pipeline.rectify, "rectification must be on for planes_based_matching"
+
         return pipeline
 
     def start(self):
@@ -180,11 +182,15 @@ class Pipeline:
         self.log()
         self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type, file_name_suffix=self.file_name_suffix)
 
+        scene_length = len(self.scene_info.img_pairs_lists)
+        scene_length_range = range(0, scene_length)
         if self.matching_pairs is not None:
-            l = len(self.scene_info.img_pairs_lists)
-            self.matching_difficulties = range(0, l)
+            self.matching_difficulties = scene_length_range
 
         self.depth_input_dir = self.scene_info.depth_input_dir()
+        intersection = set(self.matching_difficulties).intersection(set(scene_length_range))
+        self.matching_difficulties = list(intersection)
+
 
     def log(self):
         print("Pipeline config:")
@@ -211,7 +217,7 @@ class Pipeline:
             plt.figure()
             plt.title(img_name)
             plt.imshow(img)
-            plt.show(block=False)
+            show_or_close(True)
 
         orig_height = img.shape[0]
         orig_width = img.shape[1]

@@ -128,8 +128,7 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, s
             assert out_dir is not None
             assert save_suffix is not None
             plt.savefig("{}/tentative_{}.jpg".format(out_dir, save_suffix))
-        if show:
-            plt.show(block=False)
+        show_or_close(show)
 
     return tentative_matches
 
@@ -441,6 +440,8 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                        show,
                        save)
 
+    image_data1.key_points = best_kps1_l
+    image_data2.key_points = best_kps2_l
     return best_E, best_inlier_mask, best_src_pts, best_dst_pts, best_tentative_matches
 
 
@@ -463,8 +464,7 @@ def show_save_matching(img1,
         plt.imshow(img_matches)
         if save:
             plt.savefig("{}/matches_{}.jpg".format(out_dir, save_suffix))
-        if show:
-            plt.show(block=False)
+        show_or_close(show)
 
 
 def match_find_E(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real_K_2, img_pair, out_dir, show, save, ratio_thresh):

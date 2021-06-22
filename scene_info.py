@@ -6,7 +6,7 @@ import os
 
 from dataclasses import dataclass
 from utils import Timer, quaternions_to_R
-
+from img_utils import show_or_close
 
 def add_google_image(img_name, image_info_map, calibration_file):
 
@@ -70,7 +70,7 @@ def read_google_scene(scene_name, file_name_suffix, show_first=0):
                     img = plt.imread("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[1], file_name_suffix))
                     plt.title("{} from difficulty {}".format(i, diff))
                     plt.imshow(img)
-                    plt.show()
+                    show_or_close(True)
             else:
                 print("WARNING: something missing for {}: {}, {}, {}, {}".format(img_name_tuple, img1_path, img2_path, cal1_path, cal2_path))
 

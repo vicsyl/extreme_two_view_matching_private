@@ -166,29 +166,6 @@ def diff_normal_from_depth_data_old(focal_length,
     return normals
 
 
-# decom'd
-def show_or_save_normals_components(normals, out_dir, img_name, title, show=False, save=False):
-
-    if show or save:
-        img = normals.numpy() * 255
-        img[:, :, 2] = -img[:, :, 2] / 255
-        if show:
-            fig = plt.figure()
-            plt.title(title)
-            plt.axis('off')
-            for index in range(3):
-                # row, columns, index
-                ax = fig.add_subplot(131 + index)
-                ax.imshow(img[:, :, index])
-            plt.show(block=False)
-        if save:
-            assert out_dir is not None
-            Path(out_dir).mkdir(parents=True, exist_ok=True)
-            file_path = "{}/{}.jpg".format(out_dir, img_name[:-4])
-            plt.savefig(file_path)
-        plt.close()
-
-
 def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, out_dir, img_name, show=False, save=False):
 
     if show or save:
@@ -213,10 +190,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
             Path(out_dir).mkdir(parents=True, exist_ok=True)
             out_path = '{}/{}'.format(out_dir, img_name[:-4])
             plt.savefig("{}_clusters.jpg".format(out_path))
-        if show:
-            plt.show(block=False)
-        else:
-            plt.close()
+        show_or_close(show)
 
     if save:
         cv.imwrite("{}_clusters_indices_unused.png".format(out_path), normal_indices_np)
@@ -353,9 +327,6 @@ def compute_normals_convolution(camera,
     else:
         normals = diff_normal_from_depth_data(camera, depth_data, mask=mask, smoothed=smoothed, sigma=sigma)
 
-    # title = "normals with plain diff mask - {}".format(img_name)
-    # show_or_save_normals_components(normals, output_directory, img_name, title)
-
     return normals
 
 
@@ -469,9 +440,6 @@ def compute_normals_from_svd(
     normals = pad_normals(normals, window_size=window_size)
     assert normals.shape[0] == depth_height
     assert normals.shape[1] == depth_width
-
-    # title = "normals via svd - {}".format(img_name)
-    # show_or_save_normals_components(normals, output_directory, img_name, title, save=False)
 
     return normals
 
