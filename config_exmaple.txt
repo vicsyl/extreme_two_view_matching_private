@@ -1,32 +1,36 @@
 scene_name = scene1
-# scene_name = phototourism/st_peters_square
+#scene_name = phototourism/st_peters_square
 file_name_suffix = .jpg
 # or 'orig'
 scene_type = orig
-output_dir_prefix = work/pipeline
+#scene_type = google
+#output_dir = work/pipeline_wc
 matching_difficulties_min = 0
-matching_difficulties_max = 2
+matching_difficulties_max = 20
 matching_limit = 1
 
+ransac_th = 0.5
+ransac_conf = 0.9999
+ransac_iters = 100000
 
-planes_based_matching = False
-feature_descriptor = SIFT
+planes_based_matching = True
 rectify = True
+feature_descriptor = SIFT
 do_flann = False
 
 knn_ratio_threshold = 0.85
 
-use_degensac = True
-estimate_k = False
+use_degensac = False
+estimate_k = True
 focal_point_mean_factor = 0.5
 
 #show and save
-show_input_img = True
 
+show_input_img = False
 show_matching = True
 show_clusters = True
 show_clustered_components = True
-show_rectification = True
+show_rectification = False
 show_sky_mask = False
 
 save_clusters = True
