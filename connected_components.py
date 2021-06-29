@@ -81,6 +81,12 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
 
 def get_connected_components(normal_indices, valid_indices, show=False, fraction_threshold=0.03):
 
+    # off = False
+    # if off:
+    #     out = normal_indices.copy()
+    #     out_valid_indices_dict = {k: k for k in valid_indices}
+    #     return out, out_valid_indices_dict
+
     component_size_threshold = normal_indices.shape[0] * normal_indices.shape[1] * fraction_threshold
 
     out = np.zeros((normal_indices.shape[0], normal_indices.shape[1]), dtype=np.int32)

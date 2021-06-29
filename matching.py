@@ -260,6 +260,7 @@ def get_synthetic_DMatch(index):
 def match_images_with_dominant_planes(image_data1: ImageData, image_data2: ImageData, img_pair, out_dir, show: bool, save: bool, ratio_thresh: float):
     ransac_thresh = 0.5
     ransac_conf = 0.999
+    #ransac_max_iters = 100000
     ransac_max_iters = 2000
 
     img_pair_key = "{}_{}".format(img_pair.img1, img_pair.img2)
@@ -392,14 +393,15 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
         kps1_l.extend(rest_kpts1_l)
         kps2_l.extend(rest_kpts2_l)
 
-        #E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, image_data1.K, None, image_data2.K, None, cv.RANSAC, threshold=ransac_thresh, prob=ransac_conf)
+        E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, image_data1.real_K, None, image_data2.real_K, None, cv.RANSAC, threshold=ransac_thresh, prob=ransac_conf)
 
-        F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, px_th=ransac_thresh, conf=ransac_conf, max_iters=ransac_max_iters, enable_degeneracy_check=True)
-        inlier_mask = np.expand_dims(inlier_mask, axis=1)
+        # F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, px_th=ransac_thresh, conf=ransac_conf, max_iters=ransac_max_iters, enable_degeneracy_check=True)
+        # inlier_mask = np.expand_dims(inlier_mask, axis=1)
+        # E = image_data2.real_K.T @ F @ image_data1.real_K
 
         # TODO CONTINUE: for cv.findFundamentalMat use cv.USAC_MAGSAC (4.5)
         #F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.FM_RANSAC, ransacReprojThreshold=ransac_thresh, confidence=ransac_conf, maxIters=ransac_max_iters)
-        E = image_data2.real_K.T @ F @ image_data1.real_K
+        #E = image_data2.real_K.T @ F @ image_data1.real_K
 
         inliers_count = np.sum(inlier_mask)
 
@@ -509,8 +511,11 @@ def match_find_F_degensac(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real
     # TODO CONTINUE: externalize
     n_iter = 2000
     th = 0.5
-    F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, th, 0.999, n_iter, enable_degeneracy_check=True)
+    F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, th, 0.999, max_iters=n_iter, enable_degeneracy_check=True)
     inlier_mask = np.expand_dims(inlier_mask, axis=1)
+
+    #F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.USAC_MAGSAC, ransacReprojThreshold=th, confidence=0.9999, maxIters=100000)
+
     E = real_K_2.T @ F @ real_K_1
 
     Timer.end_check_point("matching")

@@ -3,6 +3,7 @@ import numpy as np
 from matching import *
 from depth_to_normals import compute_only_normals, show_sky_mask, cluster_normals
 from sky_filter import *
+from connected_components import get_and_show_components
 
 
 def prepare_to_rectify(scene_info, img_name):
@@ -40,7 +41,7 @@ def prepare_to_rectify(scene_info, img_name):
     normal_indices = possibly_upsample_normals(img, normal_indices)
     components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals_clusters_repr)))
 
-    show_clustered_components = False
+    show_clustered_components = True
     if show_clustered_components:
         get_and_show_components(components_indices, valid_components_dict, normals=normals_clusters_repr)
 
@@ -355,13 +356,19 @@ def rect_play2(use_original_valid_components_dict=True):
     #     return
 
 
+    # files_to_match = [
+    #             # "frame_0000001670_1.jpg",
+    #             # "frame_0000000705_3.jpg",
+    #             "frame_0000000535_3.jpg",
+    #             "frame_0000000450_3.jpg",
+    #     # "frame_0000001465_4.jpg",
+    #     # "frame_0000001220_3.jpg",
+    # ]
+
+    # first (acute angle) 0.5-0.625, second 1.00
     files_to_match = [
-                # "frame_0000001670_1.jpg",
-                # "frame_0000000705_3.jpg",
-                "frame_0000000535_3.jpg",
-                "frame_0000000450_3.jpg",
-        # "frame_0000001465_4.jpg",
-        # "frame_0000001220_3.jpg",
+        "frame_0000000995_1.jpg",
+        "frame_0000001610_3.jpg",
     ]
 
     scene_info = SceneInfo.read_scene("scene1")
@@ -382,16 +389,18 @@ def rect_play2(use_original_valid_components_dict=True):
 
     valid_components_dicts = {
         "frame_0000000535_3": {3: 0},
-        "frame_0000000450_3": {1: 0, 126: 0, 169: 0}  # , 175: 1} # how do I do it for all keys mapped to a given value ?
+        "frame_0000000450_3": {1: 0, 126: 0, 169: 0},  # , 175: 1} # how do I do it for all keys mapped to a given value ?
+        "frame_0000000995_1": {12: 0},
+        "frame_0000001610_3": {7: 0}, # 8: 1}
     }
 
     feature_descriptor = cv.SIFT_create()
 
-    rotation_factor_min = 0
-    rotation_factor_max = 1.5
+    rotation_factor_min = 0.5
+    rotation_factor_max = 1.0
     show_each = 1
     show_each_counter = 0
-    rotations = 6
+    rotations = 4
 
     measurements = np.ndarray((4, rotations + 1, rotations + 1))
 
@@ -426,7 +435,7 @@ def rect_play2(use_original_valid_components_dict=True):
                                                      Ks[index],
                                                      components_indices_l[index],
                                                      feature_descriptor,
-                                                     show_all=False,
+                                                     show_all=True,
                                                      show_all_regions=False,
                                                      rotation_factor=rotation_factors[index])
                 kps_l.append(kps)
@@ -447,9 +456,13 @@ def rect_play2(use_original_valid_components_dict=True):
 
             #measurements.append([rotation_factor1, rotation_factor2, len(tentative_matches), inlier_count])
 
+    # print("tentatives:\n {}".format(measurements[2]))
+    # print("inliers:\n {}".format(measurements[3]))
+
     show_combinatorics(measurements[0], measurements[1], measurements[2], "tentatives")
     show_combinatorics(measurements[0], measurements[1], measurements[3], "inlier")
     show_combinatorics(measurements[0], measurements[1], measurements[3] / measurements[2], "inlier_divided_by_tentatives")
+
 
     # img1, kps1, descs1 = rectify_play(scene_info, rectify=rectify, img_name=files_to_match[0][:-4],
     #                                   use_default_dict=use_original_valid_components_dict)

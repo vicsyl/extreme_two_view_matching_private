@@ -161,6 +161,7 @@ def eval_essential_matrix(p1n, p2n, E, dR, dt):
 
     if E.size > 0:
         _, R, t, _ = cv.recoverPose(E, p1n, p2n)
+        #print("from E recovered R: \n {}".format(R))
         try:
             err_q, err_t = evaluate_R_t(dR, dt, R, t)
         except:
@@ -200,8 +201,9 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     errors = eval_essential_matrix(p1n, p2n, E, dR, dT)
     errors_max = max(errors)
 
-    print("errors: {}".format(errors))
-    print("max error: {}".format(errors_max))
+    #print("dR: {}".format(dR))
+    print("errors (R, T): {}".format(errors))
+    #print("max error: {}".format(errors_max))
 
     return errors
 
@@ -286,12 +288,9 @@ def evaluate_matching(scene_info,
                       tentative_matches,
                       inlier_mask,
                       img_pair,
-                      out_dir,
                       stats_map,
                       normals1,
                       normals2):
-
-    save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
     print("Image pair: {} <-> {}:".format(img_pair.img1, img_pair.img2))
     print("Number of inliers: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
@@ -552,13 +551,77 @@ def evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=None, th
     return difficulty, perc
 
 
+def compare_stats_maps(stats_map1: dict, stats_map2: dict, difficulty, n_worst_examples=None, th_degrees=5):
+
+    keys1: set = set(stats_map1.keys())
+    keys2: set = set(stats_map2.keys())
+
+    both = keys1.intersection(keys2)
+    only1 = keys1 - keys2
+    only2 = keys2 - keys1
+
+    print("Stats maps: {} common keys".format(len(both)))
+    print("Stats maps: {} keys only in 1st map".format(len(only1)))
+    print("Stats maps: {} keys only in 2nd map".format(len(only2)))
+
+    rad_th = th_degrees * math.pi / 180
+    def get_sat_keys(stats_map):
+        filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
+        keys = set([i[0] for i in filtered])
+        return keys
+
+    keys1 = get_sat_keys(stats_map1)
+    perc1 = len(keys1) / len(stats_map1)
+
+    keys2 = get_sat_keys(stats_map2)
+    perc2 = len(keys2) / len(stats_map2)
+
+    stats = [(key, stats_map1[key].error_R, stats_map2[key].error_R) for key in both]
+    sorted_by_err_R_diff = list(sorted(stats, key=lambda tuple: tuple[1] - tuple[2]))
+
+    if n_worst_examples is not None:
+
+        print("{} best examples for 1st map for diff={}".format(n_worst_examples, difficulty))
+        for k, r1, r2 in sorted_by_err_R_diff[:n_worst_examples]:
+            print("{}: {} vs. {}".format(k, r1, r2))
+
+        filtered1 = list(filter(lambda key_value: key_value[0] in keys1, sorted_by_err_R_diff))
+        print("{} best satisfying examples for 1st map for diff={}".format(n_worst_examples, difficulty))
+        for k, r1, r2 in filtered1[:n_worst_examples]:
+            print("{}: {} vs. {}".format(k, r1, r2))
+
+        print("{} best examples for 2nd map for diff={}".format(n_worst_examples, difficulty))
+        for k, r1, r2 in sorted_by_err_R_diff[-n_worst_examples:]:
+            print("{}: {} vs. {}".format(k, r1, r2))
+
+        filtered2 = list(filter(lambda key_value: key_value[0] in keys2, sorted_by_err_R_diff))
+        print("{} best satisfying examples for 2nd map for diff={}".format(n_worst_examples, difficulty))
+        for k, r1, r2 in filtered2[-n_worst_examples:]:
+            print("{}: {} vs. {}".format(k, r1, r2))
+
+
+
+    print("{}\t{:.03f}\t{:.03f}".format(difficulty, perc1, perc2))
+    return difficulty, perc1, perc2
+
+
 def evaluate_percentage_correct_from_file(file_name, difficulty, n_worst_examples=None, th_degrees=5):
 
     with open(file_name, "rb") as f:
-        #print("reading: {}".format(file_name))
         stats_map = pickle.load(f)
 
     return evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=n_worst_examples, th_degrees=th_degrees)
+
+
+def evaluate_percentage_correct_from_files(file_name1, file_name2, difficulty, n_worst_examples=None, th_degrees=5):
+
+    with open(file_name1, "rb") as f:
+        stats_map1 = pickle.load(f)
+
+    with open(file_name2, "rb") as f:
+        stats_map2 = pickle.load(f)
+
+    return compare_stats_maps(stats_map1, stats_map2, difficulty, n_worst_examples=n_worst_examples, th_degrees=th_degrees)
 
 
 def make_light(file_name):
@@ -696,6 +759,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog='evaluation')
     parser.add_argument('--input_dir', help='input dir')
+    parser.add_argument('--input_dir2', help='input dir2')
     parser.add_argument('--method', help='method')
     parser.add_argument('--n_worst', help='method')
     args = parser.parse_args()
@@ -711,12 +775,27 @@ if __name__ == "__main__":
             else:
                 print("{} not found".format(file_path))
 
+    elif args.method == "compare":
+        diff_percs = []
+        n_worst = None if args.n_worst is None else int(args.n_worst)
+        for diff in range(18):
+            file_path1 = "{}/stats_diff_{}.pkl".format(args.input_dir, diff)
+            file_path2 = "{}/stats_diff_{}.pkl".format(args.input_dir2, diff)
+            if os.path.isfile(file_path1) and os.path.isfile(file_path2):
+                diff_perc = evaluate_percentage_correct_from_files(file_path1, file_path2, diff, n_worst_examples=n_worst, th_degrees=5)
+                diff_percs.append(diff_perc)
+            else:
+                print("{} or {} not found".format(file_path1, file_path2))
+        print("Diff     Perc. 1   Perc. 2")
+        for diff, perc1, perc2 in diff_percs:
+            print("{}    {}     {}".format(diff, perc1, perc2))
+
     else:
         diff_percs = []
+        n_worst = None if args.n_worst is None else int(args.n_worst)
         for diff in range(18):
-            file_path = "{}/stats_diff_{}.pkl".format(args.input_dir, diff)
+            file_path = "{}/stats_diff_{}.pkl_light".format(args.input_dir, diff)
             if os.path.isfile(file_path):
-                n_worst = None if args.n_worst is None else int(args.n_worst)
                 diff_perc = evaluate_percentage_correct_from_file(file_path, diff, n_worst_examples=n_worst, th_degrees=5)
                 diff_percs.append(diff_perc)
             else:

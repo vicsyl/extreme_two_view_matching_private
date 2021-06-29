@@ -450,7 +450,6 @@ class Pipeline:
                                   tentative_matches,
                                   inlier_mask,
                                   img_pair,
-                                  matching_out_dir,
                                   stats_map_diff,
                                   image_data1.normals,
                                   image_data2.normals,

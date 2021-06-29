@@ -33,3 +33,29 @@ Questions:
             continue
         if m.distance < 0.85 *n.distance:
             good.append(m)
+
+depth maps sizes:
+
+edinburgh and scene 1 - 288*512 = 147546
+st peters - 512* (from 320 to 384) = from 163840 to 196608
+
+
+25.6.
+- short demo
+- new results (findE vs. findF)
+
+- experiments:
+    - current: comparing rect/unrect
+        - repeating patterns (densification - bring back some keypoints consistent with H)
+        - rotation factor < 1
+        - segmentation relaxation....
+    - future:
+        - asift: tilt (G. blur)
+        - progressive-X: (multiple homographies - what's next) -
+            - compare our/ or p=x + rectific
+            - depth + progressive
+        - AdaLam x depth continuity
+
+
+
+
