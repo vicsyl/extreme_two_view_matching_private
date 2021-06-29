@@ -212,14 +212,15 @@ def apply_inliers_on_list(l: list, inlier_mask):
     return [i for idx, i in enumerate(l) if inlier_mask[idx, 0] == 1]
 
 
-def find_and_draw_homography_or_fallback(img1, kps1, descs1, img2, kps2, descs2, ratio_thresh, ransac_thresh, ransac_confidence, save_suffix, show, save, out_dir):
+def find_and_draw_homography_or_fallback(img1, kps1, descs1, img2, kps2, descs2,
+                                         ratio_thresh, ransac_thresh, ransac_confidence, ransac_iters, save_suffix, show, save, out_dir):
 
     tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=out_dir, save_suffix=save_suffix, show=show, save=save, ratio_thresh=ratio_thresh)
     src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc = rich_split_points(tentative_matches, kps1, descs1, kps2, descs2)
 
     points = len(src_pts)
     if points >= 4:
-        H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransacReprojThreshold=ransac_thresh, confidence=ransac_confidence)
+        H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, maxIters=ransac_iters, ransacReprojThreshold=ransac_thresh, confidence=ransac_confidence)
     else:
         # TODO CONTINUE OR DROP EVERYTHING
         print("WARNING: not enough matches ({}) for finding a homography".format(points))
@@ -257,11 +258,9 @@ def get_synthetic_DMatch(index):
     return dm
 
 
-def match_images_with_dominant_planes(image_data1: ImageData, image_data2: ImageData, img_pair, out_dir, show: bool, save: bool, ratio_thresh: float):
-    ransac_thresh = 0.5
-    ransac_conf = 0.999
-    #ransac_max_iters = 100000
-    ransac_max_iters = 2000
+def match_images_with_dominant_planes(image_data1: ImageData, image_data2: ImageData,
+                                      use_degensac, find_fundamental, img_pair, out_dir, show: bool, save: bool,
+                                      ratio_thresh: float, ransac_th, ransac_conf, ransac_iters):
 
     img_pair_key = "{}_{}".format(img_pair.img1, img_pair.img2)
 
@@ -271,20 +270,37 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
 
     if len(kpts_desc_list1) == 0 or len(kpts_desc_list2) == 0:
         print("WARNING: {}: NO VALID CLUSTER - fallback to plain degensac".format(img_pair_key))
-        return match_find_F_degensac(
-            image_data1.img,
-            image_data1.key_points,
-            image_data1.descriptions,
-            image_data1.real_K,
-            image_data2.img,
-            image_data2.key_points,
-            image_data2.descriptions,
-            image_data2.real_K,
-            img_pair,
-            out_dir,
-            show=show,
-            save=save,
-            ratio_thresh=ratio_thresh)
+        if use_degensac:
+            return match_find_F_degensac(image_data1.img,
+                                  image_data1.descriptions,
+                                  image_data1.real_K,
+                                  image_data2.img,
+                                  image_data2.descriptions,
+                                  image_data2.real_K,
+                                  img_pair,
+                                  out_dir,
+                                  show, save,
+                                  ratio_thresh=ratio_thresh,
+                                  ransac_th=ransac_th,
+                                  ransac_conf=ransac_conf,
+                                  ransac_iters=ransac_iters)
+
+        else:
+            return match_epipolar(image_data1.img,
+                                  image_data1.descriptions,
+                                  image_data1.real_K,
+                                  image_data2.img,
+                                  image_data2.descriptions,
+                                  image_data2.real_K,
+                                  find_fundamental,
+                                  img_pair,
+                                  out_dir,
+                                  show, save,
+                                  ratio_thresh=ratio_thresh,
+                                  ransac_th=ransac_th,
+                                  ransac_conf=ransac_conf,
+                                  ransac_iters=ransac_iters)
+
 
     # (id1, id2) => (homography, inlier_kps1, inlier_dsc1, inlier_kps2, inlier_dsc2)
     homography_matching_dict = {}
@@ -301,8 +317,9 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                                                                                                   kps2,
                                                                                                   desc2,
                                                                                                   ratio_thresh=ratio_thresh,
-                                                                                                  ransac_thresh=ransac_thresh,
+                                                                                                  ransac_thresh=ransac_th,
                                                                                                   ransac_confidence=ransac_conf,
+                                                                                                  ransac_iters=ransac_iters,
                                                                                                   save_suffix="{}_homography_{}_{}".format(img_pair_key, ix1, ix2),
                                                                                                   show=show,
                                                                                                   save=save,
@@ -393,15 +410,21 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
         kps1_l.extend(rest_kpts1_l)
         kps2_l.extend(rest_kpts2_l)
 
-        E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, image_data1.real_K, None, image_data2.real_K, None, cv.RANSAC, threshold=ransac_thresh, prob=ransac_conf)
-
-        # F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, px_th=ransac_thresh, conf=ransac_conf, max_iters=ransac_max_iters, enable_degeneracy_check=True)
-        # inlier_mask = np.expand_dims(inlier_mask, axis=1)
-        # E = image_data2.real_K.T @ F @ image_data1.real_K
-
-        # TODO CONTINUE: for cv.findFundamentalMat use cv.USAC_MAGSAC (4.5)
-        #F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.FM_RANSAC, ransacReprojThreshold=ransac_thresh, confidence=ransac_conf, maxIters=ransac_max_iters)
-        #E = image_data2.real_K.T @ F @ image_data1.real_K
+        if use_degensac:
+            F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, px_th=ransac_th, conf=ransac_conf,
+                                                             max_iters=ransac_iters, enable_degeneracy_check=True)
+            inlier_mask = np.expand_dims(inlier_mask, axis=1)
+            E = image_data2.real_K.T @ F @ image_data1.real_K
+        elif find_fundamental:
+            F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts,
+                                                   method=cv.USAC_MAGSAC,
+                                                   ransacReprojThreshold=ransac_th,
+                                                   confidence=ransac_conf,
+                                                   maxIters=ransac_iters)
+            E = image_data2.real_K.T @ F @ image_data1.real_K
+        else:
+            # NOTE previously default RANSAC params used here; no iters param
+            E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, image_data1.real_K, None, image_data2.real_K, None, cv.RANSAC, prob=ransac_conf, threshold=ransac_th)
 
         inliers_count = np.sum(inlier_mask)
 
@@ -469,7 +492,10 @@ def show_save_matching(img1,
         show_or_close(show)
 
 
-def match_find_E(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real_K_2, img_pair, out_dir, show, save, ratio_thresh):
+def match_epipolar(img1, kps1, descs1, real_K_1,
+                   img2, kps2, descs2, real_K_2,
+                   find_fundamental, img_pair, out_dir, show, save, ratio_thresh,
+                   ransac_th, ransac_conf, ransac_iters):
 
     Timer.start_check_point("matching")
 
@@ -480,7 +506,12 @@ def match_find_E(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real_K_2, img
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
     # TODO threshold and prob params left to default values
-    E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, real_K_1, None, real_K_2, None, cv.RANSAC)
+    if find_fundamental:
+        F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.USAC_MAGSAC, ransacReprojThreshold=ransac_th, confidence=ransac_conf, maxIters=ransac_iters)
+        E = real_K_2.T @ F @ real_K_1
+    else:
+        # NOTE previously default RANSAC params used here; no iters param
+        E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, real_K_1, None, real_K_2, None, cv.RANSAC, prob=ransac_conf, threshold=ransac_th)
 
     Timer.end_check_point("matching")
 
@@ -498,7 +529,7 @@ def match_find_E(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real_K_2, img
     return E, inlier_mask, src_pts, dst_pts, tentative_matches
 
 
-def match_find_F_degensac(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real_K_2, img_pair, out_dir, show, save, ratio_thresh):
+def match_find_F_degensac(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real_K_2, img_pair, out_dir, show, save, ratio_thresh, ransac_th, ransac_conf, ransac_iters):
 
     Timer.start_check_point("matching")
 
@@ -508,13 +539,8 @@ def match_find_F_degensac(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
-    # TODO CONTINUE: externalize
-    n_iter = 2000
-    th = 0.5
-    F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, th, 0.999, max_iters=n_iter, enable_degeneracy_check=True)
+    F, inlier_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, px_th=ransac_th, conf=ransac_conf, max_iters=ransac_iters, enable_degeneracy_check=True)
     inlier_mask = np.expand_dims(inlier_mask, axis=1)
-
-    #F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.USAC_MAGSAC, ransacReprojThreshold=th, confidence=0.9999, maxIters=100000)
 
     E = real_K_2.T @ F @ real_K_1
 
@@ -584,7 +610,7 @@ def img_correspondences(scene_info: SceneInfo, output_dir, descriptor, normals_d
             img1, K_1, kps1, descs1 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img1, normal_indices1, normals1, descriptor, out_dir, rectify)
             img2, K_2, kps2, descs2 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img2, normal_indices2, normals2, descriptor, out_dir, rectify)
 
-            return match_find_E(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True, ratio_thresh=0.85)
+            return match_epipolar(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True, ratio_thresh=0.85)
 
 
 def main():

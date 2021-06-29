@@ -576,30 +576,31 @@ def compare_stats_maps(stats_map1: dict, stats_map2: dict, difficulty, n_worst_e
     keys2 = get_sat_keys(stats_map2)
     perc2 = len(keys2) / len(stats_map2)
 
-    stats = [(key, stats_map1[key].error_R, stats_map2[key].error_R) for key in both]
-    sorted_by_err_R_diff = list(sorted(stats, key=lambda tuple: tuple[1] - tuple[2]))
+    stats = [(key, stats_map1[key], stats_map2[key]) for key in both]
+    sorted_by_err_R_diff = list(sorted(stats, key=lambda tuple: tuple[1].error_R - tuple[2].error_R))
+
+    def print_out(l):
+        for k, r1, r2 in l:
+            print("{}: R: {} vs. {}, inliers: {} vs. {}".format(k, r1.error_R, r2.error_R, r1.inliers, r2.inliers))
+        print("Repeating the keys:")
+        print(", ".join([k[0] for k in l]))
 
     if n_worst_examples is not None:
 
         print("{} best examples for 1st map for diff={}".format(n_worst_examples, difficulty))
-        for k, r1, r2 in sorted_by_err_R_diff[:n_worst_examples]:
-            print("{}: {} vs. {}".format(k, r1, r2))
+        l = sorted_by_err_R_diff[:n_worst_examples]
+        print_out(l)
 
         filtered1 = list(filter(lambda key_value: key_value[0] in keys1, sorted_by_err_R_diff))
         print("{} best satisfying examples for 1st map for diff={}".format(n_worst_examples, difficulty))
-        for k, r1, r2 in filtered1[:n_worst_examples]:
-            print("{}: {} vs. {}".format(k, r1, r2))
+        print_out(filtered1[:n_worst_examples])
 
         print("{} best examples for 2nd map for diff={}".format(n_worst_examples, difficulty))
-        for k, r1, r2 in sorted_by_err_R_diff[-n_worst_examples:]:
-            print("{}: {} vs. {}".format(k, r1, r2))
+        print_out(sorted_by_err_R_diff[-n_worst_examples:])
 
         filtered2 = list(filter(lambda key_value: key_value[0] in keys2, sorted_by_err_R_diff))
         print("{} best satisfying examples for 2nd map for diff={}".format(n_worst_examples, difficulty))
-        for k, r1, r2 in filtered2[-n_worst_examples:]:
-            print("{}: {} vs. {}".format(k, r1, r2))
-
-
+        print_out(filtered2[-n_worst_examples:])
 
     print("{}\t{:.03f}\t{:.03f}".format(difficulty, perc1, perc2))
     return difficulty, perc1, perc2

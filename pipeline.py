@@ -15,7 +15,7 @@ from config import Config
 from connected_components import get_connected_components, get_and_show_components
 from depth_to_normals import compute_only_normals
 from depth_to_normals import show_sky_mask, cluster_normals, show_or_save_clusters
-from matching import match_find_E, match_find_F_degensac, match_images_with_dominant_planes
+from matching import match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from scene_info import SceneInfo
 from utils import Timer
@@ -43,6 +43,10 @@ class Pipeline:
     output_dir = None
     output_dir_prefix = None
 
+    ransac_th = 0.5
+    ransac_conf = 0.9999
+    ransac_iters = 100000
+
     # actually unused
     show_save_normals = False
     show_orig_image = True
@@ -50,7 +54,7 @@ class Pipeline:
     chosen_depth_files = None
     sequential_files_limit = None
 
-    show_input_img = True
+    show_input_img = False
 
     show_clusters = True
     save_clusters = True
@@ -162,6 +166,12 @@ class Pipeline:
                     pipeline.use_cached_img_data = v.lower() == "true"
                 elif k == "output_dir_prefix":
                     pipeline.output_dir_prefix = v
+                elif k == "ransac_th":
+                    pipeline.ransac_th = float(v)
+                elif k == "ransac_conf":
+                    pipeline.ransac_conf = float(v)
+                elif k == "ransac_iters":
+                    pipeline.ransac_iters = int(v)
                 else:
                     print("WARNING - unrecognized param: {}".format(k))
 
@@ -404,11 +414,17 @@ class Pipeline:
                     E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_with_dominant_planes(
                         image_data1,
                         image_data2,
+                        use_degensac=self.use_degensac,
+                        find_fundamental=self.estimate_k,
                         img_pair=img_pair,
                         out_dir=matching_out_dir,
                         show=self.show_matching,
                         save=self.save_matching,
-                        ratio_thresh=self.knn_ratio_threshold)
+                        ratio_thresh=self.knn_ratio_threshold,
+                        ransac_th=self.ransac_th,
+                        ransac_conf=self.ransac_conf,
+                        ransac_iters=self.ransac_iters
+                    )
 
                 elif self.use_degensac:
                     E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
@@ -424,11 +440,15 @@ class Pipeline:
                         matching_out_dir,
                         show=self.show_matching,
                         save=self.save_matching,
-                        ratio_thresh=self.knn_ratio_threshold)
+                        ratio_thresh=self.knn_ratio_threshold,
+                        ransac_th=self.ransac_th,
+                        ransac_conf=self.ransac_conf,
+                        ransac_iters=self.ransac_iters
+                    )
 
                 else:
                     # NOTE using img_datax.real_K for a call to findE
-                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_E(
+                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
                         image_data1.img,
                         image_data1.key_points,
                         image_data1.descriptions,
@@ -437,11 +457,16 @@ class Pipeline:
                         image_data2.key_points,
                         image_data2.descriptions,
                         image_data2.real_K,
-                        img_pair,
-                        matching_out_dir,
+                        find_fundamental=self.estimate_k,
+                        img_pair=img_pair,
+                        out_dir=matching_out_dir,
                         show=self.show_matching,
                         save=self.save_matching,
-                        ratio_thresh=self.knn_ratio_threshold)
+                        ratio_thresh=self.knn_ratio_threshold,
+                        ransac_th=self.ransac_th,
+                        ransac_conf=self.ransac_conf,
+                        ransac_iters=self.ransac_iters
+                    )
 
                 evaluate_matching(self.scene_info,
                                   E,

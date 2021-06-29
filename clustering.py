@@ -23,7 +23,8 @@ class Clustering:
     assert_almost_equal(angle_distance_threshold, math.asin(distance_threshold / 2) * 2)
     assert_almost_equal(angle_distance_intra_cluster_threshold, math.asin(distance_intra_cluster_threshold / 2) * 2)
 
-    points_threshold = 20000
+    #points_threshold_ratio = 20000 / (512 * 288)
+    points_threshold_ratio = 0.13
 
     @staticmethod
     def log():
@@ -32,7 +33,7 @@ class Clustering:
         print("\tangle_distance_inter_cluster_threshold_degrees\t{}".format(Clustering.angle_distance_intra_cluster_threshold_degrees))
         print("\tdistance_threshold\t{}".format(Clustering.distance_threshold))
         print("\tdistance_inter_cluster_threshold\t{}".format(Clustering.distance_intra_cluster_threshold))
-        print("\tpoints_threshold\t{}".format(Clustering.points_threshold))
+        print("\tpoints_threshold_ratio\t{}".format(Clustering.points_threshold_ratio))
         print("\tN_points\t{}".format(Clustering.N_points))
 
 
@@ -55,6 +56,8 @@ def n_points_across_half_sphere(N):
 
 
 def cluster(normals: torch.Tensor, filter_mask):
+
+    points_threshold = torch.prod(torch.tensor(normals.shape[:2])) * Clustering.points_threshold_ratio
 
     timer_label = "clustering for N={}".format(Clustering.N_points)
     Timer.start_check_point(timer_label)
@@ -83,7 +86,7 @@ def cluster(normals: torch.Tensor, filter_mask):
     for index, points in zip(sortd[1], sortd[0]):
         if len(cluster_centers) >= max_clusters:
             break
-        if points < Clustering.points_threshold:
+        if points < points_threshold:
             break
 
         distance_ok = True
