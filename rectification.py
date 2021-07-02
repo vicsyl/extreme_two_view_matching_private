@@ -54,6 +54,7 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
         P = K @ R @ K_inv
         if scale != 1.0:
             unscaled = False
+            print("old scale: {}".format(scale))
             P[:2, :] *= scale
 
         new_coords = P @ coords
@@ -93,7 +94,13 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
     return P, bounding_box_new
 
 
-# FIXME: keypoints not belonging to any component are simply disregarded
+def split_keypoints_into_raw(kps):
+    pts = np.array([k.pt for k in kps], dtype=np.float32)
+    ors = np.array([k.angle for k in kps], dtype=np.float32)
+    scs = np.array([k.size for k in kps], dtype=np.float32)
+    return pts, ors, scs
+
+
 def get_rectified_keypoints(normals,
                             components_indices,
                             valid_components_dict,
@@ -106,9 +113,15 @@ def get_rectified_keypoints(normals,
                             out_prefix=None,
                             rotation_factor=1.0):
 
+    Timer.start_check_point("rectification")
+
     K_inv = np.linalg.inv(K)
 
-    all_descs = None
+    all_orig_pts = np.zeros((0, 2), dtype=np.float32)
+    all_new_pts = np.zeros((0, 2), dtype=np.float32)
+    all_scs = np.zeros(0, dtype=np.float32)
+    all_ors = np.zeros(0, dtype=np.float32)
+    all_descs = np.zeros((0, 128), dtype=np.float32)
     all_kps = []
 
     # components_in_colors will be used for other visualizations
@@ -122,23 +135,19 @@ def get_rectified_keypoints(normals,
         R = get_rectification_rotation(normal, rotation_factor)
 
         T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
-        #TODO this is too defensive (and wrong) I think, I can warp only the plane
-        if bounding_box[0] * bounding_box[1] > 10**8:
-            print("warping to an img that is too big, skipping")
-            continue
+        assert bounding_box[0] * bounding_box[1] < 10**8, "warping to an img that is too big, skipping"
 
         T_inv = np.linalg.inv(T)
 
         rectified = cv.warpPerspective(img, T, bounding_box)
 
         kps, descs = descriptor.detectAndCompute(rectified, None)
+        orig_pts, ors, scs = split_keypoints_into_raw(kps)
+        new_pts = cv.perspectiveTransform(orig_pts.reshape(-1, 1, 2), T_inv)
+        new_pts = new_pts.reshape(-1, 2)
 
-        kps_raw = np.float32([kp.pt for kp in kps]).reshape(-1, 1, 2)
-
-        new_kps = cv.perspectiveTransform(kps_raw, T_inv)
-
-        if new_kps is not None:
-            kps_int_coords = np.int32(new_kps).reshape(-1, 2)
+        if new_pts is not None:
+            kps_int_coords = np.int32(new_pts)
 
             h, w, _ = img.shape
             first = kps_int_coords[:, 0]
@@ -154,30 +163,32 @@ def get_rectified_keypoints(normals,
             cluster_mask_bool = np.array([components_indices[kps_int_coord[1], [kps_int_coord[0]]] == component_index for kps_int_coord in kps_int_coords])
             cluster_mask_bool = cluster_mask_bool.reshape(-1)
 
-            descs = descs[cluster_mask_bool]
-
             # TODO a) add assert
             # TODO b) on a clean WC, debug and rename the local vars (also, possibly speed up)
             # TODO c) new_kps[:, 0, 0/1] still out of bounds (i.e. negative)
-            new_kps = new_kps[cluster_mask_bool]
+            descs = descs[cluster_mask_bool]
+            new_pts = new_pts[cluster_mask_bool]
+            orig_pts = orig_pts[cluster_mask_bool]
+            ors = ors[cluster_mask_bool]
+            scs = scs[cluster_mask_bool]
 
             kps = [kp for i, kp in enumerate(kps) if cluster_mask_bool[i]]
 
             cv.drawKeypoints(rectified, kps, rectified, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
             for kpi, kp in enumerate(kps):
-                kp.pt = tuple(new_kps[kpi, 0].tolist())
+                kp.pt = tuple(new_pts[kpi].tolist())
 
             all_kps.extend(kps)
-
-            if all_descs is None:
-                all_descs = descs
-            else:
-                all_descs = np.vstack((all_descs, descs))
+            all_descs = np.vstack((all_descs, descs))
+            all_new_pts = np.vstack((all_new_pts, new_pts))
+            all_orig_pts = np.vstack((all_orig_pts, orig_pts))
+            all_scs = np.hstack((all_scs, scs))
+            all_ors = np.hstack((all_ors, ors))
 
         if show or save:
             plt.figure()
-            plt.title("{} - component: {},\n normal: {}".format(img_name, component_index, normals[normal_index]))
+            plt.title("{} - component: {},\n {} kpts \n normal: {}".format(img_name, component_index, descs.shape[0], normals[normal_index]))
             plt.imshow(rectified)
             if save:
                 plt.savefig("{}_rectified_component_{}.jpg.".format(out_prefix, component_index))
@@ -192,6 +203,7 @@ def get_rectified_keypoints(normals,
 
     # TODO corner case - None, [], ...
     kps, descs = descriptor.detectAndCompute(img, None)
+    pts, ors, scs = split_keypoints_into_raw(kps)
 
     kps_floats = np.float32([kp.pt for kp in kps])
     # TODO is this the way to round it?
@@ -202,7 +214,11 @@ def get_rectified_keypoints(normals,
     in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 1] < img.shape[0])
     kps_ints = kps_ints[in_img_mask]
     kps = [kp for i, kp in enumerate(kps) if in_img_mask[i]]
+
     descs = descs[in_img_mask]
+    pts = pts[in_img_mask]
+    ors = ors[in_img_mask]
+    scs = scs[in_img_mask]
 
     valid_keys_set = set(valid_components_dict.keys())
     all_indices_set = set(range(np.max(components_indices) + 1))
@@ -213,20 +229,24 @@ def get_rectified_keypoints(normals,
         filter_non_valid = np.logical_or(filter_non_valid, components_indices[kps_ints[:, 1], kps_ints[:, 0]] == non_valid_index)
 
     kps = [kp for i, kp in enumerate(kps) if filter_non_valid[i]]
+
     descs = descs[filter_non_valid]
+    pts = pts[filter_non_valid]
+    ors = ors[filter_non_valid]
+    scs = scs[filter_non_valid]
 
     all_kps.extend(kps)
-
-    if all_descs is None:
-        all_descs = descs
-    else:
-        all_descs = np.vstack((all_descs, descs))
+    all_descs = np.vstack((all_descs, descs))
+    all_new_pts = np.vstack((all_new_pts, pts))
+    all_orig_pts = np.vstack((all_orig_pts, pts))
+    all_scs = np.hstack((all_scs, scs))
+    all_ors = np.hstack((all_ors, ors))
 
     if show or save:
         no_component_img = img.copy()
         cv.drawKeypoints(no_component_img, kps, no_component_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         plt.figure(figsize=(10, 10))
-        plt.title("{} - no valid component".format(img_name))
+        plt.title("{} - no valid component: {} kpts".format(img_name, descs.shape[0]))
         plt.imshow(no_component_img)
         if save:
             plt.savefig("{}_rectified_no_valid_component.jpg.".format(out_prefix))
@@ -235,14 +255,16 @@ def get_rectified_keypoints(normals,
         all_img = img.copy()
         cv.drawKeypoints(all_img, all_kps, all_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         plt.figure(figsize=(10, 10))
-        plt.title("All keypoints")
+        plt.title("All keypoints: {} kpts".format(all_descs.shape[0]))
         plt.imshow(all_img)
         if save:
             plt.savefig("{}_rectified_all.jpg.".format(out_prefix))
         show_or_close(show)
         print("{} keypoints found".format(len(all_kps)))
 
-    return all_kps, all_descs
+    Timer.end_check_point("rectification")
+
+    return all_kps, all_descs, all_orig_pts, all_new_pts, all_ors, all_scs
 
 
 def possibly_upsample_normals(img, normal_indices):
@@ -470,3 +492,253 @@ if __name__ == "__main__":
     show_rectifications(scene_info, "work/scene1/normals/svd", "original_dataset/scene1/images", limit=1, interesting_dirs=interesting_dirs)
 
     Timer.end()
+
+
+def get_rectified_keypoints_new(normals,
+                            components_indices,
+                            valid_components_dict,
+                            img,
+                            K,
+                            descriptor,
+                            img_name,
+                            show=False,
+                            save=False,
+                            out_prefix=None,
+                            rotation_factor=1.0):
+
+    Timer.start_check_point("new rectification")
+
+    K_inv = np.linalg.inv(K)
+
+    all_orig_pts = np.zeros((0, 2), dtype=np.float32)
+    all_new_pts = np.zeros((0, 2), dtype=np.float32)
+    all_scs = np.zeros(0, dtype=np.float32)
+    all_ors = np.zeros(0, dtype=np.float32)
+    all_descs = np.zeros((0, 128), dtype=np.float32)
+    all_kps = []
+
+    for component_index in valid_components_dict:
+
+        normal_index = valid_components_dict[component_index]
+        normal = normals[normal_index]
+
+        R = get_rectification_rotation(normal, rotation_factor)
+
+        #T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
+        T, bounding_box = get_perspective_transform_new(R, K, K_inv, components_indices, component_index, normal)
+        assert bounding_box[0] * bounding_box[1] < 10**8, "warping to an img that is too big, skipping"
+
+        rectified = cv.warpPerspective(img, T, bounding_box)
+
+        kps, descs = descriptor.detectAndCompute(rectified, None)
+
+        assert kps is not None
+        if kps is not None:
+
+            orig_pts, ors, scs = split_keypoints_into_raw(kps)
+            T_inv = np.linalg.inv(T)
+            new_pts = cv.perspectiveTransform(orig_pts.reshape(-1, 1, 2), T_inv)
+            new_pts = new_pts.reshape(-1, 2)
+
+            #kps_int_coords = np.int32(new_pts).reshape(-1, 2)
+            # TODO improvement DONE: round
+            kps_int_coords = np.round(new_pts).astype(dtype=np.int32)
+            #kps_int_coords = np.int32(new_pts)
+
+            h, w, _ = img.shape
+
+            kps_int_coords_mask = kps_int_coords[:, 0] >= 0
+            kps_int_coords_mask = np.logical_and(kps_int_coords_mask, kps_int_coords[:, 1] >= 0)
+            kps_int_coords_mask = np.logical_and(kps_int_coords_mask, kps_int_coords[:, 0] < w)
+            kps_int_coords_mask = np.logical_and(kps_int_coords_mask, kps_int_coords[:, 1] < h)
+            kps_int_coords_mask_x_y = np.repeat(kps_int_coords_mask.reshape(-1, 1), 2, axis=1)
+            kps_int_coords = np.where(kps_int_coords_mask_x_y, kps_int_coords, np.zeros(2, np.int32))
+
+            # first = kps_int_coords[:, 0]
+            # first = np.where(0 <= first, first, 0)
+            # first = np.where(first < w, first, 0)
+            # seconds = kps_int_coords[:, 1]
+            # seconds = np.where(0 <= seconds, seconds, 0)
+            # # TODO: :, 0) => this I think is bad!!!
+            # seconds = np.where(seconds < h, seconds, 0)
+            # kps_int_coords[:, 0] = first
+            # kps_int_coords[:, 1] = seconds
+
+            cluster_mask_bool = (components_indices[kps_int_coords[:, 1], [kps_int_coords[:, 0]]] == component_index)[0]
+            cluster_mask_bool = np.logical_and(cluster_mask_bool, kps_int_coords_mask)
+            # does it brake?
+            #assert np.sum(kps_int_coords_mask) == kps_int_coords_mask.shape
+
+            # cluster_mask_bool = np.array([components_indices[kps_int_coord[1], [kps_int_coord[0]]] == component_index for kps_int_coord in kps_int_coords])
+            # cluster_mask_bool = cluster_mask_bool.reshape(-1)
+
+            descs = descs[cluster_mask_bool]
+            new_pts = new_pts[cluster_mask_bool]
+            orig_pts = orig_pts[cluster_mask_bool]
+            ors = ors[cluster_mask_bool]
+            scs = scs[cluster_mask_bool]
+
+            kps = [kp for i, kp in enumerate(kps) if cluster_mask_bool[i]]
+            if show or save:
+                cv.drawKeypoints(rectified, kps, rectified, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+
+            for kpi, kp in enumerate(kps):
+                kp.pt = tuple(new_pts[kpi].tolist())
+
+
+            all_kps.extend(kps)
+            all_descs = np.vstack((all_descs, descs))
+            all_new_pts = np.vstack((all_new_pts, new_pts))
+            all_orig_pts = np.vstack((all_orig_pts, orig_pts))
+            all_scs = np.hstack((all_scs, scs))
+            all_ors = np.hstack((all_ors, ors))
+
+        # end if
+
+        if show or save:
+            plt.figure()
+            plt.title("{} - component: {},\n kpts: {} \n normal: {}".format(img_name, component_index, descs.shape[0], normals[normal_index]))
+            plt.imshow(rectified)
+            if save:
+                plt.savefig("{}_rectified_component_{}.jpg.".format(out_prefix, component_index))
+            show_or_close(show)
+
+        # if show_components:
+        #     rectified_components = components_in_colors.astype(np.float32) / 255
+        #     rectified_components = cv.warpPerspective(rectified_components, T, bounding_box)
+        #     plt.imshow(rectified_components)
+        #     show_or_close(show)
+
+
+    # TODO corner case - None, [], ...
+
+    kps, descs = descriptor.detectAndCompute(img, None)
+    pts, ors, scs = split_keypoints_into_raw(kps)
+
+    # TODO is this the way to round it?
+    kps_int_coords = np.round(pts).astype(dtype=np.int32)
+    #kps_int_coords = np.int32(pts)
+
+    h, w, _ = img.shape
+
+    kps_int_coords_mask = kps_int_coords[:, 0] >= 0
+    kps_int_coords_mask = np.logical_and(kps_int_coords_mask, kps_int_coords[:, 1] >= 0)
+    kps_int_coords_mask = np.logical_and(kps_int_coords_mask, kps_int_coords[:, 0] < w)
+    kps_int_coords_mask = np.logical_and(kps_int_coords_mask, kps_int_coords[:, 1] < h)
+    kps_int_coords_mask_x_y = np.repeat(kps_int_coords_mask.reshape(-1, 1), 2, axis=1)
+    kps_int_coords = np.where(kps_int_coords_mask_x_y, kps_int_coords, np.zeros(2, np.int32))
+
+    # in_img_mask = kps_int_coords[:, 0] >= 0
+    # in_img_mask = np.logical_and(in_img_mask, kps_int_coords[:, 0] < img.shape[1])
+    # in_img_mask = np.logical_and(in_img_mask, kps_int_coords[:, 1] >= 0)
+    # in_img_mask = np.logical_and(in_img_mask, kps_int_coords[:, 1] < img.shape[0])
+    #
+    # kps_ints = kps_ints[in_img_mask]
+    # kps = [kp for i, kp in enumerate(kps) if in_img_mask[i]]
+    # descs = descs[in_img_mask]
+
+    valid_keys_set = set(valid_components_dict.keys())
+    all_indices_set = set(range(np.max(components_indices) + 1))
+    non_valid_indices = list(all_indices_set - valid_keys_set)
+
+    non_valid_mask = np.zeros(kps_int_coords.shape[0])
+    for non_valid_index in non_valid_indices:
+        non_valid_mask = np.logical_or(non_valid_mask, components_indices[kps_int_coords[:, 1], kps_int_coords[:, 0]] == non_valid_index)
+
+    non_valid_mask = np.logical_and(non_valid_mask, kps_int_coords_mask)
+
+    kps = [kp for i, kp in enumerate(kps) if non_valid_mask[i]]
+
+    descs = descs[non_valid_mask]
+    pts = pts[non_valid_mask]
+    ors = ors[non_valid_mask]
+    scs = scs[non_valid_mask]
+
+    all_kps.extend(kps)
+    all_descs = np.vstack((all_descs, descs))
+    all_new_pts = np.vstack((all_new_pts, pts))
+    all_orig_pts = np.vstack((all_orig_pts, pts))
+    all_scs = np.hstack((all_scs, scs))
+    all_ors = np.hstack((all_ors, ors))
+
+    if show or save:
+        no_component_img = img.copy()
+        cv.drawKeypoints(no_component_img, kps, no_component_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        plt.figure(figsize=(10, 10))
+        plt.title("{} - no valid component: {} kpts".format(img_name, descs.shape[0]))
+        plt.imshow(no_component_img)
+        if save:
+            plt.savefig("{}_rectified_no_valid_component.jpg.".format(out_prefix))
+        show_or_close(show)
+
+        all_img = img.copy()
+        cv.drawKeypoints(all_img, all_kps, all_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        plt.figure(figsize=(10, 10))
+        plt.title("All keypoints: {} kpts".format(all_descs.shape[0]))
+        plt.imshow(all_img)
+        if save:
+            plt.savefig("{}_rectified_all.jpg.".format(out_prefix))
+        show_or_close(show)
+        print("{} keypoints found".format(len(all_kps)))
+
+    Timer.end_check_point("new rectification")
+    return all_kps, all_descs, all_orig_pts, all_new_pts, all_ors, all_scs
+
+
+def get_perspective_transform_new(R, K, K_inv, component_indices, index, normal, scale=1.0):
+
+    coords = np.where(component_indices == index)
+    coords = np.array([coords[1], coords[0]])
+    coords = add_third_row(coords)
+
+    # I need K here
+    P = K @ R @ K_inv
+    if scale == 1.0:
+        scale = np.sqrt((1.0 - normal[0] ** 2) * (1.0 - normal[1] ** 2))
+        scale *= 0.71
+    print("new scale: {}".format(scale))
+    P[:2, :] *= scale
+
+    new_coords = P @ coords
+    new_coords = new_coords / new_coords[2, :]
+
+    min_row = min(new_coords[1])
+    max_row = max(new_coords[1])
+    min_col = min(new_coords[0])
+    max_col = max(new_coords[0])
+
+    dst = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]])
+    dst = np.transpose(dst)
+    dst = add_third_row(dst)
+
+    translate_vec_new = (-np.min(dst[0]), -np.min(dst[1]))
+    translate_matrix_new = np.array([
+        [1, 0, translate_vec_new[0]],
+        [0, 1, translate_vec_new[1]],
+        [0, 0, 1],
+    ])
+
+    dst = translate_matrix_new @ dst
+    P = translate_matrix_new @ P
+    bounding_box_new = (math.ceil(np.max(dst[0])), math.ceil(np.max(dst[1])))
+
+    return P, bounding_box_new
+
+
+def get_mask_for_components(component_indices, w, h, components, pts):
+
+    int_coords = np.round(pts).astype(dtype=np.int32)
+
+    mask1 = int_coords[:, 0] >= 0
+    mask1 = np.logical_and(mask1, int_coords[:, 1] >= 0)
+    mask1 = np.logical_and(mask1, int_coords[:, 0] < w)
+    mask1 = np.logical_and(mask1, int_coords[:, 1] < h)
+    int_coords_mask_x_y = np.repeat(mask1.reshape(-1, 1), 2, axis=1)
+    int_coords = np.where(int_coords_mask_x_y, int_coords, np.zeros(2, np.int32))
+
+    mask2 = np.zeros(mask1.size)
+    for component in components:
+        mask2 = np.logical_or(mask2, component_indices[int_coords[:, 1], int_coords[:, 0]] == component)
+
+    return np.logical_and(mask1, mask2)
+

@@ -226,7 +226,11 @@ copyreg.pickle(cv2.KeyPoint().__class__, _pickle_keypoints)
 class ImageData:
     img: np.ndarray
     key_points: List[cv.KeyPoint]
-    descriptions: object
+    descriptions: np.ndarray
+    pts: np.ndarray
+    rect_pts: np.ndarray
+    ors: np.ndarray
+    scs: np.ndarray
     real_K: np.ndarray
     normals: np.ndarray
     components_indices: np.ndarray
@@ -238,6 +242,10 @@ class ImageData:
                          real_K=real_K,
                          key_points=img_serialized_data.kpts,
                          descriptions=img_serialized_data.descs,
+                         pts=img_serialized_data.pts,
+                         rect_pts=img_serialized_data.rect_pts,
+                         ors=img_serialized_data.ors,
+                         scs=img_serialized_data.scs,
                          normals=img_serialized_data.normals,
                          components_indices=img_serialized_data.components_indices,
                          valid_components_dict=img_serialized_data.valid_components_dict)
@@ -245,6 +253,10 @@ class ImageData:
     def to_serialized_data(self):
         return ImageSerializedData(kpts=self.key_points,
                                    descs=self.descriptions,
+                                   pts=self.pts,
+                                   rect_pts=self.rect_pts,
+                                   ors=self.ors,
+                                   scs=self.scs,
                                    normals=self.normals,
                                    components_indices=self.components_indices,
                                    valid_components_dict=self.valid_components_dict)
@@ -253,7 +265,11 @@ class ImageData:
 @dataclass
 class ImageSerializedData:
     kpts: list
-    descs: list
+    descs: np.ndarray
+    pts: np.ndarray
+    rect_pts: np.ndarray
+    ors: np.ndarray
+    scs: np.ndarray
     normals: np.ndarray
     components_indices: np.ndarray
     valid_components_dict: dict

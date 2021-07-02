@@ -8,6 +8,7 @@ import pickle
 import traceback
 import sys
 
+import numpy as np
 import torch
 import argparse
 
@@ -16,7 +17,7 @@ from connected_components import get_connected_components, get_and_show_componen
 from depth_to_normals import compute_only_normals
 from depth_to_normals import show_sky_mask, cluster_normals, show_or_save_clusters
 from matching import match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
-from rectification import possibly_upsample_normals, get_rectified_keypoints
+from rectification import possibly_upsample_normals, get_rectified_keypoints, get_rectified_keypoints_new, split_keypoints_into_raw
 from scene_info import SceneInfo
 from utils import Timer
 from img_utils import show_or_close
@@ -248,11 +249,17 @@ class Pipeline:
         if not self.rectify:
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
+            pts, ors, scs = split_keypoints_into_raw(kps)
+
             Timer.end_check_point("processing img")
             return ImageData(img=img,
                              real_K=real_K,
                              key_points=kps,
                              descriptions=descs,
+                             rect_pts=pts,
+                             pts=pts,
+                             ors=ors,
+                             scs=scs,
                              normals=None,
                              components_indices=None,
                              valid_components_dict=None)
@@ -319,7 +326,7 @@ class Pipeline:
 
             # get rectification
             rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name[:-4])
-            kps, descs = get_rectified_keypoints(normals_clusters_repr,
+            kps, descs, all_orig_pts, all_new_pts, all_ors, all_scs = get_rectified_keypoints_new(normals_clusters_repr,
                                                  components_indices,
                                                  valid_components_dict,
                                                  img,
@@ -328,13 +335,32 @@ class Pipeline:
                                                  img_name=img_name,
                                                  show=self.show_rectification,
                                                  save=self.save_rectification,
-                                                 out_prefix=rectification_path_prefix
+                                                 out_prefix=rectification_path_prefix + "_old"
                                                  )
+
+            # kps_other, descs_other, all_orig_pts_other, all_other_pts_other, all_ors_other, all_scs_other = get_rectified_keypoints(normals_clusters_repr,
+            #                                      components_indices,
+            #                                      valid_components_dict,
+            #                                      img,
+            #                                      K_for_rectification,
+            #                                      descriptor=self.feature_descriptor,
+            #                                      img_name=img_name,
+            #                                      show=self.show_rectification,
+            #                                      save=self.save_rectification,
+            #                                      out_prefix=rectification_path_prefix
+            #                                      )
+            #
+            # #eq = np.equal(descs_other, descs)
+            # fake_eq = descs_other, descs
 
             img_data = ImageData(img=img,
                                  real_K=real_K,
                                  key_points=kps,
                                  descriptions=descs,
+                                 pts=all_new_pts,
+                                 rect_pts=all_orig_pts,
+                                 scs=all_scs,
+                                 ors=all_ors,
                                  normals=normals_clusters_repr,
                                  components_indices=components_indices,
                                  valid_components_dict=valid_components_dict)
