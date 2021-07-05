@@ -108,11 +108,7 @@ def flood_fill(input_img):
 
 def get_connected_components(normal_indices, valid_indices, show=False, fraction_threshold=0.03, closing_size=None, flood_filling=False):
 
-    # off = False
-    # if off:
-    #     out = normal_indices.copy()
-    #     out_valid_indices_dict = {k: k for k in valid_indices}
-    #     return out, out_valid_indices_dict
+    Timer.start_check_point("get_connected_components")
 
     component_size_threshold = normal_indices.shape[0] * normal_indices.shape[1] * fraction_threshold
 
@@ -150,6 +146,8 @@ def get_connected_components(normal_indices, valid_indices, show=False, fraction
 
         if show:
             get_and_show_components(out, out_valid_indices_dict, "out after normal index={}".format(v_i))
+
+    Timer.end_check_point("get_connected_components")
 
     return out, out_valid_indices_dict
 
