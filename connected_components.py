@@ -70,8 +70,8 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
             cur_colors_names = ", ".join([color_names[val % 9] for val in merged_values])
             title = "{}[{}]={}={},\n".format(title, cur_colors_names, normals[merged_dict[merged_values]], merged_dict[merged_values])
         plt.title(title)
-        plt.imshow(cluster_colors)
 
+    plt.imshow(cluster_colors)
     if save:
         plt.savefig(path)
 
@@ -79,7 +79,34 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
     return cluster_colors
 
 
-def get_connected_components(normal_indices, valid_indices, show=False, fraction_threshold=0.03):
+# def circle_like_ones(size):
+#
+#     ret = np.ones((size, size), np.uint8)
+#     r_check = (size / 2 - 0.25) ** 2
+#     for i in range(size):
+#         for j in range(size):
+#             r = (size / 2 - (i + 0.5)) ** 2 + (size / 2 - (j + 0.5)) ** 2
+#             if r > r_check:
+#                 ret[i, j] = 0
+#     return ret
+
+
+def flood_fill(input_img):
+
+    flood_filled = input_img.copy()
+    flood_filled[0, :] = 0
+    flood_filled[flood_filled.shape[0] - 1, :] = 0
+    flood_filled[:, flood_filled.shape[1] - 1] = 0
+    flood_filled[:, 0] = 0
+
+    mask = np.zeros((flood_filled.shape[0] + 2, flood_filled.shape[1] + 2), np.uint8)
+    cv.floodFill(flood_filled, mask, (0, 0), 2)
+    flood_filled = np.where(flood_filled == 2, 0, 1).astype(dtype=np.uint8)
+    flood_filled = flood_filled | input_img
+    return flood_filled
+
+
+def get_connected_components(normal_indices, valid_indices, show=False, fraction_threshold=0.03, closing_size=None, flood_filling=False):
 
     # off = False
     # if off:
@@ -95,7 +122,16 @@ def get_connected_components(normal_indices, valid_indices, show=False, fraction
 
     for v_i in valid_indices:
         input = np.where(normal_indices == v_i, 1, 0).astype(dtype=np.uint8)
-        ret, labels = cv.connectedComponents(input, connectivity=4)
+
+        if closing_size is not None:
+            kernel = np.ones(closing_size, np.uint8)
+            input = cv.morphologyEx(input, cv.MORPH_CLOSE, kernel)
+
+        if flood_filling:
+            input = flood_fill(input)
+
+        ret, labels = cv.connectedComponents(input, connectivity=8)
+
         unique, counts = np.unique(labels, return_counts=True)
         valid_labels = np.where(counts > component_size_threshold)[0]
         # TODO index of? - anyway the goal is to filter out label value of 0

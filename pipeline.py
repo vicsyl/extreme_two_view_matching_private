@@ -214,6 +214,7 @@ class Pipeline:
         Config.log()
         Clustering.log()
 
+
     def process_image(self, img_name):
 
         Timer.start_check_point("processing img")
@@ -289,23 +290,22 @@ class Pipeline:
                                   show=self.show_clusters,
                                   save=self.save_clusters)
 
-            # normal indices => cluster indices (maybe safe here?)
-            # TODO after the call to get_connected_components?
-            normal_indices = possibly_upsample_normals(img, normal_indices)
 
             valid_normal_indices = []
             for i, normal in enumerate(normals_clusters_repr):
                 angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
                 angle_degrees = angle_rad * 180 / math.pi
-                #print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
+                # print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
                 if angle_degrees >= Config.plane_threshold_degrees:
-                #print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
+                    # print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
                     continue
                 else:
-                    #print("angle ok")
+                    # print("angle ok")
                     valid_normal_indices.append(i)
 
-            components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices)
+            components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices, closing_size=(3, 3), flood_filling=True)
+            components_indices = components_indices.astype(dtype=np.uint8)
+            components_indices = possibly_upsample_normals(img, components_indices)
 
             components_out_path = "{}/{}_cluster_connected_components.jpg".format(img_processing_dir, img_name[:-4])
             get_and_show_components(components_indices,
@@ -315,7 +315,6 @@ class Pipeline:
                                     save=self.save_clustered_components,
                                     path=components_out_path,
                                     file_name=depth_data_file_name[:-4])
-
 
             # get rectification
             rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name[:-4])
