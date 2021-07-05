@@ -338,7 +338,7 @@ class Pipeline:
                                                  out_prefix=rectification_path_prefix + "_old"
                                                  )
 
-            # kps_other, descs_other, all_orig_pts_other, all_other_pts_other, all_ors_other, all_scs_other = get_rectified_keypoints(normals_clusters_repr,
+            # kps, descs, all_orig_pts, all_new_pts, all_ors, all_scs = get_rectified_keypoints(normals_clusters_repr,
             #                                      components_indices,
             #                                      valid_components_dict,
             #                                      img,
@@ -349,6 +349,7 @@ class Pipeline:
             #                                      save=self.save_rectification,
             #                                      out_prefix=rectification_path_prefix
             #                                      )
+
             #
             # #eq = np.equal(descs_other, descs)
             # fake_eq = descs_other, descs

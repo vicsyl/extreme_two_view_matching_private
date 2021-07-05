@@ -57,5 +57,22 @@ st peters - 512* (from 320 to 384) = from 163840 to 196608
         - AdaLam x depth continuity
 
 
+new:
+
+Regular pipeline - ground truth compatible matches (th: [[1, 0.5, 0.1]]): [672.  36.   0.]
+Regular pipeline - ground truth compatible matches (th: [[1, 0.5, 0.1]]): [1517.   22.    0.]
+errors (R, T): (0.00532968256306316, 0.004636683019371467)
+AdaLAM with rectified keypoints - ground truth compatible matches (th: [[1, 0.5, 0.1]]): [1413.  172.   25.]
+AdaLAM with rectified keypoints - ground truth compatible matches (th: [[1, 0.5, 0.1]]): [2312.  146.   23.]
+
+old:
+
+errors (R, T): (0.015294885570882285, 0.008985754748342624)
+Regular pipeline - ground truth compatible matches (th: [[1, 0.5, 0.1]]): [1923.   28.    0.]
+AdaLAM with rectified keypoints - ground truth compatible matches (th: [[1, 0.5, 0.1]]): [2371.   86.   22.]
+
+
+AdaLAM integration:
+
 
 

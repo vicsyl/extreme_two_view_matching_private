@@ -1,0 +1,25 @@
+
+
+AdaLAM integration:
+
+a) basically run AdaLam with rectified descriptions and locations of the keypoints
+    - imagine just corresponding planes
+    - from local affine to global
+    - number of seeds > 1
+    - area_ratio down, search_expansion up
+
+b) more selectively
+    - if both corresponding seeds on a plane, restrict the other matches to the same plane tuples
+
+c) depth + normal
+
+- !!! Essential (5 points alg.) not affected by dominating plane
+- limit to img-pairs where rect. is worse
+- (sacraceur - non-orthogonal, reichcstag)
+
+
+
+- how to measure the performance
+ - AUC:?
+ - how many matches compatible with ground truth
+ - get the matches and run ransac from these

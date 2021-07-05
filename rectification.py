@@ -532,12 +532,13 @@ def get_rectified_keypoints_new(normals,
 
         kps, descs = descriptor.detectAndCompute(rectified, None)
 
-        assert kps is not None
-        if kps is not None:
+        if len(kps) > 0:
 
             orig_pts, ors, scs = split_keypoints_into_raw(kps)
             T_inv = np.linalg.inv(T)
             new_pts = cv.perspectiveTransform(orig_pts.reshape(-1, 1, 2), T_inv)
+            if new_pts is None:
+                new_pts = np.zeros((0, 1, 2))
             new_pts = new_pts.reshape(-1, 2)
 
             #kps_int_coords = np.int32(new_pts).reshape(-1, 2)

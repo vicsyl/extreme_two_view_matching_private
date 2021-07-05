@@ -118,17 +118,17 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, s
 
     tentative_matches = get_cross_checked_tentatives(matcher, descs1, descs2, ratio_thresh)
 
-    if show or save:
-        tentative_matches_in_singleton_list = [[m] for m in tentative_matches]
-        img3 = cv.drawMatchesKnn(img1, kps1, img2, kps2, tentative_matches_in_singleton_list, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-        fig, ax = plt.subplots(figsize=(10, 10))
-        ax.set_aspect("auto")
-        plt.imshow(img3)
-        if save:
-            assert out_dir is not None
-            assert save_suffix is not None
-            plt.savefig("{}/tentative_{}.jpg".format(out_dir, save_suffix))
-        show_or_close(show)
+    # if show or save:
+    #     tentative_matches_in_singleton_list = [[m] for m in tentative_matches]
+    #     img3 = cv.drawMatchesKnn(img1, kps1, img2, kps2, tentative_matches_in_singleton_list, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    #     fig, ax = plt.subplots(figsize=(10, 10))
+    #     ax.set_aspect("auto")
+    #     plt.imshow(img3)
+    #     if save:
+    #         assert out_dir is not None
+    #         assert save_suffix is not None
+    #         plt.savefig("{}/tentative_{}.jpg".format(out_dir, save_suffix))
+    #     show_or_close(show)
 
     return tentative_matches
 

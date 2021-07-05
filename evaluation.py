@@ -330,6 +330,10 @@ def evaluate_matching(scene_info,
                   normals2=normals2,
                   )
 
+    thresholds = [1, 0.5, 0.1]
+    compatible_matches = evaluate_tentatives_against_ground_truth(scene_info, img_pair, src_pts_inliers, dst_pts_inliers, thresholds)
+    print("Regular pipeline - ground truth compatible matches (th: [{}]): {}".format(thresholds, compatible_matches))
+
     key = "{}_{}".format(img_pair.img1, img_pair.img2)
     stats_map[key] = stats
     return stats
@@ -438,7 +442,7 @@ def vector_product_matrix(vec: np.ndarray):
     ])
 
 
-def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: ImagePairEntry, src_tentatives_2d, dst_tentatives_2d, thresholds):
+def evaluate_tentatives_against_ground_truth(scene_info: SceneInfo, img_pair: ImagePairEntry, src_tentatives_2d, dst_tentatives_2d, thresholds):
 
     # input: img pair -> imgs -> T1/2, R1/2 -> ground truth F
     # input: tentatives (src, dst)

@@ -21,10 +21,10 @@ estimate_k = False
 focal_point_mean_factor = 0.5
 
 #show and save
-show_input_img = True
 
+show_input_img = False
 show_matching = True
-show_clusters = True
+show_clusters = False
 show_clustered_components = True
 show_rectification = False
 show_sky_mask = False
