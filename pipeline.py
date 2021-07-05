@@ -85,6 +85,9 @@ class Pipeline:
 
     use_cached_img_data = True
 
+    connected_components_closing_size = 3
+    connected_components_flood_fill = True
+
     @staticmethod
     def configure(config_file_name: str, args):
 
@@ -172,6 +175,13 @@ class Pipeline:
                     pipeline.ransac_conf = float(v)
                 elif k == "ransac_iters":
                     pipeline.ransac_iters = int(v)
+                elif k == "connected_components_closing_size":
+                    if v.lower() == "none":
+                        pipeline.connected_components_closing_size = None
+                    else:
+                        pipeline.connected_components_closing_size = int(v)
+                elif k == "connected_components_flood_fill":
+                    pipeline.connected_components_flood_fill = v.lower() == "true"
                 else:
                     print("WARNING - unrecognized param: {}".format(k))
 
@@ -303,7 +313,8 @@ class Pipeline:
                     # print("angle ok")
                     valid_normal_indices.append(i)
 
-            components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices, closing_size=(3, 3), flood_filling=True)
+            closing_size = None if self.connected_components_closing_size is None else (self.connected_components_closing_size, self.connected_components_closing_size)
+            components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices, closing_size=closing_size, flood_filling=self.connected_components_flood_fill)
             components_indices = components_indices.astype(dtype=np.uint8)
             components_indices = possibly_upsample_normals(img, components_indices)
 
