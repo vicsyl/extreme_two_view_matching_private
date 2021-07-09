@@ -19,20 +19,42 @@ def get_rectification_rotation(normal, rotation_factor=1.0):
     # now the normals will be "from" me, "inside" the surfaces
     normal = -normal
 
+    # normal = np.array([0.0, -0.99, 0.01]) not ok
+    # R:
+    # [[ 1.     0.     0.   ]
+    #  [ 0.     0.141 -0.99 ]
+    #  [ 0.     0.99   0.141]]
+
+    #normal = np.array([0.0, 0.99, -0.01]) # seems legit
+    # R:
+    # [[ 1.     0.     0.   ]
+    #  [ 0.     0.141  0.99 ]
+    #  [ 0.    -0.99   0.141]]
+
+    #normal = normal / np.linalg.norm(normal)
+    #rotation_factor = 0.961
+    #rotation_factor = 1.6
+
     z = np.array([0.0, 0.0, 1.0])
 
     # this handles the case when there is only one dominating plane
 
-    assert normal[2] > 0
+    # [ 1.     0.     0.   ]
+    #  [ 0.    -0.297 -0.955]
+    #  [ 0.     0.955 -0.297]]
+
+    #assert normal[2] > 0
     rotation_vector = np.cross(normal, z)
     rotation_vector_norm = abs_sin_theta = np.linalg.norm(rotation_vector)
     unit_rotation_vector = rotation_vector / rotation_vector_norm
     theta = math.asin(abs_sin_theta) * rotation_factor
-    theta = min(theta, math.pi * 4.0/9.0)
+    #theta = min(theta, math.pi * 4.0/9.0)
+    print("theta: {}".format(theta))
 
     R = get_rotation_matrix(unit_rotation_vector, theta)
     det = np.linalg.det(R)
     assert math.fabs(det - 1.0) < 0.0001
+    print("R:\n{}".format(R))
     return R
 
 
@@ -49,11 +71,11 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
         coords = np.array([coords[1], coords[0]])
         coords = add_third_row(coords)
 
-        # TODO rethink if I really need K
-        # (I can guess)
+        # I really think I need K (even if estimated)
         P = K @ R @ K_inv
         if scale != 1.0:
             unscaled = False
+            print("scale: {}".format(scale))
             P[:2, :] *= scale
 
         new_coords = P @ coords
@@ -76,7 +98,6 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
             if scale == 1.0:
                 unscaled = False
                 break
-
 
 
     translate_vec_new = (-np.min(dst[0]), -np.min(dst[1]))

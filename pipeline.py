@@ -319,17 +319,23 @@ class Pipeline:
 
             # get rectification
             rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name[:-4])
-            kps, descs = get_rectified_keypoints(normals_clusters_repr,
-                                                 components_indices,
-                                                 valid_components_dict,
-                                                 img,
-                                                 K_for_rectification,
-                                                 descriptor=self.feature_descriptor,
-                                                 img_name=img_name,
-                                                 show=self.show_rectification,
-                                                 save=self.save_rectification,
-                                                 out_prefix=rectification_path_prefix
-                                                 )
+
+            #rot_factors = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0]
+            rot_factors = [1.0]
+            for rot_factor in rot_factors:
+
+                kps, descs = get_rectified_keypoints(normals_clusters_repr,
+                                                     components_indices,
+                                                     valid_components_dict,
+                                                     img,
+                                                     K_for_rectification,
+                                                     descriptor=self.feature_descriptor,
+                                                     img_name=img_name,
+                                                     show=self.show_rectification,
+                                                     save=self.save_rectification,
+                                                     out_prefix=rectification_path_prefix,
+                                                     rotation_factor=rot_factor
+                                                     )
 
             img_data = ImageData(img=img,
                                  real_K=real_K,
@@ -518,7 +524,8 @@ def main():
     Timer.start()
 
     pipeline = Pipeline.configure("config.txt", args)
-    pipeline.run_matching_pipeline()
+    #pipeline.run_matching_pipeline()
+    pipeline.run_sequential_pipeline()
 
     Timer.end()
 
