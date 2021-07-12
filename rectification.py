@@ -72,11 +72,14 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
         coords = add_third_row(coords)
 
         # I really think I need K (even if estimated)
+        print("K:\n{},\nR:\n{},\nK_inv: {}".format(K, R, K_inv))
         P = K @ R @ K_inv
+        print("unscaled P: {}".format(P))
         if scale != 1.0:
             unscaled = False
             print("scale: {}".format(scale))
             P[:2, :] *= scale
+            print("scaled P: {}".format(P))
 
         new_coords = P @ coords
         new_coords = new_coords / new_coords[2, :]
@@ -106,9 +109,11 @@ def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
         [0, 1, translate_vec_new[1]],
         [0, 0, 1],
     ])
+    print("translation: {}".format(translate_matrix_new))
 
     dst = translate_matrix_new @ dst
     P = translate_matrix_new @ P
+    print("translated P: {}".format(P))
     bounding_box_new = (math.ceil(np.max(dst[0])), math.ceil(np.max(dst[1])))
 
     return P, bounding_box_new
