@@ -237,7 +237,7 @@ def get_file_names_from_dir(input_dir: str, limit: int, interesting_files: list,
 def show_sky_mask(img, filter_mask, img_name, show, save=False, path=None):
     if not save and not show:
         return
-    fig = plt.figure()
+    fig = plt.figure(figsize=(9, 9))
     plt.title("sky mask for {}".format(img_name))
     plt.axis('off')
     ax = fig.add_subplot(121)

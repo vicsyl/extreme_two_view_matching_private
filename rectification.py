@@ -176,7 +176,7 @@ def get_rectified_keypoints(normals,
                 all_descs = np.vstack((all_descs, descs))
 
         if show or save:
-            plt.figure()
+            plt.figure(figsize=(9, 9))
             plt.title("{} - component: {},\n normal: {}".format(img_name, component_index, normals[normal_index]))
             plt.imshow(rectified)
             if save:

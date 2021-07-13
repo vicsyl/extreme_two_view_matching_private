@@ -85,8 +85,12 @@ class Pipeline:
 
     use_cached_img_data = True
 
-    connected_components_closing_size = 3
-    connected_components_flood_fill = True
+    upsample_early = True
+
+    # connected components
+    connected_components_connectivity = 4
+    connected_components_closing_size = None
+    connected_components_flood_fill = False
 
     @staticmethod
     def configure(config_file_name: str, args):
@@ -175,6 +179,12 @@ class Pipeline:
                     pipeline.ransac_conf = float(v)
                 elif k == "ransac_iters":
                     pipeline.ransac_iters = int(v)
+                elif k == "upsample_early":
+                    pipeline.upsample_early = v.lower() == "true"
+                elif k == "connected_components_connectivity":
+                    value = int(v)
+                    assert value == 4 or value == 8, "connected_components_connectivity must be 4 or 8"
+                    pipeline.connected_components_connectivity = value
                 elif k == "connected_components_closing_size":
                     if v.lower() == "none":
                         pipeline.connected_components_closing_size = None
@@ -235,7 +245,7 @@ class Pipeline:
         img_file_path = self.scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path, None)
         if self.show_input_img:
-            plt.figure()
+            plt.figure(figsize=(9, 9))
             plt.title(img_name)
             plt.imshow(img)
             show_or_close(True)
@@ -301,6 +311,9 @@ class Pipeline:
                                   save=self.save_clusters)
 
 
+            if self.upsample_early:
+                normal_indices = possibly_upsample_normals(img, normal_indices)
+
             valid_normal_indices = []
             for i, normal in enumerate(normals_clusters_repr):
                 angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
@@ -313,10 +326,16 @@ class Pipeline:
                     # print("angle ok")
                     valid_normal_indices.append(i)
 
-            closing_size = None if self.connected_components_closing_size is None else (self.connected_components_closing_size, self.connected_components_closing_size)
-            components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices, closing_size=closing_size, flood_filling=self.connected_components_flood_fill)
-            components_indices = components_indices.astype(dtype=np.uint8)
-            components_indices = possibly_upsample_normals(img, components_indices)
+            components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices,
+                                                                                 closing_size=self.connected_components_closing_size,
+                                                                                 flood_filling=self.connected_components_flood_fill,
+                                                                                 connectivity=self.connected_components_connectivity)
+
+            if not self.upsample_early:
+                assert np.all(components_indices < 256), "could not retype to np.uint8"
+                components_indices = components_indices.astype(dtype=np.uint8)
+                components_indices = possibly_upsample_normals(img, components_indices)
+                components_indices = components_indices.astype(dtype=np.uint32)
 
             components_out_path = "{}/{}_cluster_connected_components.jpg".format(img_processing_dir, img_name[:-4])
             get_and_show_components(components_indices,

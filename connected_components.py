@@ -79,16 +79,15 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
     return cluster_colors
 
 
-# def circle_like_ones(size):
-#
-#     ret = np.ones((size, size), np.uint8)
-#     r_check = (size / 2 - 0.25) ** 2
-#     for i in range(size):
-#         for j in range(size):
-#             r = (size / 2 - (i + 0.5)) ** 2 + (size / 2 - (j + 0.5)) ** 2
-#             if r > r_check:
-#                 ret[i, j] = 0
-#     return ret
+def circle_like_ones(size):
+    ret = np.ones((size, size), np.uint8)
+    r_check = (size / 2 - 0.4) ** 2
+    for i in range(size):
+        for j in range(size):
+            r = (size / 2 - (i + 0.5)) ** 2 + (size / 2 - (j + 0.5)) ** 2
+            if r > r_check:
+                ret[i, j] = 0
+    return ret
 
 
 def flood_fill(input_img):
@@ -106,7 +105,8 @@ def flood_fill(input_img):
     return flood_filled
 
 
-def get_connected_components(normal_indices, valid_indices, show=False, fraction_threshold=0.03, closing_size=None, flood_filling=False):
+def get_connected_components(normal_indices, valid_indices, show=False,
+                             fraction_threshold=0.03, closing_size=None, flood_filling=False, connectivity=4):
 
     Timer.start_check_point("get_connected_components")
 
@@ -120,17 +120,17 @@ def get_connected_components(normal_indices, valid_indices, show=False, fraction
         input = np.where(normal_indices == v_i, 1, 0).astype(dtype=np.uint8)
 
         if closing_size is not None:
-            kernel = np.ones(closing_size, np.uint8)
+            kernel = circle_like_ones(size=closing_size) # np.ones((closing_size, closing_size) np.uint8)
             input = cv.morphologyEx(input, cv.MORPH_CLOSE, kernel)
 
         if flood_filling:
             input = flood_fill(input)
 
-        ret, labels = cv.connectedComponents(input, connectivity=8)
+        ret, labels = cv.connectedComponents(input, connectivity=connectivity)
 
         unique, counts = np.unique(labels, return_counts=True)
         valid_labels = np.where(counts > component_size_threshold)[0]
-        # TODO index of? - anyway the goal is to filter out label value of 0
+        # Docs: RETURNS: The sorted unique values. - see https://numpy.org/doc/stable/reference/generated/numpy.unique.html
         if valid_labels[0] == 0:
             valid_labels = valid_labels[1:]
         if len(valid_labels) != 0:
