@@ -431,6 +431,9 @@ def compute_normals_from_svd(
     normals = normals.reshape(new_depth_height, new_depth_width, 3)
 
     # flip if z > 0
+
+    # BUUUUUGGG !!!
+
     where = torch.where(normals[:, :, 2] > 0)
     normals[where[0], where[1]] = -normals[where[0], where[1]]
 
