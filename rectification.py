@@ -12,6 +12,7 @@ from connected_components import get_and_show_components, read_img_normals_info,
 from img_utils import show_or_close
 from depth_to_normals import compute_normals
 from config import Config
+import kornia.geometry as KG
 
 
 def get_rectification_rotation(normal, rotation_factor=1.0):
@@ -40,13 +41,53 @@ def add_third_row(column_vecs):
     return np.vstack((column_vecs, np.ones(column_vecs.shape[1])))
 
 
-def get_perspective_transform(R, K, K_inv, component_indices, index, scale=1.0):
+def get_valid_mask(x_array, y_array, valid_box):
+    mask = ((x_array >= valid_box[:,0].min()) &
+            (x_array <= valid_box[:,0].max()) &
+            (y_array >= valid_box[:,1].min()) &
+            (y_array <= valid_box[:,1].max()))
+    return mask
+
+
+def get_valid_box(img, clip_angle, R, K):
+    h, w = img.shape[:2]
+    h_2, w_2 = h / 2.0, w / 2.0
+    if clip_angle is None:
+        clip_angle = 90
+    angles_xyz = KG.rotation_matrix_to_angle_axis(torch.from_numpy(R)[None]).detach().cpu().numpy()[0]
+    angles_xyz = np.rad2deg(angles_xyz)
+    FOV_Y_2 = np.rad2deg(math.atan(h_2 / K[1][1]))
+    FOV_X_2 = np.rad2deg(math.atan(w_2 / K[0][0]))
+
+    dy = h_2 * (math.sin(np.deg2rad(clip_angle)) / math.sin(np.deg2rad(FOV_Y_2)))
+    dx = w_2 * (math.sin(np.deg2rad(clip_angle)) / math.sin(np.deg2rad(FOV_X_2)))
+
+    center_x = w_2 * (1.0 + (math.sin(np.deg2rad(angles_xyz[1])) / math.tan(np.deg2rad(FOV_X_2))))
+    center_y = h_2 * (1.0 + (math.sin(np.deg2rad(angles_xyz[0])) / math.tan(np.deg2rad(FOV_Y_2))))
+
+    valid_box = np.float32([[center_x - dx, center_y - dy],
+                            [center_x - dx, center_y + dy],
+                            [center_x + dx, center_y + dy],
+                            [center_x + dx, center_y - dy]])
+    return valid_box
+
+
+def get_perspective_transform(img, R, K, K_inv, component_indices, index, clip_angle=None, scale=1.0):
+
+    if clip_angle is not None:
+        valid_box = get_valid_box(img, clip_angle, R, K)
+        print(f'valid_box = {valid_box}')
 
     unscaled = True
     while unscaled:
 
         coords = np.where(component_indices == index)
         coords = np.array([coords[1], coords[0]])
+
+        if clip_angle is not None:
+            mask = get_valid_mask(coords[0], coords[1], valid_box)
+            coords = coords[:, mask]
+
         coords = add_third_row(coords)
 
         # TODO rethink if I really need K
@@ -101,6 +142,7 @@ def get_rectified_keypoints(normals,
                             K,
                             descriptor,
                             img_name,
+                            clip_angle=None,
                             show=False,
                             save=False,
                             out_prefix=None,
@@ -121,7 +163,7 @@ def get_rectified_keypoints(normals,
 
         R = get_rectification_rotation(normal, rotation_factor)
 
-        T, bounding_box = get_perspective_transform(R, K, K_inv, components_indices, component_index)
+        T, bounding_box = get_perspective_transform(img, R, K, K_inv, components_indices, component_index, clip_angle)
         #TODO this is too defensive (and wrong) I think, I can warp only the plane
         if bounding_box[0] * bounding_box[1] > 10**8:
             print("warping to an img that is too big, skipping")

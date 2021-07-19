@@ -80,6 +80,7 @@ class Pipeline:
     focal_point_mean_factor = 0.5
 
     rectify = True
+    clip_angle = None
 
     knn_ratio_threshold = 0.85
 
@@ -181,6 +182,11 @@ class Pipeline:
                     pipeline.ransac_iters = int(v)
                 elif k == "upsample_early":
                     pipeline.upsample_early = v.lower() == "true"
+                elif k == "clip_angle":
+                    if v.lower() == "none":
+                        pipeline.clip_angle = None
+                    else:
+                        pipeline.clip_angle = int(v)
                 elif k == "connected_components_connectivity":
                     value = int(v)
                     assert value == 4 or value == 8, "connected_components_connectivity must be 4 or 8"
@@ -355,6 +361,7 @@ class Pipeline:
                                                  K_for_rectification,
                                                  descriptor=self.feature_descriptor,
                                                  img_name=img_name,
+                                                 clip_angle=self.clip_angle,
                                                  show=self.show_rectification,
                                                  save=self.save_rectification,
                                                  out_prefix=rectification_path_prefix
