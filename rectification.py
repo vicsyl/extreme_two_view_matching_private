@@ -1,18 +1,17 @@
 import math
-import numpy as np
 import os
+
 import cv2 as cv
+import kornia.geometry as KG
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
-from pathlib import Path
-from resize import resample_nearest_numpy
-from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix
-from scene_info import SceneInfo, read_cameras
+
 from connected_components import get_and_show_components, read_img_normals_info, get_connected_components
 from img_utils import show_or_close
-from depth_to_normals import compute_normals
-from config import Config
-import kornia.geometry as KG
+from resize import resample_nearest_numpy
+from scene_info import SceneInfo
+from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix
 
 
 def get_rectification_rotation(normal, rotation_factor=1.0):
@@ -164,6 +163,7 @@ def get_rectified_keypoints(normals,
         R = get_rectification_rotation(normal, rotation_factor)
 
         T, bounding_box = get_perspective_transform(img, R, K, K_inv, components_indices, component_index, clip_angle)
+
         #TODO this is too defensive (and wrong) I think, I can warp only the plane
         if bounding_box[0] * bounding_box[1] > 10**8:
             print("warping to an img that is too big, skipping")
@@ -222,7 +222,7 @@ def get_rectified_keypoints(normals,
             plt.title("{} - component: {},\n normal: {}".format(img_name, component_index, normals[normal_index]))
             plt.imshow(rectified)
             if save:
-                plt.savefig("{}_rectified_component_{}.jpg.".format(out_prefix, component_index))
+                plt.savefig("{}_rectified_component_{}".format(out_prefix, component_index))
             show_or_close(show)
 
         # if show_components:
@@ -271,7 +271,7 @@ def get_rectified_keypoints(normals,
         plt.title("{} - no valid component".format(img_name))
         plt.imshow(no_component_img)
         if save:
-            plt.savefig("{}_rectified_no_valid_component.jpg.".format(out_prefix))
+            plt.savefig("{}_rectified_no_valid_component".format(out_prefix))
         show_or_close(show)
 
         all_img = img.copy()
@@ -280,7 +280,7 @@ def get_rectified_keypoints(normals,
         plt.title("All keypoints")
         plt.imshow(all_img)
         if save:
-            plt.savefig("{}_rectified_all.jpg.".format(out_prefix))
+            plt.savefig("{}_rectified_all".format(out_prefix))
         show_or_close(show)
         print("{} keypoints found".format(len(all_kps)))
 

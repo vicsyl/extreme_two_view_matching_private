@@ -123,6 +123,7 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, s
         img3 = cv.drawMatchesKnn(img1, kps1, img2, kps2, tentative_matches_in_singleton_list, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
         fig, ax = plt.subplots(figsize=(10, 10))
         ax.set_aspect("auto")
+        plt.title("{} tentative matches".format(len(tentative_matches)))
         plt.imshow(img3)
         if save:
             assert out_dir is not None
@@ -508,6 +509,7 @@ def match_epipolar(img1, kps1, descs1, real_K_1,
     # TODO threshold and prob params left to default values
     if find_fundamental:
         F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.USAC_MAGSAC, ransacReprojThreshold=ransac_th, confidence=ransac_conf, maxIters=ransac_iters)
+        print("F:\n{}".format(F))
         E = real_K_2.T @ F @ real_K_1
     else:
         # NOTE previously default RANSAC params used here; no iters param

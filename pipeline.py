@@ -303,7 +303,7 @@ class Pipeline:
             normals = compute_only_normals(focal_length, orig_height, orig_width, self.depth_input_dir, depth_data_file_name)
             filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
 
-            sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name[:-4])
+            sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
             show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
             normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask)
@@ -343,7 +343,7 @@ class Pipeline:
                 components_indices = possibly_upsample_normals(img, components_indices)
                 components_indices = components_indices.astype(dtype=np.uint32)
 
-            components_out_path = "{}/{}_cluster_connected_components.jpg".format(img_processing_dir, img_name[:-4])
+            components_out_path = "{}/{}_cluster_connected_components".format(img_processing_dir, img_name)
             get_and_show_components(components_indices,
                                     valid_components_dict,
                                     normals=normals_clusters_repr,
@@ -353,7 +353,7 @@ class Pipeline:
                                     file_name=depth_data_file_name[:-4])
 
             # get rectification
-            rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name[:-4])
+            rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name)
             kps, descs = get_rectified_keypoints(normals_clusters_repr,
                                                  components_indices,
                                                  valid_components_dict,

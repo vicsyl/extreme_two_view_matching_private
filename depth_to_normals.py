@@ -412,6 +412,8 @@ def compute_normals_from_svd(
 
     window_pixels = window_size ** 2
     centered = unfolded - (torch.sum(unfolded, dim=1) / window_pixels).unsqueeze(dim=1)
+    # possible modification: this will center the data around center of the window
+    # centered = unfolded - unfolded[:, (window_pixels - 1) // 2].unsqueeze(dim=1)
 
     # (-1, -1, -1) -> ((h - window_size // 2) * (w - window_size // 2), window_size ** 2, 3)
     centered = centered.permute(2, 1, 0)
@@ -422,6 +424,8 @@ def compute_normals_from_svd(
         # slides 29 and 36
         w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
         c2 = centered.transpose(-2, -1) @ w_diag @ centered
+        # possible modification: possibly a better weighing
+        # c2 = w_diag @ centered
         U, S, V = torch.svd(c2)
     else:
         U, S, V = torch.svd(centered)
