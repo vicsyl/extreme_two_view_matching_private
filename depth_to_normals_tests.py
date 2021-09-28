@@ -111,7 +111,7 @@ def test_depth_to_normals(old_implementation=True, impl="svd"):
         depth_data = read_depth_data(dsd.file_dir_and_name[1], dsd.file_dir_and_name[0])
 
         if impl == "svd":
-            normals = compute_normals_from_svd(dsd.camera,
+            normals, _ = compute_normals_from_svd(dsd.camera,
                                                depth_data,
                                                #output_directory=dsd.file_dir_and_name[0],
                                                )

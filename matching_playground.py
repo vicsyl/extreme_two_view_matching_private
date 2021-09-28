@@ -29,7 +29,7 @@ def prepare_to_rectify(scene_info, img_name):
     orig_height = img.shape[0]
     orig_width = img.shape[1]
 
-    normals = compute_only_normals(focal_length, orig_height, orig_width, depth_input_dir, depth_data_file_name)
+    normals, _ = compute_only_normals(focal_length, orig_height, orig_width, depth_input_dir, depth_data_file_name)
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
     show_sky_mask(img, filter_mask, img_name, show=True, save=False)
 
@@ -71,7 +71,7 @@ def rectify_play(scene_info, img_name, rectify, use_default_dict=True):
     orig_height = img.shape[0]
     orig_width = img.shape[1]
 
-    normals = compute_only_normals(focal_length, orig_height, orig_width, depth_input_dir, depth_data_file_name)
+    normals, _ = compute_only_normals(focal_length, orig_height, orig_width, depth_input_dir, depth_data_file_name)
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
     show_sky_mask(img, filter_mask, img_name, show=True, save=False)
 

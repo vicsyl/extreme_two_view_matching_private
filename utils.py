@@ -213,9 +213,9 @@ class Timer:
         Timer.start_time = time.time()
 
     @staticmethod
-    def start_check_point(label):
+    def start_check_point(label, parameter=None):
         assert label is not None
-        Timer.log("{} starting".format(label))
+        Timer.log("{} starting: {}".format(label, parameter))
         start = Timer.stats_start_times.get(label)
         if start is not None:
             Timer.log("WARNING: missing call of end_check_point for label '{}'".format(label))

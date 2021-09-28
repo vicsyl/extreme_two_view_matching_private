@@ -7,7 +7,7 @@ from config import Config
 from scene_info import read_cameras, read_images, SceneInfo, CameraEntry
 from image_processing import *
 from utils import *
-from img_utils import show_and_save_normal_clusters_3d, show_point_cloud, show_or_close
+from img_utils import show_and_save_normal_clusters_3d, show_point_cloud, show_or_close, get_degrees_between_normals
 import matplotlib.pyplot as plt
 
 import torch.nn.functional as F
@@ -182,8 +182,12 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         title = "{}:\n".format(img_name)
         np.set_printoptions(suppress=True, precision=3)
         for i in range(cluster_repr_normal_np.shape[0]):
-            degrees = np.array([math.acos(np.dot(np.array([0, 0, -1]), cluster_repr_normal_np[i])) * 180 / math.pi])
-            title = "{}{}={} - {} deg.,\n".format(title, color_names[i], cluster_repr_normal_np[i], degrees)
+            degrees_z = np.array([math.acos(np.dot(np.array([0, 0, -1]), cluster_repr_normal_np[i])) * 180 / math.pi])
+            title = "{}{}={} - {} deg.,\n".format(title, color_names[i], cluster_repr_normal_np[i], degrees_z)
+
+        degrees_list = get_degrees_between_normals(cluster_repr_normal_np)
+        if len(degrees_list) > 0:
+            title = title + "\n degrees between pairs of normals:\n {}".format(",\n".join([str(s) for s in degrees_list]))
         plt.title(title)
         plt.imshow(img)
         if save:
@@ -222,8 +226,6 @@ def cluster_normals(normals, filter_mask=None):
 
     Timer.end_check_point("clustering normals")
 
-    #show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, output_directory, depth_data_file_name)
-
     return cluster_repr_normal_np, normal_indices_np
 
 
@@ -257,8 +259,8 @@ def compute_only_normals(
         depth_data_file_name):
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
-    normals = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data)
-    return normals
+    normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data)
+    return normals, s_values
 
 
 def compute_normals(scene: SceneInfo,
@@ -286,7 +288,7 @@ def compute_normals(scene: SceneInfo,
     orig_height = img.shape[0]
     orig_width = img.shape[1]
 
-    normals = compute_only_normals(focal_length,
+    normals, _ = compute_only_normals(focal_length,
                                    orig_height,
                                    orig_width,
                                    depth_data_read_directory,
@@ -351,7 +353,7 @@ def compute_normals_from_svd(
         focal_length,
         orig_height,
         orig_width,
-        depth_data,
+        depth_data
 ):
 
     window_size = 5
@@ -391,12 +393,10 @@ def compute_normals_from_svd(
 
     show = False
     if show:
-        x = point_cloud[::5, ::, 0].flatten()
-        y = point_cloud[::5, ::, 1].flatten()
-        z = point_cloud[::5, ::, 2].flatten()
+        x = point_cloud[0, -100:, -100:, 0].flatten()
+        y = point_cloud[0, -100:, -100:, 1].flatten()
+        z = point_cloud[0, -100:, -100:, 2].flatten()
         show_point_cloud(x, y, z)
-
-    #point_cloud = torch.squeeze(point_cloud, dim=0)
 
     # (1, h, w, 3) -> (3, 1, h, w)
     point_cloud = point_cloud.permute(3, 0, 1, 2)
@@ -423,15 +423,14 @@ def compute_normals_from_svd(
         # https://www.cs.auckland.ac.nz/courses/compsci369s1c/lectures/GG-notes/CS369-LeastSquares.pdf
         # slides 29 and 36
         w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
-        c2 = centered.transpose(-2, -1) @ w_diag @ centered
+        #c2 = centered.transpose(-2, -1) @ w_diag @ centered
         # possible modification: possibly a better weighing
-        # c2 = w_diag @ centered
-        U, S, V = torch.svd(c2)
+        c2 = w_diag @ centered
+        U, s_values, V = torch.svd(c2)
     else:
-        U, S, V = torch.svd(centered)
+        U, s_values, V = torch.svd(centered)
 
     normals = V[:, :, 2]
-
     normals = normals.reshape(new_depth_height, new_depth_width, 3)
 
     # flip if z > 0
@@ -445,7 +444,12 @@ def compute_normals_from_svd(
     assert normals.shape[0] == depth_height
     assert normals.shape[1] == depth_width
 
-    return normals
+    s_values = s_values.reshape(new_depth_height, new_depth_width, 3)
+    s_values = pad_normals(s_values, window_size=window_size)
+    assert s_values.shape[0] == depth_height
+    assert s_values.shape[1] == depth_width
+
+    return normals, s_values
 
 
 def compute_normals_all(scene: SceneInfo,

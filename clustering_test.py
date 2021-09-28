@@ -199,7 +199,7 @@ def main():
 
         depth_data = read_depth_data(depth_input_file_name, depth_input_directory)
 
-        normals = compute_normals_from_svd(camera, depth_data)
+        normals, _ = compute_normals_from_svd(camera, depth_data)
 
         img_file_path = scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path)

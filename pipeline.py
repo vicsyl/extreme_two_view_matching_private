@@ -19,12 +19,23 @@ from matching import match_epipolar, match_find_F_degensac, match_images_with_do
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from scene_info import SceneInfo
 from utils import Timer
-from img_utils import show_or_close
+from img_utils import show_or_close, get_degrees_between_normals
 from evaluation import *
 from sky_filter import get_nonsky_mask
 from clustering import Clustering
 
 import matplotlib.pyplot as plt
+
+two_hundred_permutation = [164, 90, 8, 35, 50, 112, 30, 51, 120, 78, 130, 134, 171, 5, 101, 147, 192, 72, 47, 156, 105,
+                           22, 181, 129, 16, 198, 82, 100, 188, 159, 107, 86, 93, 151, 136, 96, 97, 83, 143, 0, 165,
+                           185, 91, 7, 61, 12, 160, 92, 41, 184, 148, 76, 162, 157, 109, 20, 183, 17, 161, 132, 117,
+                           178, 32, 111, 80, 153, 4, 180, 42, 116, 68, 95, 1, 189, 46, 170, 121, 139, 63, 58, 89, 177,
+                           125, 75, 23, 167, 146, 2, 64, 94, 166, 145, 141, 6, 194, 197, 62, 172, 124, 193, 48, 24, 196,
+                           85, 81, 60, 57, 88, 182, 126, 37, 169, 128, 39, 175, 11, 55, 40, 19, 65, 118, 84, 67, 69, 25,
+                           43, 34, 168, 140, 137, 187, 150, 49, 186, 149, 59, 122, 144, 190, 9, 98, 174, 138, 102, 79,
+                           66, 10, 110, 28, 29, 114, 77, 52, 123, 113, 108, 87, 33, 53, 199, 45, 179, 99, 135, 15, 73,
+                           104, 131, 71, 31, 133, 176, 119, 191, 38, 155, 44, 3, 26, 18, 36, 154, 13, 173, 21, 27, 70,
+                           152, 127, 54, 14, 163, 115, 103, 142, 56, 195, 158, 106, 74]
 
 
 def parse_list(list_str: str):
@@ -39,6 +50,8 @@ class Pipeline:
 
     scene_name = None
     scene_type = None
+    permutation_limit = None
+    method = None
     file_name_suffix = None
     output_dir = None
     output_dir_prefix = None
@@ -51,6 +64,7 @@ class Pipeline:
     show_save_normals = False
     show_orig_image = True
 
+    # ! FIXME not really compatible with matching pairs
     chosen_depth_files = None
     sequential_files_limit = None
 
@@ -93,8 +107,18 @@ class Pipeline:
     connected_components_closing_size = None
     connected_components_flood_fill = False
 
+    stats = {}
+
     @staticmethod
     def configure(config_file_name: str, args):
+
+        # https://docs.python.org/2/library/configparser.html
+        #     import configparser
+        #     config = configparser.ConfigParser()
+        #     config.read("config.txt")
+        #     cf = config['settings']
+        #     sc = cf['save_clusters']
+        #     print()
 
         feature_descriptors_str_map = {
             "SIFT": cv.SIFT_create(),
@@ -116,6 +140,10 @@ class Pipeline:
 
                 if k == "scene_name":
                     pipeline.scene_name = v
+                elif k == "permutation_limit":
+                    pipeline.permutation_limit = int(v)
+                elif k == "method":
+                    pipeline.method = v
                 elif k == "scene_type":
                     pipeline.scene_type = v
                 elif k == "file_name_suffix":
@@ -300,13 +328,22 @@ class Pipeline:
             Timer.start_check_point("processing img from scratch")
 
             depth_data_file_name = "{}.npy".format(img_name)
-            normals = compute_only_normals(focal_length, orig_height, orig_width, self.depth_input_dir, depth_data_file_name)
+            normals, _ = compute_only_normals(focal_length,
+                                                 orig_height,
+                                                 orig_width,
+                                                 self.depth_input_dir,
+                                                 depth_data_file_name)
             filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
 
             sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
             show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
             normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask)
+
+            degrees_list = get_degrees_between_normals(normals_clusters_repr)
+            if not self.stats.keys().__contains__("normals_degrees"):
+                self.stats["normals_degrees"] = {}
+            self.stats["normals_degrees"][img_name] = degrees_list
 
             show_or_save_clusters(normals,
                                   normal_indices,
@@ -386,13 +423,126 @@ class Pipeline:
             Timer.end_check_point("processing img")
             return img_data
 
+    def compute_img_normals(self, img, img_name):
+
+        Timer.start_check_point("processing img", img_name)
+
+        # get focal_length
+        orig_height = img.shape[0]
+        orig_width = img.shape[1]
+        if self.estimate_k:
+            focal_length = (orig_width + orig_height) * self.focal_point_mean_factor
+        else:
+            real_K = self.scene_info.get_img_K(img_name)
+            focal_length = real_K[0, 0]
+            assert abs(real_K[0, 2] * 2 - orig_width) < 0.5
+            assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
+
+        depth_data_file_name = "{}.npy".format(img_name)
+        normals, s_values = compute_only_normals(focal_length,
+                                             orig_height,
+                                             orig_width,
+                                             self.depth_input_dir,
+                                             depth_data_file_name)
+
+        filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+
+        for singular_value_hist_ratio in [0.4, 0.6, 0.8, 1.0]:
+
+            for angle_distance_threshold_degrees in [10, 15, 20, 25, 30]:
+
+                print("Params: {}, {}".format(singular_value_hist_ratio, angle_distance_threshold_degrees))
+
+                Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
+                Clustering.recompute(math.sqrt(singular_value_hist_ratio))
+                #Clustering.points_threshold_ratio = 0.001
+
+                smallest_singular_values = s_values[:, :, 2]
+                w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
+                smallest_singular_values = smallest_singular_values.reshape(w * h)
+                sorted, indices = torch.sort(smallest_singular_values)
+
+                mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
+                mask[indices[:(int(indices.shape[0] * singular_value_hist_ratio))]] = True
+                mask = mask.reshape(w, h).numpy()
+
+                img_processing_dir = "{}/imgs".format(self.output_dir)
+                sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
+                show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
+                show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False)
+                show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False)
+
+                normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask & mask)
+
+                sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
+                indices = np.argsort(-sums)
+                normals_clusters_repr_sorted = normals_clusters_repr[indices]
+
+                degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
+                if not self.stats.keys().__contains__("normals_degrees"):
+                    self.stats["normals_degrees"] = {}
+
+                params_key = "{}_{}".format(singular_value_hist_ratio, angle_distance_threshold_degrees)
+                if not self.stats["normals_degrees"].__contains__(params_key):
+                    self.stats["normals_degrees"][params_key] = {}
+                self.stats["normals_degrees"][params_key][img_name] = degrees_list
+
+                show_or_save_clusters(normals,
+                                      normal_indices,
+                                      normals_clusters_repr,
+                                      img_processing_dir,
+                                      depth_data_file_name,
+                                      show=self.show_clusters,
+                                      save=self.save_clusters)
+
     def run_sequential_pipeline(self):
 
         self.start()
 
         file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
-        for depth_data_file_name in file_names:
+        for depth_data_file_name in file_names[0:1]:
             self.process_image(depth_data_file_name[:-4])
+
+        stats_file_name = "{}/stats_deg.pkl".format(self.output_dir)
+        with open(stats_file_name, "wb") as f:
+            pickle.dump(self.stats, f)
+            print("stats saved")
+
+    def show_and_read_img(self, img_name):
+        img_file_path = self.scene_info.get_img_file_path(img_name)
+        img = cv.imread(img_file_path, None)
+        if self.show_input_img:
+            plt.figure(figsize=(9, 9))
+            plt.title(img_name)
+            plt.imshow(img)
+            show_or_close(True)
+        return img
+
+    def run(self):
+        if self.method == "compute_normals":
+            self.run_sequential_for_normals()
+        elif self.method == "run_sequential_pipeline":
+            self.run_sequential_pipeline()
+        elif self.method == "run_matching_pipeline":
+            self.run_matching_pipeline()
+        else:
+            print("incorrect value of '{}' for method. Choose one from 'compute_normals', 'run_sequential_pipeline' or 'run_matching_pipeline'".format(self.method))
+
+    def run_sequential_for_normals(self):
+
+        self.start()
+
+        file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
+        file_names_permuted = [file_names[two_hundred_permutation[i]] for i in range(self.permutation_limit)]
+        for depth_data_file_name in file_names_permuted:
+            img_name = depth_data_file_name[:-4]
+            img = self.show_and_read_img(img_name)
+            self.compute_img_normals(img, img_name)
+
+        file_name = "{}/stats_general_{}.pkl".format(self.output_dir, get_tmsp())
+        with open(file_name, "wb") as f:
+            pickle.dump(self.stats, f)
+            print("stats saved")
 
     def run_matching_pipeline(self):
 
@@ -536,12 +686,16 @@ class Pipeline:
         evaluate_all(stats_map, n_worst_examples=None)
 
 
+def get_tmsp():
+    now = datetime.now()
+    return now.strftime("%Y_%m_%d_%H_%M_%S_%f")
+
+
 def append_all(pipeline, str):
     use_degensac = "DEGENSAC" if pipeline.use_degensac else "RANSAC"
     estimate_K = "estimatedK" if pipeline.estimate_k else "GTK"
     rectified = "rectified" if pipeline.rectify else "unrectified"
-    now = datetime.now()
-    timestamp = now.strftime("%Y_%m_%d_%H_%M_%S_%f")
+    timestamp = get_tmsp()
     return "{}_{}_{}_{}_{}_{}_{}".format(str, pipeline.scene_type, pipeline.scene_name.replace("/", "_"), use_degensac, estimate_K, rectified, timestamp)
 
 
@@ -554,7 +708,7 @@ def main():
     Timer.start()
 
     pipeline = Pipeline.configure("config.txt", args)
-    pipeline.run_matching_pipeline()
+    pipeline.run()
 
     Timer.end()
 

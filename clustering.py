@@ -9,13 +9,14 @@ def assert_almost_equal(one, two):
 
 class Clustering:
 
+    # primary params
     N_points = 300
-    angle_distance_threshold_degrees = 30
-
+    angle_distance_threshold_degrees = 15
     angle_distance_threshold = angle_distance_threshold_degrees * math.pi / 180
+    distance_intra_cluster_threshold_factor = 2.5
+
     distance_threshold = math.sin(angle_distance_threshold / 2) * 2
 
-    distance_intra_cluster_threshold_factor = 2.5
     angle_distance_intra_cluster_threshold_degrees = angle_distance_threshold_degrees * distance_intra_cluster_threshold_factor
     angle_distance_intra_cluster_threshold = angle_distance_intra_cluster_threshold_degrees * math.pi / 180
     distance_intra_cluster_threshold = math.sin(angle_distance_intra_cluster_threshold / 2) * 2
@@ -23,8 +24,27 @@ class Clustering:
     assert_almost_equal(angle_distance_threshold, math.asin(distance_threshold / 2) * 2)
     assert_almost_equal(angle_distance_intra_cluster_threshold, math.asin(distance_intra_cluster_threshold / 2) * 2)
 
-    #points_threshold_ratio = 20000 / (512 * 288)
-    points_threshold_ratio = 0.13
+    #points_threshold_ratio = 0.13
+    points_threshold_ratio = 0.13 * (15 / angle_distance_threshold_degrees) ** 2
+
+
+    @staticmethod
+    def recompute(points_threshold_ratio_factor):
+
+        Clustering.angle_distance_threshold = Clustering.angle_distance_threshold_degrees * math.pi / 180
+        Clustering.distance_threshold = math.sin(Clustering.angle_distance_threshold / 2) * 2
+
+        Clustering.angle_distance_intra_cluster_threshold_degrees = Clustering.angle_distance_threshold_degrees * Clustering.distance_intra_cluster_threshold_factor
+        Clustering.angle_distance_intra_cluster_threshold = Clustering.angle_distance_intra_cluster_threshold_degrees * math.pi / 180
+        Clustering.distance_intra_cluster_threshold = math.sin(Clustering.angle_distance_intra_cluster_threshold / 2) * 2
+
+        assert_almost_equal(Clustering.angle_distance_threshold, math.asin(Clustering.distance_threshold / 2) * 2)
+        assert_almost_equal(Clustering.angle_distance_intra_cluster_threshold, math.asin(Clustering.distance_intra_cluster_threshold / 2) * 2)
+
+        # magic formula
+        Clustering.points_threshold_ratio = 0.13 * (Clustering.angle_distance_threshold_degrees / 30) ** 1 * points_threshold_ratio_factor
+        print("Recomputed")
+        Clustering.log()
 
     @staticmethod
     def log():

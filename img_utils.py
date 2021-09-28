@@ -31,6 +31,19 @@ def show_or_close(show):
         plt.close()
 
 
+def get_degrees_between_normals(normals):
+
+    size = normals.shape[0]
+    degrees = []
+    for i in range(size - 1):
+        for j in range(i + 1, size):
+            x = normals[i] / np.linalg.norm(normals[i])
+            y = normals[j] / np.linalg.norm(normals[j])
+            degrees.append(math.acos(np.dot(x, y)) * 180 / math.pi)
+    degrees = sorted(degrees)
+    return degrees
+
+
 def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices, show, save, out_dir, img_name):
 
     if not show and not save:
@@ -42,7 +55,11 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
     #plt.close()
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    plt.title("Normals clustering: {}".format(img_name))
+    degrees_list = get_degrees_between_normals(clustered_normals)
+    title = "Normals clustering: {}".format(img_name)
+    if len(degrees_list) > 0:
+        title = title + "\n degrees: {}".format(",\n".join([str(s) for s in degrees_list]))
+    plt.title(title)
 
     ax.set_xlabel("x")
     ax.set_ylabel("z")
