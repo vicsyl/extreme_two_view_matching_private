@@ -490,8 +490,8 @@ class Pipeline:
                         indices = np.argsort(-sums)
 
                         # then delete the previous two lines - or just debug this
-                        for i in len(indices):
-                            assert i == indices[i]
+                        # for i in len(indices):
+                        #     assert i == indices[i]
 
                         normals_clusters_repr_sorted = normals_clusters_repr[indices]
 
