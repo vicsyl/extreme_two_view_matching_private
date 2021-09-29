@@ -439,17 +439,19 @@ class Pipeline:
             assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
 
         depth_data_file_name = "{}.npy".format(img_name)
-        normals, s_values = compute_only_normals(focal_length,
-                                             orig_height,
-                                             orig_width,
-                                             self.depth_input_dir,
-                                             depth_data_file_name)
 
-        filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+        for simple_weighing in [True, False]:
 
-        for sigma in [0.8, 1.2, 1.6]:
+            normals, s_values = compute_only_normals(focal_length,
+                                                 orig_height,
+                                                 orig_width,
+                                                 self.depth_input_dir,
+                                                 depth_data_file_name,
+                                                 simple_weighing)
 
-            for simple_weighing in [True, False]:
+            filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+
+            for sigma in [0.8, 1.2, 1.6]:
 
                 for singular_value_hist_ratio in [0.6, 0.8, 1.0]:
 
@@ -460,7 +462,7 @@ class Pipeline:
 
                         Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
                         Clustering.recompute(math.sqrt(singular_value_hist_ratio))
-                        Config.svd_smoothing_sigma = sigma
+                        Config.svd_weighted_sigma = sigma
 
                         smallest_singular_values = s_values[:, :, 2]
                         w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]

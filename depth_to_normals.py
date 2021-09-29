@@ -256,10 +256,11 @@ def compute_only_normals(
         orig_height,
         orig_width,
         depth_data_read_directory,
-        depth_data_file_name):
+        depth_data_file_name,
+        simple_weighing=False):
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
-    normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data)
+    normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, simple_weighing)
     return normals, s_values
 
 
