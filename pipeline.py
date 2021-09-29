@@ -335,7 +335,8 @@ class Pipeline:
                                                  orig_height,
                                                  orig_width,
                                                  self.depth_input_dir,
-                                                 depth_data_file_name)
+                                                 depth_data_file_name,
+                                                 simple_weighing=True)
 
             filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
 
@@ -490,7 +491,7 @@ class Pipeline:
                         indices = np.argsort(-sums)
 
                         # then delete the previous two lines - or just debug this
-                        # for i in len(indices):
+                        # for i in range(len(indices)):
                         #     assert i == indices[i]
 
                         normals_clusters_repr_sorted = normals_clusters_repr[indices]

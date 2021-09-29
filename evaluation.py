@@ -261,6 +261,10 @@ class ImageSerializedData:
 
 @dataclass
 class Stats:
+
+    inliers_against_gt: (int, int, int)
+    tentatives_1: (float, float)
+    tentatives_2: (float, float)
     error_R: float
     error_T: float
     tentative_matches: int
@@ -296,14 +300,19 @@ def evaluate_matching(scene_info,
     print("Number of inliers: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
     print("Number of outliers: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
 
-    src_tentative, dst_tentative = split_points(tentative_matches, kps1, kps2)
-    src_pts_inliers = src_tentative[inlier_mask[:, 0] == [1]]
-    dst_pts_inliers = dst_tentative[inlier_mask[:, 0] == [1]]
+    src_tentatives_2d, dst_tentatives_2d = split_points(tentative_matches, kps1, kps2)
+    src_pts_inliers = src_tentatives_2d[inlier_mask[:, 0] == [1]]
+    dst_pts_inliers = dst_tentatives_2d[inlier_mask[:, 0] == [1]]
 
     error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
-    stats = Stats(error_R=error_R,
+    inliers_against_gt = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, src_tentatives_2d, dst_tentatives_2d, [0.5, 1, 2])
+
+    stats = Stats(inliers_against_gt=inliers_against_gt,
+                  tentatives_1=src_tentatives_2d,
+                  tentatives_2=dst_tentatives_2d,
+                  error_R=error_R,
                   error_T=error_T,
                   tentative_matches=len(tentative_matches),
                   inliers=inliers,
@@ -427,35 +436,40 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     # input: img pair -> imgs -> T1/2, R1/2 -> ground truth F
     # input: tentatives (src, dst)
 
-    img_entry_1: ImageEntry = scene_info.img_info_map[img_pair.img1]
-    T1 = np.array(img_entry_1.t)
-    R1 = img_entry_1.R
-    K1 = scene_info.get_img_K(img_pair.img1)
-    # TODO we use the real K here, right?
-    K1_inv = np.linalg.inv(K1)
-    src_tentative = np.ndarray((src_tentatives_2d.shape[0], 3))
-    src_tentative[:, :2] = src_tentatives_2d
-    src_tentative[:, 2] = 1.0
+    def get_T_R_K_inv(img_key):
+        img_entry: ImageEntry = scene_info.img_info_map[img_key]
+        T = np.array(img_entry.t)
+        R = img_entry.R
+        # TODO we use the real K here, right?
+        K = scene_info.get_img_K(img_key)
+        K_inv = np.linalg.inv(K)
+        return T, R, K_inv
 
-    img_entry_2: ImageEntry = scene_info.img_info_map[img_pair.img2]
-    T2 = np.array(img_entry_2.t)
-    R2 = img_entry_2.R
-    K2 = scene_info.get_img_K(img_pair.img2)
-    K2_inv = np.linalg.inv(K2)
-    dst_tentative = np.ndarray((dst_tentatives_2d.shape[0], 3))
-    dst_tentative[:, :2] = dst_tentatives_2d
-    dst_tentative[:, 2] = 1.0
+    T1, R1, K1_inv = get_T_R_K_inv(img_pair.img1)
+    src_tentative_h = np.ndarray((src_tentatives_2d.shape[0], 3))
+    src_tentative_h[:, :2] = src_tentatives_2d
+    src_tentative_h[:, 2] = 1.0
+
+    T2, R2, K2_inv = get_T_R_K_inv(img_pair.img2)
+    dst_tentative_h = np.ndarray((dst_tentatives_2d.shape[0], 3))
+    dst_tentative_h[:, :2] = dst_tentatives_2d
+    dst_tentative_h[:, 2] = 1.0
 
     F_ground_truth = K2_inv.T @ R2 @ vector_product_matrix(T2 - T1) @ R1.T @ K1_inv
-    F_x1 = F_ground_truth @ src_tentative.T
-    x2_F_x1 = dst_tentative[:, 0] * F_x1[0] + dst_tentative[:, 1] * F_x1[1] + dst_tentative[:, 2] * F_x1[2]
+    F_x1 = F_ground_truth @ src_tentative_h.T
+    x2_F_x1 = dst_tentative_h[:, 0] * F_x1[0] + dst_tentative_h[:, 1] * F_x1[1] + dst_tentative_h[:, 2] * F_x1[2]
 
-    checks = np.zeros(3)
-    checks[0] = np.sum(np.abs(x2_F_x1) < thresholds[0])
-    checks[1] = np.sum(np.abs(x2_F_x1) < thresholds[1])
-    checks[2] = np.sum(np.abs(x2_F_x1) < thresholds[2])
+    # this works but Idk if it's better than the two lines above
+    # x2_F_x1_check0 = dst_tentative_h.T * F_x1
+    # x2_F_x1_check1 = np.sum(x2_F_x1_check0, axis=0)
 
-    #hist = np.histogram(np.abs(x2_F_x1), bins=100)
+    x2_F = dst_tentative_h @ F_ground_truth
+    samson_factor = 1 / np.sqrt(np.linalg.norm(F_x1 * F_x1, axis=0) ** 2 + np.linalg.norm(x2_F * x2_F, axis=1) ** 2)
+    x2_F_x1 = x2_F_x1 * samson_factor
+
+    checks = np.zeros(len(thresholds), dtype=int)
+    for i in range(len(thresholds)):
+        checks[i] = np.sum(np.abs(x2_F_x1) < thresholds[i])
 
     return checks
 

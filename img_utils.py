@@ -2,6 +2,7 @@ import math
 import time
 
 import matplotlib.pyplot as plt
+import cv2 as cv
 import numpy as np
 
 
@@ -29,6 +30,16 @@ def show_or_close(show):
         plt.show(block=False)
     else:
         plt.close()
+
+
+def show_imgs(img_paths):
+    for img_path in img_paths:
+        img_name = img_path.split('/')[-1]
+        img = cv.imread(img_path, None)
+        plt.figure(figsize=(9, 9))
+        plt.title(img_name)
+        plt.imshow(img)
+        show_or_close(True)
 
 
 def get_degrees_between_normals(normals):
