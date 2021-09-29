@@ -447,66 +447,66 @@ class Pipeline:
 
         filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
 
-        for singular_value_hist_ratio in [0.4, 0.6, 0.8, 1.0]:
+        for sigma in [0.8, 1.2, 1.6]:
 
-            for angle_distance_threshold_degrees in [10, 15, 20, 25, 30]:
+            for simple_weighing in [True, False]:
 
-                print("Params: {}, {}".format(singular_value_hist_ratio, angle_distance_threshold_degrees))
+                for singular_value_hist_ratio in [0.6, 0.8, 1.0]:
 
-                Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
-                Clustering.recompute(math.sqrt(singular_value_hist_ratio))
-                #Clustering.points_threshold_ratio = 0.001
+                    for angle_distance_threshold_degrees in [20, 25]:
 
-                smallest_singular_values = s_values[:, :, 2]
-                w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
-                smallest_singular_values = smallest_singular_values.reshape(w * h)
-                sorted, indices = torch.sort(smallest_singular_values)
+                        sw_str = "sw" if simple_weighing else "no_sw"
+                        print("Params: s_value_hist_ratio: {}, angle_distance_threshold_degrees: {}, sigma: {}, {}".format(singular_value_hist_ratio, angle_distance_threshold_degrees, sigma, sw_str))
 
-                mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
-                mask[indices[:(int(indices.shape[0] * singular_value_hist_ratio))]] = True
-                mask = mask.reshape(w, h).numpy()
+                        Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
+                        Clustering.recompute(math.sqrt(singular_value_hist_ratio))
+                        Config.svd_smoothing_sigma = sigma
 
-                img_processing_dir = "{}/imgs".format(self.output_dir)
-                sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
-                show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
-                show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False)
-                show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False)
+                        smallest_singular_values = s_values[:, :, 2]
+                        w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
+                        smallest_singular_values = smallest_singular_values.reshape(w * h)
+                        sorted, indices = torch.sort(smallest_singular_values)
 
-                normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask & mask)
+                        mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
+                        mask[indices[:(int(indices.shape[0] * singular_value_hist_ratio))]] = True
+                        mask = mask.reshape(w, h).numpy()
 
-                sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
-                indices = np.argsort(-sums)
-                normals_clusters_repr_sorted = normals_clusters_repr[indices]
+                        img_processing_dir = "{}/imgs".format(self.output_dir)
+                        sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
+                        show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
+                        show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False)
+                        show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False)
 
-                degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
-                if not self.stats.keys().__contains__("normals_degrees"):
-                    self.stats["normals_degrees"] = {}
+                        normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask & mask)
 
-                params_key = "{}_{}".format(singular_value_hist_ratio, angle_distance_threshold_degrees)
-                if not self.stats["normals_degrees"].__contains__(params_key):
-                    self.stats["normals_degrees"][params_key] = {}
-                self.stats["normals_degrees"][params_key][img_name] = degrees_list
+                        sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
+                        indices = np.argsort(-sums)
+                        normals_clusters_repr_sorted = normals_clusters_repr[indices]
 
-                show_or_save_clusters(normals,
-                                      normal_indices,
-                                      normals_clusters_repr,
-                                      img_processing_dir,
-                                      depth_data_file_name,
-                                      show=self.show_clusters,
-                                      save=self.save_clusters)
+                        degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
+                        if not self.stats.keys().__contains__("normals_degrees"):
+                            self.stats["normals_degrees"] = {}
+
+                        params_key = "{}_{}_{}_{}".format(singular_value_hist_ratio, angle_distance_threshold_degrees, sigma, sw_str)
+                        if not self.stats["normals_degrees"].__contains__(params_key):
+                            self.stats["normals_degrees"][params_key] = {}
+                        self.stats["normals_degrees"][params_key][img_name] = degrees_list
+
+                        show_or_save_clusters(normals,
+                                              normal_indices,
+                                              normals_clusters_repr,
+                                              img_processing_dir,
+                                              depth_data_file_name,
+                                              show=self.show_clusters,
+                                              save=self.save_clusters)
 
     def run_sequential_pipeline(self):
 
         self.start()
 
         file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
-        for depth_data_file_name in file_names[0:1]:
+        for depth_data_file_name in file_names:
             self.process_image(depth_data_file_name[:-4])
-
-        stats_file_name = "{}/stats_deg.pkl".format(self.output_dir)
-        with open(stats_file_name, "wb") as f:
-            pickle.dump(self.stats, f)
-            print("stats saved")
 
     def show_and_read_img(self, img_name):
         img_file_path = self.scene_info.get_img_file_path(img_name)

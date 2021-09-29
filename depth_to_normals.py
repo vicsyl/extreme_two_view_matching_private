@@ -353,7 +353,8 @@ def compute_normals_from_svd(
         focal_length,
         orig_height,
         orig_width,
-        depth_data
+        depth_data,
+        simple_weighing=False
 ):
 
     window_size = 5
@@ -423,9 +424,12 @@ def compute_normals_from_svd(
         # https://www.cs.auckland.ac.nz/courses/compsci369s1c/lectures/GG-notes/CS369-LeastSquares.pdf
         # slides 29 and 36
         w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
-        #c2 = centered.transpose(-2, -1) @ w_diag @ centered
-        # possible modification: possibly a better weighing
-        c2 = w_diag @ centered
+        if simple_weighing:
+            # possible modification: possibly a better weighing
+            c2 = w_diag @ centered
+        else:
+            c2 = centered.transpose(-2, -1) @ w_diag @ centered
+
         U, s_values, V = torch.svd(c2)
     else:
         U, s_values, V = torch.svd(centered)
