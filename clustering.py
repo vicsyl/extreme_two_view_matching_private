@@ -6,12 +6,14 @@ from utils import Timer
 def assert_almost_equal(one, two):
     assert math.fabs(one - two) < 0.000001
 
+def recompute_points_threshold_ratio(angle_distance_threshold_degrees, points_threshold_ratio_factor=1.0):
+    return 0.13 * (angle_distance_threshold_degrees / 30) * points_threshold_ratio_factor
 
 class Clustering:
 
     # primary params
     N_points = 300
-    angle_distance_threshold_degrees = 15
+    angle_distance_threshold_degrees = 30
     angle_distance_threshold = angle_distance_threshold_degrees * math.pi / 180
     distance_intra_cluster_threshold_factor = 2.5
 
@@ -25,8 +27,7 @@ class Clustering:
     assert_almost_equal(angle_distance_intra_cluster_threshold, math.asin(distance_intra_cluster_threshold / 2) * 2)
 
     #points_threshold_ratio = 0.13
-    points_threshold_ratio = 0.13 * (15 / angle_distance_threshold_degrees) ** 2
-
+    points_threshold_ratio = recompute_points_threshold_ratio(angle_distance_threshold_degrees, points_threshold_ratio_factor=1.0)
 
     @staticmethod
     def recompute(points_threshold_ratio_factor):
@@ -42,7 +43,7 @@ class Clustering:
         assert_almost_equal(Clustering.angle_distance_intra_cluster_threshold, math.asin(Clustering.distance_intra_cluster_threshold / 2) * 2)
 
         # magic formula
-        Clustering.points_threshold_ratio = 0.13 * (Clustering.angle_distance_threshold_degrees / 30) ** 1 * points_threshold_ratio_factor
+        Clustering.points_threshold_ratio = recompute_points_threshold_ratio(Clustering.angle_distance_threshold_degrees, points_threshold_ratio_factor)
         print("Recomputed")
         Clustering.log()
 

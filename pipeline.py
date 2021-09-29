@@ -8,6 +8,7 @@ import pickle
 import traceback
 import sys
 
+import numpy as np
 import torch
 import argparse
 
@@ -268,8 +269,10 @@ class Pipeline:
         Config.log()
         Clustering.log()
 
-
     def process_image(self, img_name):
+
+        if not self.stats.keys().__contains__("imgs_data"):
+            self.stats["imgs_data"] = {}
 
         Timer.start_check_point("processing img")
         print("Processing: {}".format(img_name))
@@ -333,6 +336,7 @@ class Pipeline:
                                                  orig_width,
                                                  self.depth_input_dir,
                                                  depth_data_file_name)
+
             filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
 
             sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
@@ -341,9 +345,9 @@ class Pipeline:
             normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask)
 
             degrees_list = get_degrees_between_normals(normals_clusters_repr)
-            if not self.stats.keys().__contains__("normals_degrees"):
-                self.stats["normals_degrees"] = {}
-            self.stats["normals_degrees"][img_name] = degrees_list
+            if not self.stats["imgs_data"].__contains__(img_name):
+                self.stats["imgs_data"][img_name] = {}
+            self.stats["imgs_data"][img_name]["deg_between_normals"] = degrees_list
 
             show_or_save_clusters(normals,
                                   normal_indices,
@@ -442,16 +446,18 @@ class Pipeline:
 
         for simple_weighing in [True, False]:
 
-            normals, s_values = compute_only_normals(focal_length,
-                                                 orig_height,
-                                                 orig_width,
-                                                 self.depth_input_dir,
-                                                 depth_data_file_name,
-                                                 simple_weighing)
-
-            filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
-
             for sigma in [0.8, 1.2, 1.6]:
+
+                Config.svd_weighted_sigma = sigma
+
+                normals, s_values = compute_only_normals(focal_length,
+                                                         orig_height,
+                                                         orig_width,
+                                                         self.depth_input_dir,
+                                                         depth_data_file_name,
+                                                         simple_weighing)
+
+                filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
 
                 for singular_value_hist_ratio in [0.6, 0.8, 1.0]:
 
@@ -462,7 +468,6 @@ class Pipeline:
 
                         Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
                         Clustering.recompute(math.sqrt(singular_value_hist_ratio))
-                        Config.svd_weighted_sigma = sigma
 
                         smallest_singular_values = s_values[:, :, 2]
                         w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
@@ -483,6 +488,11 @@ class Pipeline:
 
                         sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
                         indices = np.argsort(-sums)
+
+                        # then delete the previous two lines - or just debug this
+                        for i in len(indices):
+                            assert i == indices[i]
+
                         normals_clusters_repr_sorted = normals_clusters_repr[indices]
 
                         degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
@@ -509,6 +519,8 @@ class Pipeline:
         file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
         for depth_data_file_name in file_names:
             self.process_image(depth_data_file_name[:-4])
+
+        self.save_stats("sequential")
 
     def show_and_read_img(self, img_name):
         img_file_path = self.scene_info.get_img_file_path(img_name)
@@ -541,10 +553,7 @@ class Pipeline:
             img = self.show_and_read_img(img_name)
             self.compute_img_normals(img, img_name)
 
-        file_name = "{}/stats_general_{}.pkl".format(self.output_dir, get_tmsp())
-        with open(file_name, "wb") as f:
-            pickle.dump(self.stats, f)
-            print("stats saved")
+        self.save_stats("normals")
 
     def run_matching_pipeline(self):
 
@@ -684,8 +693,15 @@ class Pipeline:
         with open(all_stats_file_name, "wb") as f:
             pickle.dump(stats_map, f)
 
+        self.save_stats("matching")
         self.log()
         evaluate_all(stats_map, n_worst_examples=None)
+
+    def save_stats(self, key):
+        file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())
+        with open(file_name, "wb") as f:
+            pickle.dump(self.stats, f)
+            print("stats saved")
 
 
 def get_tmsp():
