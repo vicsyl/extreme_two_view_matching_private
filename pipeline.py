@@ -555,6 +555,7 @@ class Pipeline:
             self.compute_img_normals(img, img_name)
 
         self.save_stats("normals")
+        evaluate_normals(self.stats)
 
     def run_matching_pipeline(self):
 

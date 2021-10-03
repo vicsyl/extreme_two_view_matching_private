@@ -1,6 +1,10 @@
 import numpy as np
 
+import kornia.geometry.epipolar
 import argparse
+
+import torch
+
 from scene_info import *
 from utils import quaternions_to_R
 import cv2 as cv
@@ -307,7 +311,7 @@ def evaluate_matching(scene_info,
     error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
-    inliers_against_gt = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, src_tentatives_2d, dst_tentatives_2d, [0.5, 1, 2])
+    inliers_against_gt = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, src_tentatives_2d, dst_tentatives_2d, [0.5, 1, 2], E)
 
     stats = Stats(inliers_against_gt=inliers_against_gt,
                   tentatives_1=src_tentatives_2d,
@@ -431,7 +435,7 @@ def vector_product_matrix(vec: np.ndarray):
     ])
 
 
-def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: ImagePairEntry, src_tentatives_2d, dst_tentatives_2d, thresholds):
+def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: ImagePairEntry, src_tentatives_2d, dst_tentatives_2d, thresholds, computed_E):
 
     # input: img pair -> imgs -> T1/2, R1/2 -> ground truth F
     # input: tentatives (src, dst)
@@ -443,33 +447,60 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
         # TODO we use the real K here, right?
         K = scene_info.get_img_K(img_key)
         K_inv = np.linalg.inv(K)
-        return T, R, K_inv
+        return T, R, K_inv, K
 
-    T1, R1, K1_inv = get_T_R_K_inv(img_pair.img1)
+    T1, R1, K1_inv, K1 = get_T_R_K_inv(img_pair.img1)
     src_tentative_h = np.ndarray((src_tentatives_2d.shape[0], 3))
     src_tentative_h[:, :2] = src_tentatives_2d
     src_tentative_h[:, 2] = 1.0
 
-    T2, R2, K2_inv = get_T_R_K_inv(img_pair.img2)
+    T2, R2, K2_inv, K2 = get_T_R_K_inv(img_pair.img2)
     dst_tentative_h = np.ndarray((dst_tentatives_2d.shape[0], 3))
     dst_tentative_h[:, :2] = dst_tentatives_2d
     dst_tentative_h[:, 2] = 1.0
 
     F_ground_truth = K2_inv.T @ R2 @ vector_product_matrix(T2 - T1) @ R1.T @ K1_inv
     F_x1 = F_ground_truth @ src_tentative_h.T
+
+    F_x1_h = F_x1 / F_x1[2]
+
     x2_F_x1 = dst_tentative_h[:, 0] * F_x1[0] + dst_tentative_h[:, 1] * F_x1[1] + dst_tentative_h[:, 2] * F_x1[2]
+    x2_F_x1_h = dst_tentative_h[:, 0] * F_x1_h[0] + dst_tentative_h[:, 1] * F_x1_h[1] + dst_tentative_h[:, 2] * F_x1_h[2]
 
     # this works but Idk if it's better than the two lines above
     # x2_F_x1_check0 = dst_tentative_h.T * F_x1
     # x2_F_x1_check1 = np.sum(x2_F_x1_check0, axis=0)
 
+    # try kornia or cv check (symmetric epipolar distance)
+    # double check if dst_tentative_h/src_tentative_h
+
     x2_F = dst_tentative_h @ F_ground_truth
+    x2_F_h = (x2_F.T / x2_F[:, 2].T).T
+
     samson_factor = 1 / np.sqrt(np.linalg.norm(F_x1 * F_x1, axis=0) ** 2 + np.linalg.norm(x2_F * x2_F, axis=1) ** 2)
     x2_F_x1 = x2_F_x1 * samson_factor
 
+
+
+    F_torch = torch.from_numpy(F_ground_truth).unsqueeze(0)
+    src_pts_torch = torch.from_numpy(src_tentatives_2d).type(torch.DoubleTensor)
+    dst_pts_torch = torch.from_numpy(dst_tentatives_2d).type(torch.DoubleTensor)
+    kornia_dst = kornia.geometry.epipolar.sampson_epipolar_distance(src_pts_torch, dst_pts_torch, F_torch)
+
+    computed_F = kornia.geometry.fundamental_from_essential(torch.from_numpy(computed_E), torch.from_numpy(K1), torch.from_numpy(K2))
+    computed_F = computed_F.unsqueeze(0)
+    kornia_dst_computed = kornia.geometry.epipolar.sampson_epipolar_distance(src_pts_torch, dst_pts_torch, computed_F)
+
     checks = np.zeros(len(thresholds), dtype=int)
+    checks2 = np.zeros(len(thresholds), dtype=int)
+    checks3 = np.zeros(len(thresholds), dtype=int)
     for i in range(len(thresholds)):
         checks[i] = np.sum(np.abs(x2_F_x1) < thresholds[i])
+        checks2[i] = np.sum(np.abs(kornia_dst.numpy()) < thresholds[i])
+        checks3[i] = np.sum(np.abs(kornia_dst_computed.numpy()) < thresholds[i])
+
+    print("checks1:{}".format(checks))
+    print("checks2:{}".format(checks2))
 
     return checks
 
@@ -766,6 +797,24 @@ def evaluate_file(scene_name, file_name):
 #     print("All done")
 #     end = time.time()
 #     print("Time elapsed: {}".format(end - start))
+
+def evaluate_normals(stats_map):
+
+    deg = stats_map['normals_degrees']
+    for k in deg:
+        count = 0
+        avg_l2 = 0.0
+        avg_l1 = 0.0
+        for img in deg[k]:
+            deg_list = deg[k][img]
+            if len(deg_list) > 0:
+                avg_l2 = avg_l2 + (90.0 - deg_list[0]) ** 2
+                avg_l1 = avg_l1 + math.fabs(90.0 - deg_list[0])
+                count = count + 1
+        if count > 0:
+            avg_l2 = avg_l2 / count
+            avg_l1 = avg_l1 / count
+        print("{} {:.3f} {:.3f} {}".format(k, math.sqrt(avg_l2), avg_l1, count))
 
 
 if __name__ == "__main__":
