@@ -76,7 +76,7 @@ def n_points_across_half_sphere(N):
     return points
 
 
-def cluster(normals: torch.Tensor, filter_mask):
+def cluster(normals: torch.Tensor, filter_mask, mean_shift_step=False):
 
     points_threshold = torch.prod(torch.tensor(normals.shape[:2])) * Clustering.points_threshold_ratio
 
@@ -119,7 +119,18 @@ def cluster(normals: torch.Tensor, filter_mask):
                 break
 
         if distance_ok:
-            cluster_centers.append(n_centers[index, 0, 0]) # .clone().unsqueeze(dim=0)
+
+            if mean_shift_step:
+                coords = torch.where(near_ones_per_cluster_center[index, :, :])
+                normals_to_mean = normals[coords[0], coords[1]]
+                cluster_center = normals_to_mean.sum(dim=0) / normals_to_mean.shape[0]
+                cluster_center = cluster_center / torch.norm(cluster_center)
+                scalar_product = cluster_center.T @ n_centers[index, 0, 0]
+                print("delta (mean vs. cluster center): {}".format(math.acos(scalar_product) / math.pi * 180))
+            else:
+                cluster_center = n_centers[index, 0, 0]
+
+            cluster_centers.append(cluster_center)
             points_list.append(points)
             arg_mins[near_ones_per_cluster_center[index]] = len(cluster_centers) - 1
 

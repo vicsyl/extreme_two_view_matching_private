@@ -204,7 +204,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         show_and_save_normal_clusters_3d(normals, cluster_repr_normal_np, normal_indices_np, show, save, out_dir, img_name)
 
 
-def cluster_normals(normals, filter_mask=None):
+def cluster_normals(normals, filter_mask=None, mean_shift_step=False):
 
     # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
@@ -219,7 +219,7 @@ def cluster_normals(normals, filter_mask=None):
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices = clustering.cluster(normals, filter_mask)
+    cluster_repr_normal, normal_indices = clustering.cluster(normals, filter_mask, mean_shift_step)
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
     cluster_repr_normal_np = cluster_repr_normal.numpy()
