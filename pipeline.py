@@ -467,6 +467,8 @@ class Pipeline:
                         for angle_distance_threshold_degrees in [20, 25]:
 
                             sw_str = "sw" if simple_weighing else "no_sw"
+                            ms_str = "ms" if mean_shift_step else "no_ms"
+
                             print("Params: s_value_hist_ratio: {}, angle_distance_threshold_degrees: {}, sigma: {}, {}".format(singular_value_hist_ratio, angle_distance_threshold_degrees, sigma, sw_str))
 
                             Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
@@ -502,7 +504,7 @@ class Pipeline:
                             if not self.stats.keys().__contains__("normals_degrees"):
                                 self.stats["normals_degrees"] = {}
 
-                            params_key = "{}_{}_{}_{}".format(singular_value_hist_ratio, angle_distance_threshold_degrees, sigma, sw_str)
+                            params_key = "{}_{}_{}_{}_{}".format(ms_str, singular_value_hist_ratio, angle_distance_threshold_degrees, sigma, sw_str)
                             if not self.stats["normals_degrees"].__contains__(params_key):
                                 self.stats["normals_degrees"][params_key] = {}
                             self.stats["normals_degrees"][params_key][img_name] = degrees_list
