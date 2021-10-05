@@ -6,41 +6,43 @@ from utils import Timer
 def assert_almost_equal(one, two):
     assert math.fabs(one - two) < 0.000001
 
+
 def recompute_points_threshold_ratio(angle_distance_threshold_degrees, points_threshold_ratio_factor=1.0):
     return 0.13 * (angle_distance_threshold_degrees / 30) * points_threshold_ratio_factor
+
+
+def from_degrees_to_dist(degrees, log_key, factor=1.0):
+    rads = factor * degrees * math.pi / 180
+    distance = math.sin(rads / 2) * 2
+    print("{}: degrees: {}, distance: {}".format(log_key, degrees, distance))
+    return distance
+
 
 class Clustering:
 
     # primary params
     N_points = 300
     angle_distance_threshold_degrees = 30
-    angle_distance_threshold = angle_distance_threshold_degrees * math.pi / 180
-    distance_intra_cluster_threshold_factor = 2.5
+    distance_threshold = from_degrees_to_dist(angle_distance_threshold_degrees, "bin angle")
+    distance_inter_cluster_threshold_factor = 2.5
+    distance_inter_cluster_threshold = from_degrees_to_dist(angle_distance_threshold_degrees, "seed inter cluster angle", distance_inter_cluster_threshold_factor)
 
-    distance_threshold = math.sin(angle_distance_threshold / 2) * 2
+    ms_kernel_max_distance = distance_threshold
+    ms_adjustment_th = 0.1
+    ms_max_iter = 100
+    ms_bandwidth = ms_kernel_max_distance / 2
+    ms_distance_inter_cluster_threshold_factor = 2
+    ms_distance_inter_cluster_threshold = from_degrees_to_dist(angle_distance_threshold_degrees, "mean shift seed inter cluster angle", ms_distance_inter_cluster_threshold_factor)
 
-    angle_distance_intra_cluster_threshold_degrees = angle_distance_threshold_degrees * distance_intra_cluster_threshold_factor
-    angle_distance_intra_cluster_threshold = angle_distance_intra_cluster_threshold_degrees * math.pi / 180
-    distance_intra_cluster_threshold = math.sin(angle_distance_intra_cluster_threshold / 2) * 2
-
-    assert_almost_equal(angle_distance_threshold, math.asin(distance_threshold / 2) * 2)
-    assert_almost_equal(angle_distance_intra_cluster_threshold, math.asin(distance_intra_cluster_threshold / 2) * 2)
-
-    #points_threshold_ratio = 0.13
+    # previous hard-coded value: 0.13
     points_threshold_ratio = recompute_points_threshold_ratio(angle_distance_threshold_degrees, points_threshold_ratio_factor=1.0)
 
     @staticmethod
     def recompute(points_threshold_ratio_factor):
 
-        Clustering.angle_distance_threshold = Clustering.angle_distance_threshold_degrees * math.pi / 180
-        Clustering.distance_threshold = math.sin(Clustering.angle_distance_threshold / 2) * 2
-
-        Clustering.angle_distance_intra_cluster_threshold_degrees = Clustering.angle_distance_threshold_degrees * Clustering.distance_intra_cluster_threshold_factor
-        Clustering.angle_distance_intra_cluster_threshold = Clustering.angle_distance_intra_cluster_threshold_degrees * math.pi / 180
-        Clustering.distance_intra_cluster_threshold = math.sin(Clustering.angle_distance_intra_cluster_threshold / 2) * 2
-
-        assert_almost_equal(Clustering.angle_distance_threshold, math.asin(Clustering.distance_threshold / 2) * 2)
-        assert_almost_equal(Clustering.angle_distance_intra_cluster_threshold, math.asin(Clustering.distance_intra_cluster_threshold / 2) * 2)
+        Clustering.distance_threshold = from_degrees_to_dist(Clustering.angle_distance_threshold_degrees, "bin angle")
+        Clustering.distance_inter_cluster_threshold = from_degrees_to_dist(Clustering.angle_distance_threshold_degrees, "seed inter cluster angle", Clustering.distance_inter_cluster_threshold_factor)
+        Clustering.ms_distance_inter_cluster_threshold = from_degrees_to_dist(Clustering.angle_distance_threshold_degrees, "mean shift seed inter cluster angle", Clustering.ms_distance_inter_cluster_threshold_factor)
 
         # magic formula
         Clustering.points_threshold_ratio = recompute_points_threshold_ratio(Clustering.angle_distance_threshold_degrees, points_threshold_ratio_factor)
@@ -50,17 +52,26 @@ class Clustering:
     @staticmethod
     def log():
         print("Clustering:")
-        print("\tangle_distance_threshold\t{} degrees".format(Clustering.angle_distance_threshold_degrees))
-        print("\tangle_distance_inter_cluster_threshold_degrees\t{}".format(Clustering.angle_distance_intra_cluster_threshold_degrees))
-        print("\tdistance_threshold\t{}".format(Clustering.distance_threshold))
-        print("\tdistance_inter_cluster_threshold\t{}".format(Clustering.distance_intra_cluster_threshold))
-        print("\tpoints_threshold_ratio\t{}".format(Clustering.points_threshold_ratio))
         print("\tN_points\t{}".format(Clustering.N_points))
+        print("\tangle_distance_threshold\t{} degrees".format(Clustering.angle_distance_threshold_degrees))
+        print("\tdistance_threshold\t{}".format(Clustering.distance_threshold))
+        print("\tdistance_inter_cluster_threshold_factor\t{}".format(Clustering.distance_inter_cluster_threshold_factor))
+        print("\tdistance_inter_cluster_threshold\t{}".format(Clustering.distance_inter_cluster_threshold))
+        print("\tms_kernel_max_distance\t{}".format(Clustering.ms_kernel_max_distance))
+        print("\tms_adjustment_th\t{}".format(Clustering.ms_adjustment_th))
+        print("\tms_max_iter\t{}".format(Clustering.ms_max_iter))
+        print("\tms_bandwidth\t{}".format(Clustering.ms_bandwidth))
+        print("\tms_distance_inter_cluster_threshold_factor\t{}".format(Clustering.ms_distance_inter_cluster_threshold_factor))
+        print("\tms_distance_inter_cluster_threshold\t{}".format(Clustering.ms_distance_inter_cluster_threshold))
+        print("\tpoints_threshold_ratio\t{}".format(Clustering.points_threshold_ratio))
 
 
 # https://web.archive.org/web/20120107030109/http://cgafaq.info/wiki/Evenly_distributed_points_on_sphere#Spirals
 def n_points_across_half_sphere(N):
-
+    """
+    :param N: number of points to distribute across a hemisphere
+    :return:
+    """
     s = 3.6 / math.sqrt(N)
     dz = 1.0 / N
     longitude = 0
@@ -76,7 +87,11 @@ def n_points_across_half_sphere(N):
     return points
 
 
-def cluster(normals: torch.Tensor, filter_mask, mean_shift_step=False):
+def angle_2_unit_vectors(v1, v2):
+    return math.acos(v1.T @ v2) / math.pi * 180
+
+
+def cluster(normals: torch.Tensor, filter_mask, mean_shift=None):
 
     points_threshold = torch.prod(torch.tensor(normals.shape[:2])) * Clustering.points_threshold_ratio
 
@@ -104,36 +119,91 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift_step=False):
     arg_mins = arg_mins.to(torch.int)
 
     max_clusters = 3
-    for index, points in zip(sortd[1], sortd[0]):
+    for center_index, points in zip(sortd[1], sortd[0]):
         if len(cluster_centers) >= max_clusters:
             break
         if points < points_threshold:
             break
 
-        distance_ok = True
-        for cluster_center in cluster_centers:
-            diff = n_centers[index, 0, 0] - cluster_center
-            diff_norm = torch.norm(diff)
-            if diff_norm < Clustering.distance_intra_cluster_threshold:
-                distance_ok = False
-                break
+        def is_distance_ok(new_center, threshold):
+            for cluster_center in cluster_centers:
+                diff = new_center - cluster_center
+                diff_norm = torch.norm(diff)
+                if diff_norm < threshold:
+                    return False
+            return True
+
+        if mean_shift == "full":
+            th = Clustering.ms_distance_inter_cluster_threshold
+        else:
+            th = Clustering.distance_inter_cluster_threshold
+
+        distance_ok = is_distance_ok(n_centers[center_index, 0, 0], th)
 
         if distance_ok:
-
-            if mean_shift_step:
-                coords = torch.where(near_ones_per_cluster_center[index, :, :])
+            if mean_shift is None:
+                cluster_center = n_centers[center_index, 0, 0]
+                cluster_centers.append(cluster_center)
+                arg_mins[near_ones_per_cluster_center[center_index]] = len(cluster_centers) - 1
+            elif mean_shift == "mean":
+                # near_ones_per_cluster_center needs recomputing
+                coords = torch.where(near_ones_per_cluster_center[center_index, :, :])
                 normals_to_mean = normals[coords[0], coords[1]]
+
+                # normals_to_mean conv with kernel + normalization (to norm == 1)
                 cluster_center = normals_to_mean.sum(dim=0) / normals_to_mean.shape[0]
                 cluster_center = cluster_center / torch.norm(cluster_center)
-                scalar_product = cluster_center.T @ n_centers[index, 0, 0]
-                print("delta (mean vs. cluster center): {}".format(math.acos(scalar_product) / math.pi * 180))
-            else:
-                cluster_center = n_centers[index, 0, 0]
 
-            cluster_centers.append(cluster_center)
-            points_list.append(points)
-            arg_mins[near_ones_per_cluster_center[index]] = len(cluster_centers) - 1
+                # just printing the shift
+                angle = angle_2_unit_vectors(cluster_center, n_centers[center_index, 0, 0])
+                print("delta (mean vs. cluster center): {} degrees".format(angle))
 
+                cluster_centers.append(cluster_center)
+                distances = torch.norm(cluster_center - normals, dim=2).expand(normals.shape[0], normals.shape[1])
+                neighborhood = torch.where(distances < Clustering.distance_threshold, 1, 0)
+                neighborhood = torch.logical_and(neighborhood, filter_mask)
+                coords = torch.where(neighborhood)
+                arg_mins[coords[0], coords[1]] = len(cluster_centers) - 1
+
+            elif mean_shift == "full":
+
+                cluster_center = n_centers[center_index, 0, 0]
+                orig_center = cluster_center
+
+                angle_diff = Clustering.ms_adjustment_th
+                for _ in range(Clustering.ms_max_iter):
+                    if angle_diff < Clustering.ms_adjustment_th:
+                        break
+
+                    distances = torch.norm(cluster_center - normals, dim=2).expand(normals.shape[0], normals.shape[1])
+
+                    neighborhood = torch.where(distances < Clustering.ms_kernel_max_distance, 1, 0)
+                    neighborhood = torch.logical_and(neighborhood, filter_mask)
+
+                    coords = torch.where(neighborhood)
+                    normals_for_shift = normals[coords[0], coords[1]]
+                    distances_squared = (distances[coords[0], coords[1]] / Clustering.ms_bandwidth) ** 2
+
+                    # normalization const. ignored (should be very close to 1 anyway)
+                    kernel_values = torch.exp(distances_squared * -0.5) * 0.5 / math.pi
+                    new_center = (normals_for_shift * kernel_values.expand(3, -1).permute(1, 0)).sum(dim=0) / kernel_values.sum()
+                    new_center = new_center / torch.norm(new_center)
+
+                    angle_diff = angle_2_unit_vectors(cluster_center, new_center)
+                    print("mode adjustment (iteration): {} degrees".format(angle_diff))
+                    angle_diff_overall = angle_2_unit_vectors(orig_center, new_center)
+                    print("mode adjustment (overall): {} degrees".format(angle_diff_overall))
+                    print("orig: {}, old: {}, new: {}".format(orig_center, cluster_center, new_center))
+                    cluster_center = new_center
+
+                distance_ok = is_distance_ok(cluster_center, Clustering.distance_inter_cluster_threshold)
+                if distance_ok:
+                    cluster_centers.append(cluster_center)
+                    distances = torch.norm(cluster_center - normals, dim=2).expand(normals.shape[0], normals.shape[1])
+                    neighborhood = torch.where(distances < Clustering.distance_threshold, 1, 0)
+                    neighborhood = torch.logical_and(neighborhood, filter_mask)
+                    coords = torch.where(neighborhood)
+                    arg_mins[coords[0], coords[1]] = len(cluster_centers) - 1
 
     if len(cluster_centers) == 1:
         cluster_centers = cluster_centers[0]

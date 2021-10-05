@@ -15,7 +15,7 @@ import argparse
 from config import Config
 from connected_components import get_connected_components, get_and_show_components
 from depth_to_normals import compute_only_normals
-from depth_to_normals import show_sky_mask, cluster_normals, show_or_save_clusters
+from depth_to_normals import show_sky_mask, cluster_normals, show_or_save_clusters, read_depth_data, compute_normals_from_svd
 from matching import match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from scene_info import SceneInfo
@@ -431,6 +431,7 @@ class Pipeline:
     def compute_img_normals(self, img, img_name):
 
         Timer.start_check_point("processing img", img_name)
+        print("processing img".format(img_name))
 
         # get focal_length
         orig_height = img.shape[0]
@@ -444,31 +445,35 @@ class Pipeline:
             assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
 
         depth_data_file_name = "{}.npy".format(img_name)
+        depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir)
+
+        img_processing_dir = "{}/imgs".format(self.output_dir)
+        sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
+        filter_mask = get_nonsky_mask(img, depth_data.shape[2], depth_data.shape[3])
+        show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
         for sigma in [0.8, 1.2, 1.6]:
 
             Config.svd_weighted_sigma = sigma
 
-            normals, s_values = compute_only_normals(focal_length,
-                                                     orig_height,
-                                                     orig_width,
-                                                     self.depth_input_dir,
-                                                     depth_data_file_name)
+            normals, s_values = compute_normals_from_svd(focal_length,
+                                                         orig_height,
+                                                         orig_width,
+                                                         depth_data,
+                                                         simple_weighing=True)
 
-            filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+            for mean_shift in ["full", "mean", None]:
 
-            for mean_shift_step in [True, False]:
-
-                for singular_value_hist_ratio in [0.6, 0.8, 1.0]:
+                for singular_value_quantil in [0.6, 0.8, 1.0]:
 
                     for angle_distance_threshold_degrees in [20, 25]:
 
-                        ms_str = "ms" if mean_shift_step else "no_ms"
+                        ms_str = "ms_{}".format(mean_shift)
 
-                        print("Params: s_value_hist_ratio: {}, angle_distance_threshold_degrees: {}, sigma: {}, mean shift step: {}".format(singular_value_hist_ratio, angle_distance_threshold_degrees, sigma, ms_str))
+                        print("Params: s_value_hist_ratio: {}, angle_distance_threshold_degrees: {}, sigma: {}, mean shift step: {}".format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str))
 
                         Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
-                        Clustering.recompute(math.sqrt(singular_value_hist_ratio))
+                        Clustering.recompute(math.sqrt(singular_value_quantil))
 
                         smallest_singular_values = s_values[:, :, 2]
                         w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
@@ -476,16 +481,14 @@ class Pipeline:
                         sorted, indices = torch.sort(smallest_singular_values)
 
                         mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
-                        mask[indices[:(int(indices.shape[0] * singular_value_hist_ratio))]] = True
+                        mask[indices[:(int(indices.shape[0] * singular_value_quantil))]] = True
                         mask = mask.reshape(w, h).numpy()
 
-                        img_processing_dir = "{}/imgs".format(self.output_dir)
-                        sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
-                        show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
-                        show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False)
-                        show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False)
+                        if singular_value_quantil != 1.0:
+                            show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
+                            show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
 
-                        normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask & mask, mean_shift_step=mean_shift_step)
+                        normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask & mask, mean_shift=mean_shift)
 
                         sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
                         indices = np.argsort(-sums)
@@ -500,7 +503,7 @@ class Pipeline:
                         if not self.stats.keys().__contains__("normals_degrees"):
                             self.stats["normals_degrees"] = {}
 
-                        params_key = "{}_{}_{}_{}".format(ms_str, singular_value_hist_ratio, angle_distance_threshold_degrees, sigma)
+                        params_key = "{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma)
                         if not self.stats["normals_degrees"].__contains__(params_key):
                             self.stats["normals_degrees"][params_key] = {}
                         self.stats["normals_degrees"][params_key][img_name] = degrees_list

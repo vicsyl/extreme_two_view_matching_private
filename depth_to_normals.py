@@ -204,7 +204,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         show_and_save_normal_clusters_3d(normals, cluster_repr_normal_np, normal_indices_np, show, save, out_dir, img_name)
 
 
-def cluster_normals(normals, filter_mask=None, mean_shift_step=False):
+def cluster_normals(normals, filter_mask=None, mean_shift=None):
 
     # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
@@ -219,7 +219,7 @@ def cluster_normals(normals, filter_mask=None, mean_shift_step=False):
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices = clustering.cluster(normals, filter_mask, mean_shift_step)
+    cluster_repr_normal, normal_indices = clustering.cluster(normals, filter_mask, mean_shift)
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
     cluster_repr_normal_np = cluster_repr_normal.numpy()
@@ -236,11 +236,13 @@ def get_file_names_from_dir(input_dir: str, limit: int, interesting_files: list,
         return get_file_names(input_dir, suffix, limit)
 
 
-def show_sky_mask(img, filter_mask, img_name, show, save=False, path=None):
+def show_sky_mask(img, filter_mask, img_name, show, save=False, path=None, title=None):
     if not save and not show:
         return
     fig = plt.figure(figsize=(9, 9))
-    plt.title("sky mask for {}".format(img_name))
+    if title is None:
+        title = "sky mask"
+    plt.title("{} for {}".format(title, img_name))
     plt.axis('off')
     ax = fig.add_subplot(121)
     ax.imshow(img)
@@ -257,7 +259,7 @@ def compute_only_normals(
         orig_width,
         depth_data_read_directory,
         depth_data_file_name,
-        simple_weighing=False):
+        simple_weighing=True):
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
     normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, simple_weighing)
@@ -355,7 +357,7 @@ def compute_normals_from_svd(
         orig_height,
         orig_width,
         depth_data,
-        simple_weighing=False
+        simple_weighing=True
 ):
 
     window_size = 5
