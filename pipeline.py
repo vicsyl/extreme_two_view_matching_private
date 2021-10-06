@@ -464,9 +464,9 @@ class Pipeline:
 
             for mean_shift in ["full", "mean", None]:
 
-                for singular_value_quantil in [0.6, 0.8, 1.0]:
+                for singular_value_quantil in [1.0, 0.8, 0.6]:
 
-                    for angle_distance_threshold_degrees in [20, 25]:
+                    for angle_distance_threshold_degrees in [20, 25, 30]:
 
                         ms_str = "ms_{}".format(mean_shift)
 
@@ -556,9 +556,9 @@ class Pipeline:
             img_name = depth_data_file_name[:-4]
             img = self.show_and_read_img(img_name)
             self.compute_img_normals(img, img_name)
+            evaluate_normals(self.stats)
 
         self.save_stats("normals")
-        evaluate_normals(self.stats)
 
     def run_matching_pipeline(self):
 
