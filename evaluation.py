@@ -801,20 +801,48 @@ def evaluate_file(scene_name, file_name):
 def evaluate_normals(stats_map):
 
     deg = stats_map['normals_degrees']
+
+    at_least_two_sets = {}
+    for k in deg:
+        at_least_two_sets[k] = set()
+        for img in deg[k]:
+            deg_list = deg[k][img]
+            if len(deg_list) > 0:
+                at_least_two_sets[k].add(img)
+
+    first_key = list(at_least_two_sets.keys())[0]
+    shared_at_least_two = at_least_two_sets[first_key]
+    for k in at_least_two_sets:
+        shared_at_least_two = shared_at_least_two.intersection(at_least_two_sets[k])
+
+    print("{} imgs are common to all keys".format(len(shared_at_least_two)))
+
     for k in deg:
         count = 0
+        count_shared = 0
         avg_l2 = 0.0
         avg_l1 = 0.0
+        avg_l2_shared = 0.0
+        avg_l1_shared = 0.0
         for img in deg[k]:
             deg_list = deg[k][img]
             if len(deg_list) > 0:
                 avg_l2 = avg_l2 + (90.0 - deg_list[0]) ** 2
                 avg_l1 = avg_l1 + math.fabs(90.0 - deg_list[0])
                 count = count + 1
+                if shared_at_least_two.__contains__(img):
+                    avg_l2_shared = avg_l2_shared + (90.0 - deg_list[0]) ** 2
+                    avg_l1_shared = avg_l1_shared + math.fabs(90.0 - deg_list[0])
+                    count_shared = count_shared + 1
+
         if count > 0:
             avg_l2 = avg_l2 / count
             avg_l1 = avg_l1 / count
-        print("{} {:.3f} {:.3f} {}".format(k, math.sqrt(avg_l2), avg_l1, count))
+        if count_shared > 0:
+            avg_l2_shared = avg_l2_shared / count_shared
+            avg_l1_shared = avg_l1_shared / count_shared
+        print("{} {:.3f} {}".format(k, avg_l1, count))
+        print("{} - shared {:.3f} {}".format(k, avg_l1_shared, count_shared))
 
 
 if __name__ == "__main__":
