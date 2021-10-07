@@ -242,7 +242,7 @@ class Timer:
     @staticmethod
     def end():
         end = time.time()
-        print("Done. Time elapsed from start: {:.4f}., ".format(end - Timer.start_time))
+        print("Time elapsed from start: {:.4f}., ".format(end - Timer.start_time))
         print("Statistics: ")
         for key in Timer.stats_times:
             print("{} called {} times and it took {:.4f} secs. on average".format(key, Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))

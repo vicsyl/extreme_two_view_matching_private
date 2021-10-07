@@ -431,7 +431,7 @@ class Pipeline:
     def compute_img_normals(self, img, img_name):
 
         Timer.start_check_point("processing img", img_name)
-        print("processing img".format(img_name))
+        print("processing img {}".format(img_name))
 
         # get focal_length
         orig_height = img.shape[0]
@@ -464,11 +464,12 @@ class Pipeline:
 
             for mean_shift in ["full", "mean", None]:
 
-                for singular_value_quantil in [1.0, 0.8, 0.6]:
+                for singular_value_quantil in [0.6, 0.8, 1.0]:
 
-                    for angle_distance_threshold_degrees in [20, 25, 30]:
+                    for angle_distance_threshold_degrees in [20, 25, 30, 35]:
 
                         ms_str = "ms_{}".format(mean_shift)
+                        params_key = "{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma)
 
                         print("Params: s_value_hist_ratio: {}, angle_distance_threshold_degrees: {}, sigma: {}, mean shift step: {}".format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str))
 
@@ -476,6 +477,8 @@ class Pipeline:
                         Clustering.recompute(math.sqrt(singular_value_quantil))
 
                         smallest_singular_values = s_values[:, :, 2]
+                        smallest_singular_values = smallest_singular_values / depth_data[0, 0]
+
                         w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
                         smallest_singular_values = smallest_singular_values.reshape(w * h)
                         sorted, indices = torch.sort(smallest_singular_values)
@@ -488,7 +491,10 @@ class Pipeline:
                             show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
                             show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
 
+                        cp_key = "clustering_{}".format(params_key)
+                        Timer.start_check_point(cp_key)
                         normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask & mask, mean_shift=mean_shift)
+                        Timer.end_check_point(cp_key)
 
                         sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
                         indices = np.argsort(-sums)
@@ -503,7 +509,6 @@ class Pipeline:
                         if not self.stats.keys().__contains__("normals_degrees"):
                             self.stats["normals_degrees"] = {}
 
-                        params_key = "{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma)
                         if not self.stats["normals_degrees"].__contains__(params_key):
                             self.stats["normals_degrees"][params_key] = {}
                         self.stats["normals_degrees"][params_key][img_name] = degrees_list
@@ -552,11 +557,14 @@ class Pipeline:
 
         file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
         file_names_permuted = [file_names[two_hundred_permutation[i]] for i in range(self.permutation_limit)]
-        for depth_data_file_name in file_names_permuted:
+        for i, depth_data_file_name in enumerate(file_names_permuted):
             img_name = depth_data_file_name[:-4]
             img = self.show_and_read_img(img_name)
             self.compute_img_normals(img, img_name)
+            if i % 10 == 0:
+                self.save_stats("normals_{}".format(i))
             evaluate_normals(self.stats)
+            Timer.end()
 
         self.save_stats("normals")
 

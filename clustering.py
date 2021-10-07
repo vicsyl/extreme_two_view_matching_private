@@ -28,7 +28,7 @@ class Clustering:
     distance_inter_cluster_threshold = from_degrees_to_dist(angle_distance_threshold_degrees, "seed inter cluster angle", distance_inter_cluster_threshold_factor)
 
     ms_kernel_max_distance = distance_threshold
-    ms_adjustment_th = 0.001
+    ms_adjustment_th = 0.1
     ms_max_iter = 100
     ms_bandwidth = ms_kernel_max_distance / 2
     ms_distance_inter_cluster_threshold_factor = 2
@@ -214,9 +214,9 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None):
                     #     print("fewer points in the vicinity, stopping")
                     #     break
 
-                    cc_w = 0.9
-                    cluster_center = cluster_center * cc_w + new_center * (1.0 - cc_w)
-                    #cluster_center = new_center
+                    # cc_w = 0.5
+                    # cluster_center = cluster_center * cc_w + new_center * (1.0 - cc_w)
+                    cluster_center = new_center
 
                 distance_ok = is_distance_ok(cluster_center, Clustering.distance_inter_cluster_threshold)
                 if distance_ok:
