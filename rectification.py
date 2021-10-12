@@ -205,7 +205,7 @@ def get_rectified_keypoints(normals,
 
             kps = [kp for i, kp in enumerate(kps) if cluster_mask_bool[i]]
 
-            cv.drawKeypoints(rectified, kps, rectified, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            #cv.drawKeypoints(rectified, kps, rectified, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 
             for kpi, kp in enumerate(kps):
                 kp.pt = tuple(new_kps[kpi, 0].tolist())

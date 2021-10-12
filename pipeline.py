@@ -289,7 +289,6 @@ class Pipeline:
 
         orig_height = img.shape[0]
         orig_width = img.shape[1]
-        real_K = self.scene_info.get_img_K(img_name)
         if self.estimate_k:
             focal_length = (orig_width + orig_height) * self.focal_point_mean_factor
             K_for_rectification = np.array([
@@ -297,7 +296,9 @@ class Pipeline:
                 [0,            focal_length, orig_height / 2.0],
                 [0,            0,            1]
             ])
+            real_K = K_for_rectification
         else:
+            real_K = self.scene_info.get_img_K(img_name)
             K_for_rectification = real_K
             focal_length = real_K[0, 0]
             assert abs(real_K[0, 2] * 2 - orig_width) < 0.5
@@ -700,7 +701,7 @@ class Pipeline:
                     pickle.dump(stats_map_diff, f)
                 print("Stats for difficulty {}:".format(difficulty))
                 print("Group\tAcc.(5º)")
-                evaluate_percentage_correct(stats_map_diff, difficulty, n_worst_examples=10, th_degrees=5)
+                #evaluate_percentage_correct(stats_map_diff, difficulty, n_worst_examples=10, th_degrees=5)
 
         all_stats_file_name = "{}/all.stats.pkl".format(self.output_dir)
         with open(all_stats_file_name, "wb") as f:
@@ -708,7 +709,7 @@ class Pipeline:
 
         self.save_stats("matching")
         self.log()
-        evaluate_all(stats_map, n_worst_examples=None)
+        #evaluate_all(stats_map, n_worst_examples=None)
 
     def save_stats(self, key):
         file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())

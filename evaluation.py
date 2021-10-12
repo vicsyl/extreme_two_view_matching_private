@@ -308,10 +308,12 @@ def evaluate_matching(scene_info,
     src_pts_inliers = src_tentatives_2d[inlier_mask[:, 0] == [1]]
     dst_pts_inliers = dst_tentatives_2d[inlier_mask[:, 0] == [1]]
 
-    error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
+    # error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
+    error_R, error_T = None, None
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
-    inliers_against_gt = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, src_tentatives_2d, dst_tentatives_2d, [0.5, 1, 2], E)
+    # inliers_against_gt = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, src_tentatives_2d, dst_tentatives_2d, [0.5, 1, 2], E)
+    inliers_against_gt = None
 
     stats = Stats(inliers_against_gt=inliers_against_gt,
                   tentatives_1=src_tentatives_2d,
