@@ -461,31 +461,64 @@ class Pipeline:
         filter_mask = get_nonsky_mask(img, depth_data.shape[2], depth_data.shape[3])
         show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
+        counter = 0
         for sigma in [0.8, 1.2, 1.6]:
 
             Config.svd_weighted_sigma = sigma
 
-            normals, s_values = compute_normals_from_svd(focal_length,
+            orig_normals, s_values = compute_normals_from_svd(focal_length,
                                                          orig_height,
                                                          orig_width,
                                                          depth_data,
                                                          simple_weighing=True,
                                                          smaller_window=(sigma == 0.0))
 
-            for mean_shift in ["full", "mean", None]:
+            for normal_sigma in [0.0, 3.0, 5.0]:
 
-                for singular_value_quantil in [0.6, 0.7, 0.8, 1.0]:
+                if normal_sigma != 0.0:
+                    bf_key = "bilateral_filter_{}".format(normal_sigma)
+                    Timer.start_check_point(bf_key)
+                    normals = bilateral_filter(orig_normals, filter_mask=filter_mask, normal_sigma=normal_sigma)
+                    Timer.end_check_point(bf_key)
+                else:
+                    normals = orig_normals
 
-                    for angle_distance_threshold_degrees in [5, 10, 15, 20, 25, 30, 35]:
+                for mean_shift in ["full", "mean", None]:
 
-                        for normal_sigma in [0.0, 3.0, 10]:
+                    for singular_value_quantil in [0.6, 0.8, 1.0]:
 
-                            for adaptive in [False, True]:
+                        for angle_distance_threshold_degrees in [5, 10, 15, 20, 25, 30, 35]:
+
+                            for adaptive in [False]:
+
+                                if adaptive is True and mean_shift != "full":
+                                    continue
+
+                                compute = False
+                                if mean_shift is None and singular_value_quantil == 1.0 and angle_distance_threshold_degrees == 25 and sigma == 0.8 and normal_sigma == 0.0:
+                                    compute = True
+                                if mean_shift is "mean" and singular_value_quantil == 0.8 and angle_distance_threshold_degrees == 35 and sigma == 0.8 and normal_sigma == 0.8:
+                                    compute = True
+                                if mean_shift in ["mean"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
+                                    compute = True
+                                # if mean_shift == "full" and angle_distance_threshold_degrees == 35 and singular_value_quantil == 0.8 and (sigma == 0.8 or normal_sigma == 0.0):
+                                #     compute = True
+                                if not compute:
+                                    continue
+
+                                counter = counter + 1
 
                                 ms_str = "ms_{}".format(mean_shift)
                                 params_key = "{}_{}_{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma, normal_sigma, adaptive)
 
-                                print("Params: s_value_hist_ratio: {}, angle_distance_threshold_degrees: {}, sigma: {}, mean shift step: {}".format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str))
+                                print("params_key: {}".format(params_key))
+                                print("Params: s_value_hist_ratio: {}, "
+                                      "angle_distance_threshold_degrees: {}, "
+                                      "svd sigma: {}, "
+                                      "mean shift step: {},"
+                                      "normal sigma: {},"
+                                      "adaptive: {}"
+                                      .format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str, normal_sigma, adaptive))
 
                                 Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
                                 Clustering.recompute(math.sqrt(singular_value_quantil))
@@ -508,12 +541,6 @@ class Pipeline:
                                 if singular_value_quantil != 1.0:
                                     show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
                                     show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
-
-                                if normal_sigma != 0.0:
-                                    bf_key = "bilateral_filter_{}".format(normal_sigma)
-                                    Timer.start_check_point(bf_key)
-                                    normals = bilateral_filter(normals, filter_mask=filter_mask, normal_sigma=normal_sigma)
-                                    Timer.end_check_point(bf_key)
 
                                 cp_key = "clustering_{}_{}".format(mean_shift, adaptive)
                                 Timer.start_check_point(cp_key)
@@ -541,6 +568,7 @@ class Pipeline:
                                                       depth_data_file_name,
                                                       show=self.show_clusters,
                                                       save=self.save_clusters)
+        print("counter: {}".format(counter))
 
     def update_stats_map(self, key1, key2, key3, obj):
         ensure_keys(self.stats, key1, key2)

@@ -169,12 +169,12 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
     sortd = torch.sort(sums, descending=True)
 
     cluster_centers = []
-    valid_clusters = None
 
     arg_mins = torch.ones(normals.shape[:2]) * 3
     arg_mins = arg_mins.to(torch.int)
 
     max_clusters = 3
+    valid_clusters = max_clusters
     for center_index, points in zip(sortd[1], sortd[0]):
         if len(cluster_centers) >= max_clusters:
             break
@@ -270,15 +270,19 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
                         while neighborhood_new.sum() < neighborhood.sum():
                             print("fewer points in the vicinity, stopping, slowing down")
                             new_center = cluster_center * 0.5 + new_center * 0.5
-                            new_center / torch.norm(new_center)
+                            new_center = new_center / torch.norm(new_center)
                             angle_diff = angle_2_unit_vectors(cluster_center, new_center)
                             if angle_diff < Clustering.ms_adjustment_th:
                                 break
+                            else:
+                                print("angle: {}, new_center: {}".format(angle_diff, new_center))
                             neighborhood_new = get_neighborhood_new()
 
                         if neighborhood_new.sum() < neighborhood.sum():
                             cluster_iter = Clustering.ms_max_iter
                             break
+                        else:
+                            print("adaptive step helped")
 
                     angle_diff = angle_2_unit_vectors(cluster_center, new_center)
                     print("mode adjustment (iteration): {} degrees".format(angle_diff))
@@ -315,6 +319,7 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
 
     Timer.end_check_point(timer_label)
 
+    valid_clusters = min(valid_clusters, len(cluster_centers))
     return cluster_centers, arg_mins, valid_clusters
 
     # comparing the cluster_centers found by this method with the results of kmeans taking the cluster_centers as initial guesses
