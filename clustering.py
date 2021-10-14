@@ -1,6 +1,7 @@
 import torch
 import math
-from utils import Timer
+from utils import Timer, pad_normals
+import torch.nn.functional as F
 
 
 def assert_almost_equal(one, two):
@@ -94,7 +95,59 @@ def angle_2_unit_vectors(v1, v2):
     return math.acos(arg) / math.pi * 180
 
 
-def cluster(normals: torch.Tensor, filter_mask, mean_shift=None):
+def bilateral_filter(normals: torch.Tensor, filter_mask, filter_range=9, spatial_sigma=10.0, normal_sigma=3.0):
+    """
+    :param normals: Tensor(h, w, 3)
+    :param filter_mask: (h, w)
+    :param filter_range: int
+    :param spatial_sigma: float
+    :param normal_range: int
+    :param normal_sigma: float
+    :return:
+    """
+    normals = normals.permute(2, 0, 1)
+
+    weights = torch.zeros((filter_range, filter_range) + normals.shape[1:])
+
+    # think about reordering the dimensions
+    padded_normals = F.pad(normals.unsqueeze(0), (filter_range//2, filter_range//2, filter_range//2, filter_range//2), mode='replicate')[0]
+
+    for s_1 in range(filter_range):
+        for s_2 in range(filter_range):
+            offset_1 = s_1 - filter_range // 2
+            offset_2 = s_2 - filter_range // 2
+            spatial_diff = offset_1 ** 2 + offset_2 ** 2
+            spatial_diff = -spatial_diff / (2 * spatial_sigma ** 2)
+            # weights = conv(c1, spatial_filter)
+
+            norm_diff = padded_normals[:, s_1:s_1 + normals.shape[1], s_2:s_2 + normals.shape[2]] - normals
+            norm_diff = torch.norm(norm_diff, dim=0)
+            norm_diff = -norm_diff / (2 * normal_sigma ** 2)
+            weights[s_1, s_2] = torch.exp(norm_diff + spatial_diff)
+
+    filtered = torch.zeros_like(normals)
+    for s_1 in range(filter_range):
+        for s_2 in range(filter_range):
+            filtered = filtered + padded_normals[:, s_1:s_1 + normals.shape[1], s_2:s_2 + normals.shape[2]] * weights[s_1, s_2]
+
+    weights_sum = weights.sum(dim=(0, 1))
+    torch.clamp(weights_sum, min=1e-19)
+
+    filtered = filtered / weights_sum
+    filtered = filtered * filter_mask
+
+    filtered = filtered.permute(1, 2, 0)
+
+    return filtered
+
+
+def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False, return_all=False):
+    """
+    :param normals: Tensor(h, w, 3)
+    :param filter_mask: (h, w)
+    :param mean_shift: boolean - if mean or mean-shift should be run after the binning (None/"full"/"mean")
+    :return: normals: (n, 3), cluster_membership (h, w) - index of cluster or 3 for no cluster
+    """
 
     points_threshold = torch.prod(torch.tensor(normals.shape[:2])) * Clustering.points_threshold_ratio
 
@@ -116,7 +169,7 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None):
     sortd = torch.sort(sums, descending=True)
 
     cluster_centers = []
-    points_list = []
+    valid_clusters = None
 
     arg_mins = torch.ones(normals.shape[:2]) * 3
     arg_mins = arg_mins.to(torch.int)
@@ -126,7 +179,10 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None):
         if len(cluster_centers) >= max_clusters:
             break
         if points < points_threshold:
-            break
+            if return_all:
+                valid_clusters = len(cluster_centers)
+            else:
+                break
 
         def is_distance_ok(new_center, threshold):
             for cluster_center in cluster_centers:
@@ -174,7 +230,7 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None):
                 orig_center = cluster_center
 
                 angle_diff = Clustering.ms_adjustment_th
-                for _ in range(Clustering.ms_max_iter):
+                for cluster_iter in range(Clustering.ms_max_iter):
                     if angle_diff < Clustering.ms_adjustment_th:
                         break
 
@@ -201,21 +257,35 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None):
                     new_center = (normals_for_shift * kernel_values.expand(3, -1).permute(1, 0)).sum(dim=0) / kernel_conv_value
                     new_center = new_center / torch.norm(new_center)
 
+                    if adaptive:
+
+                        def get_neighborhood_new():
+                            distances_new = torch.norm(new_center - normals, dim=2).expand(normals.shape[0],
+                                                                                           normals.shape[1])
+                            neighborhood_new = torch.where(distances_new < Clustering.ms_kernel_max_distance, 1, 0)
+                            neighborhood_new = torch.logical_and(neighborhood_new, filter_mask)
+                            return neighborhood_new
+
+                        neighborhood_new = get_neighborhood_new()
+                        while neighborhood_new.sum() < neighborhood.sum():
+                            print("fewer points in the vicinity, stopping, slowing down")
+                            new_center = cluster_center * 0.5 + new_center * 0.5
+                            new_center / torch.norm(new_center)
+                            angle_diff = angle_2_unit_vectors(cluster_center, new_center)
+                            if angle_diff < Clustering.ms_adjustment_th:
+                                break
+                            neighborhood_new = get_neighborhood_new()
+
+                        if neighborhood_new.sum() < neighborhood.sum():
+                            cluster_iter = Clustering.ms_max_iter
+                            break
+
                     angle_diff = angle_2_unit_vectors(cluster_center, new_center)
                     print("mode adjustment (iteration): {} degrees".format(angle_diff))
                     angle_diff_overall = angle_2_unit_vectors(orig_center, new_center)
                     print("mode adjustment (overall): {} degrees".format(angle_diff_overall))
                     print("orig: {}, old: {}, new: {}".format(orig_center, cluster_center, new_center))
 
-                    # distances_new = torch.norm(new_center - normals, dim=2).expand(normals.shape[0], normals.shape[1])
-                    # neighborhood_new = torch.where(distances_new < Clustering.ms_kernel_max_distance, 1, 0)
-                    # neighborhood_new = torch.logical_and(neighborhood_new, filter_mask)
-                    # if neighborhood_new.sum() < neighborhood.sum():
-                    #     print("fewer points in the vicinity, stopping")
-                    #     break
-
-                    # cc_w = 0.5
-                    # cluster_center = cluster_center * cc_w + new_center * (1.0 - cc_w)
                     cluster_center = new_center
 
                 distance_ok = is_distance_ok(cluster_center, Clustering.distance_inter_cluster_threshold)
@@ -245,7 +315,7 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None):
 
     Timer.end_check_point(timer_label)
 
-    return cluster_centers, arg_mins
+    return cluster_centers, arg_mins, valid_clusters
 
     # comparing the cluster_centers found by this method with the results of kmeans taking the cluster_centers as initial guesses
 

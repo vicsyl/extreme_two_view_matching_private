@@ -10,8 +10,6 @@ from utils import *
 from img_utils import show_and_save_normal_clusters_3d, show_point_cloud, show_or_close, get_degrees_between_normals
 import matplotlib.pyplot as plt
 
-import torch.nn.functional as F
-
 import clustering
 from pathlib import Path
 from clusters_map import clusters_map
@@ -40,6 +38,17 @@ Problems:
     however I don't think this particular one would have any significant effect
   - actually maybe I should have tested with other (e.g. by the real monodepth) CNN's depth maps         
 """
+
+
+def get_smaller_window_coeffs():
+
+    return torch.Tensor([
+        [0, 0, 0, 0, 0,
+         0, 1, 1, 1.0, 0,
+         0, 1, 1, 1, 0,
+         0, 1, 1, 1, 0,
+         0, 0, 0, 0, 0],
+    ])
 
 
 def get_gauss_weighted_coeffs_for_window(window_size=5, sigma=1.33):
@@ -204,7 +213,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         show_and_save_normal_clusters_3d(normals, cluster_repr_normal_np, normal_indices_np, show, save, out_dir, img_name)
 
 
-def cluster_normals(normals, filter_mask=None, mean_shift=None):
+def cluster_normals(normals, filter_mask=None, mean_shift=None, adaptive=False, return_all=False):
 
     # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
@@ -219,14 +228,14 @@ def cluster_normals(normals, filter_mask=None, mean_shift=None):
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices = clustering.cluster(normals, filter_mask, mean_shift)
+    cluster_repr_normal, normal_indices, valid_clusters = clustering.cluster(normals, filter_mask, mean_shift, adaptive, return_all)
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
     cluster_repr_normal_np = cluster_repr_normal.numpy()
 
     Timer.end_check_point("clustering normals")
 
-    return cluster_repr_normal_np, normal_indices_np
+    return cluster_repr_normal_np, normal_indices_np, valid_clusters
 
 
 def get_file_names_from_dir(input_dir: str, limit: int, interesting_files: list, suffix: str):
@@ -259,10 +268,11 @@ def compute_only_normals(
         orig_width,
         depth_data_read_directory,
         depth_data_file_name,
-        simple_weighing=True):
+        simple_weighing=True,
+        smaller_window=False,):
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
-    normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, simple_weighing)
+    normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, simple_weighing, smaller_window)
     return normals, s_values
 
 
@@ -303,7 +313,7 @@ def compute_normals(scene: SceneInfo,
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
     show_sky_mask(img, filter_mask, img_name, show=True)
 
-    clustered_normals_np, normal_indices_np = cluster_normals(normals, filter_mask=filter_mask)
+    clustered_normals_np, normal_indices_np, _ = cluster_normals(normals, filter_mask=filter_mask)
     return clustered_normals_np, normal_indices_np
 
 
@@ -335,29 +345,13 @@ def compute_normals_convolution(camera,
     return normals
 
 
-def pad_normals(normals, window_size, mode="replicate"):
-    """
-    :param normals: (h, w, 3)
-    :return:
-    """
-    normals = normals.unsqueeze(dim=0)
-    normals = normals.permute(0, 3, 1, 2)
-
-    pad = (window_size//2, window_size//2, window_size//2, window_size//2)  # pad last dim by 1 on each side
-    normals = F.pad(normals, pad, mode=mode)
-
-    normals = normals.squeeze(dim=0)
-    normals = normals.permute(1, 2, 0)
-
-    return normals
-
-
 def compute_normals_from_svd(
         focal_length,
         orig_height,
         orig_width,
         depth_data,
-        simple_weighing=True
+        simple_weighing=True,
+        smaller_window=False,
 ):
 
     window_size = 5
@@ -426,7 +420,10 @@ def compute_normals_from_svd(
         # the understanding of how the input to SVD becomes 3x3 instead of 25x3
         # https://www.cs.auckland.ac.nz/courses/compsci369s1c/lectures/GG-notes/CS369-LeastSquares.pdf
         # slides 29 and 36
-        w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
+        if smaller_window:
+            w_diag = torch.diag_embed(get_smaller_window_coeffs())
+        else:
+            w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
         if simple_weighing:
             # possible modification: possibly a better weighing
             c2 = w_diag @ centered

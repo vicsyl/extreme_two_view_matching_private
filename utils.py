@@ -5,6 +5,24 @@ import math
 import time
 import cv2 as cv
 from resize import upsample_bilinear
+import torch.nn.functional as F
+
+
+def pad_normals(normals, window_size, mode="replicate"):
+    """
+    :param normals: (h, w, 3)
+    :return:
+    """
+    normals = normals.unsqueeze(dim=0)
+    normals = normals.permute(0, 3, 1, 2)
+
+    pad = (window_size//2, window_size//2, window_size//2, window_size//2)  # pad last dim by 1 on each side
+    normals = F.pad(normals, pad, mode=mode)
+
+    normals = normals.squeeze(dim=0)
+    normals = normals.permute(1, 2, 0)
+
+    return normals
 
 
 def get_rotation_matrix(unit_rotation_vector, theta):

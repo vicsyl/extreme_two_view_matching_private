@@ -14,8 +14,7 @@ import argparse
 
 from config import Config
 from connected_components import get_connected_components, get_and_show_components
-from depth_to_normals import compute_only_normals
-from depth_to_normals import show_sky_mask, cluster_normals, show_or_save_clusters, read_depth_data, compute_normals_from_svd
+from depth_to_normals import *
 from matching import match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from scene_info import SceneInfo
@@ -23,7 +22,7 @@ from utils import Timer
 from img_utils import show_or_close, get_degrees_between_normals
 from evaluation import *
 from sky_filter import get_nonsky_mask
-from clustering import Clustering
+from clustering import Clustering, bilateral_filter
 
 import matplotlib.pyplot as plt
 
@@ -44,6 +43,16 @@ def parse_list(list_str: str):
     fields = filter(lambda x: x != "", map(lambda x: x.strip(), fields))
     fields = list(fields)
     return fields
+
+
+def ensure_key(map, key):
+    if not map.keys().__contains__(key):
+        map[key] = {}
+
+
+def ensure_keys(map, key1, key2):
+    ensure_key(map, key1)
+    ensure_key(map[key1], key2)
 
 
 @dataclass
@@ -343,7 +352,7 @@ class Pipeline:
             sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
             show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
-            normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask)
+            normals_clusters_repr, normal_indices, _ = cluster_normals(normals, filter_mask=filter_mask)
 
             degrees_list = get_degrees_between_normals(normals_clusters_repr)
             if not self.stats["imgs_data"].__contains__(img_name):
@@ -460,66 +469,82 @@ class Pipeline:
                                                          orig_height,
                                                          orig_width,
                                                          depth_data,
-                                                         simple_weighing=True)
+                                                         simple_weighing=True,
+                                                         smaller_window=(sigma == 0.0))
 
             for mean_shift in ["full", "mean", None]:
 
-                for singular_value_quantil in [0.6, 0.8, 1.0]:
+                for singular_value_quantil in [0.6, 0.7, 0.8, 1.0]:
 
-                    for angle_distance_threshold_degrees in [20, 25, 30, 35]:
+                    for angle_distance_threshold_degrees in [5, 10, 15, 20, 25, 30, 35]:
 
-                        ms_str = "ms_{}".format(mean_shift)
-                        params_key = "{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma)
+                        for normal_sigma in [0.0, 3.0, 10]:
 
-                        print("Params: s_value_hist_ratio: {}, angle_distance_threshold_degrees: {}, sigma: {}, mean shift step: {}".format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str))
+                            for adaptive in [False, True]:
 
-                        Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
-                        Clustering.recompute(math.sqrt(singular_value_quantil))
+                                ms_str = "ms_{}".format(mean_shift)
+                                params_key = "{}_{}_{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma, normal_sigma, adaptive)
 
-                        smallest_singular_values = s_values[:, :, 2]
-                        smallest_singular_values = smallest_singular_values / depth_data[0, 0]
+                                print("Params: s_value_hist_ratio: {}, angle_distance_threshold_degrees: {}, sigma: {}, mean shift step: {}".format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str))
 
-                        w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
-                        smallest_singular_values = smallest_singular_values.reshape(w * h)
-                        sorted, indices = torch.sort(smallest_singular_values)
+                                Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
+                                Clustering.recompute(math.sqrt(singular_value_quantil))
 
-                        mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
-                        mask[indices[:(int(indices.shape[0] * singular_value_quantil))]] = True
-                        mask = mask.reshape(w, h).numpy()
+                                s_values_ratio = True
+                                if s_values_ratio:
+                                    smallest_singular_values = s_values[:, :, 2] / s_values[:, :, 1]
+                                else:
+                                    smallest_singular_values = s_values[:, :, 2]
+                                    smallest_singular_values = smallest_singular_values / depth_data[0, 0]
 
-                        if singular_value_quantil != 1.0:
-                            show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
-                            show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
+                                w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
+                                smallest_singular_values = smallest_singular_values.reshape(w * h)
+                                sorted, indices = torch.sort(smallest_singular_values)
 
-                        cp_key = "clustering_{}".format(params_key)
-                        Timer.start_check_point(cp_key)
-                        normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask & mask, mean_shift=mean_shift)
-                        Timer.end_check_point(cp_key)
+                                mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
+                                mask[indices[:(int(indices.shape[0] * singular_value_quantil))]] = True
+                                mask = mask.reshape(w, h).numpy()
 
-                        sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
-                        indices = np.argsort(-sums)
+                                if singular_value_quantil != 1.0:
+                                    show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
+                                    show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
 
-                        # then delete the previous two lines - or just debug this
-                        # for i in range(len(indices)):
-                        #     assert i == indices[i]
+                                if normal_sigma != 0.0:
+                                    bf_key = "bilateral_filter_{}".format(normal_sigma)
+                                    Timer.start_check_point(bf_key)
+                                    normals = bilateral_filter(normals, filter_mask=filter_mask, normal_sigma=normal_sigma)
+                                    Timer.end_check_point(bf_key)
 
-                        normals_clusters_repr_sorted = normals_clusters_repr[indices]
+                                cp_key = "clustering_{}_{}".format(mean_shift, adaptive)
+                                Timer.start_check_point(cp_key)
+                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals, filter_mask=filter_mask & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True)
+                                Timer.end_check_point(cp_key)
 
-                        degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
-                        if not self.stats.keys().__contains__("normals_degrees"):
-                            self.stats["normals_degrees"] = {}
+                                sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
+                                indices = np.argsort(-sums)
 
-                        if not self.stats["normals_degrees"].__contains__(params_key):
-                            self.stats["normals_degrees"][params_key] = {}
-                        self.stats["normals_degrees"][params_key][img_name] = degrees_list
+                                # then delete the previous two lines - or just debug this
+                                # for i in range(len(indices)):
+                                #     assert i == indices[i]
 
-                        show_or_save_clusters(normals,
-                                              normal_indices,
-                                              normals_clusters_repr,
-                                              img_processing_dir,
-                                              depth_data_file_name,
-                                              show=self.show_clusters,
-                                              save=self.save_clusters)
+                                normals_clusters_repr_sorted = normals_clusters_repr[indices]
+
+                                degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
+                                self.update_stats_map("normals_degrees", params_key, img_name, degrees_list)
+                                self.update_stats_map("normals", params_key, img_name, normals_clusters_repr)
+                                self.update_stats_map("valid_normals", params_key, img_name, valid_normals)
+
+                                show_or_save_clusters(normals,
+                                                      normal_indices,
+                                                      normals_clusters_repr,
+                                                      img_processing_dir,
+                                                      depth_data_file_name,
+                                                      show=self.show_clusters,
+                                                      save=self.save_clusters)
+
+    def update_stats_map(self, key1, key2, key3, obj):
+        ensure_keys(self.stats, key1, key2)
+        self.stats[key1][key2][key3] = obj
 
     def run_sequential_pipeline(self):
 

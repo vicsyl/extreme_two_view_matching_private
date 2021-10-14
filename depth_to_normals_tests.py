@@ -125,7 +125,7 @@ def test_depth_to_normals(old_implementation=True, impl="svd"):
                                                   old_implementation=old_implementation
                                                   )
 
-        clustered_normals, normal_indices = \
+        clustered_normals, normal_indices, _ = \
             cluster_normals(normals,
                             depth_data_file_name=dsd.file_dir_and_name[1],
                             output_directory=dsd.file_dir_and_name[0])

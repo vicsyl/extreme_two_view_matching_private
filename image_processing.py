@@ -107,7 +107,7 @@ def filter2d(x: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     b, c, h, w = x.shape
     height, width = kernel.size()
     tmp_kernel = kernel[None,None,...].to(x.device).to(x.dtype)
-    padding_shape =  [width // 2, width // 2, height // 2, height // 2]
+    padding_shape = [width // 2, width // 2, height // 2, height // 2]
     input_pad: torch.Tensor = F.pad(x, padding_shape, mode='replicate')
     out = F.conv2d(input_pad,
                    tmp_kernel.expand(c, -1, -1, -1),

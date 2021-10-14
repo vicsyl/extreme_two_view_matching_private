@@ -33,7 +33,7 @@ def prepare_to_rectify(scene_info, img_name):
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
     show_sky_mask(img, filter_mask, img_name, show=True, save=False)
 
-    normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask)
+    normals_clusters_repr, normal_indices, _ = cluster_normals(normals, filter_mask=filter_mask)
 
     # filtering out the clusters ... not here though
 
@@ -75,7 +75,7 @@ def rectify_play(scene_info, img_name, rectify, use_default_dict=True):
     filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
     show_sky_mask(img, filter_mask, img_name, show=True, save=False)
 
-    normals_clusters_repr, normal_indices = cluster_normals(normals, filter_mask=filter_mask)
+    normals_clusters_repr, normal_indices, _ = cluster_normals(normals, filter_mask=filter_mask)
 
     # filtering out the clusters ... not here though
 
