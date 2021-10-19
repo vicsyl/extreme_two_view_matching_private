@@ -443,7 +443,8 @@ class Pipeline:
         height, width = h_w
         Timer.start_check_point("sky_mask")
         sky_cache_dir = "{}/cache/sky".format(self.output_dir)
-        Path(sky_cache_dir).mkdir(parents=True, exist_ok=True)
+        if not os.path.exists(sky_cache_dir):
+            Path(sky_cache_dir).mkdir(parents=True, exist_ok=True)
         sky_cache_file = "{}/{}.npy".format(sky_cache_dir, img_name)
         if os.path.isfile(sky_cache_file):
             with open(sky_cache_file, "rb") as f:
@@ -468,7 +469,8 @@ class Pipeline:
 
         Timer.start_check_point("compute_normals")
         cache_dir = "{}/cache/normals".format(self.output_dir)
-        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        if not os.path.exists(cache_dir):
+            Path(cache_dir).mkdir(parents=True, exist_ok=True)
         cache_file = "{}/{}_{}.npy".format(cache_dir, img_name, Config.svd_weighted_sigma)
         if os.path.isfile(cache_file):
             with open(cache_file, "rb") as f:
