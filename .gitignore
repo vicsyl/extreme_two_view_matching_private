@@ -8,9 +8,12 @@ sent
 ignore
 googleurban
 phototourism
+datasets
+tasks
 .ipynb_checkpoints
 .semseg
 .DS_Store
+docs/offline_notes.txt
 *.pyc
 poc.py
 config.txt

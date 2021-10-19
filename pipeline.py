@@ -557,6 +557,8 @@ class Pipeline:
                                 normals_clusters_repr_sorted = normals_clusters_repr[indices]
 
                                 degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
+                                print("pipeline:compute_img_normals:normals_clusters_repr_sorted: {}".format(normals_clusters_repr_sorted))
+                                print("pipeline:compute_img_normals:degrees_list: {}".format(degrees_list))
                                 self.update_stats_map("normals_degrees", params_key, img_name, degrees_list)
                                 self.update_stats_map("normals", params_key, img_name, normals_clusters_repr)
                                 self.update_stats_map("valid_normals", params_key, img_name, valid_normals)

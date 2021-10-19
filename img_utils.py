@@ -51,7 +51,6 @@ def get_degrees_between_normals(normals):
             x = normals[i] / np.linalg.norm(normals[i])
             y = normals[j] / np.linalg.norm(normals[j])
             degrees.append(math.acos(np.dot(x, y)) * 180 / math.pi)
-    degrees = sorted(degrees)
     return degrees
 
 
