@@ -840,10 +840,12 @@ def evaluate_normals(stats_map):
         avg_l1 = 0.0
         avg_l2_shared = 0.0
         avg_l1_shared = 0.0
+        avg_l1_valid = 0.0
         for img in normals_degrees[k]:
             deg_list = normals_degrees[k][img]
             if valid_normals[k][img] > 1:
                 count_valid = count_valid + 1
+                avg_l1_valid = avg_l1_valid + math.fabs(90.0 - deg_list[0])
             if len(deg_list) > 0:
                 avg_l2 = avg_l2 + (90.0 - deg_list[0]) ** 2
                 avg_l1 = avg_l1 + math.fabs(90.0 - deg_list[0])
@@ -852,11 +854,12 @@ def evaluate_normals(stats_map):
                     # if out:
                     #     print("img: {}: {}".format(img, deg_list))
                     #     print("normals: {}".format(normals[k][img]))
-
                     avg_l2_shared = avg_l2_shared + (90.0 - deg_list[0]) ** 2
                     avg_l1_shared = avg_l1_shared + math.fabs(90.0 - deg_list[0])
                     count_shared = count_shared + 1
 
+        if count_valid > 0:
+            avg_l1_valid = avg_l1_valid / count_valid
         if count > 0:
             avg_l2 = avg_l2 / count
             avg_l1 = avg_l1 / count
@@ -864,7 +867,7 @@ def evaluate_normals(stats_map):
             avg_l2_shared = avg_l2_shared / count_shared
             avg_l1_shared = avg_l1_shared / count_shared
         print("{} {:.3f} {} / {}".format(k, avg_l1, count, count_valid))
-        print("{} - shared {:.3f} {}".format(k, avg_l1_shared, count_shared))
+        print("{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(k, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
 
 
 if __name__ == "__main__":
