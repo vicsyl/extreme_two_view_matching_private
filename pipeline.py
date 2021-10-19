@@ -58,6 +58,8 @@ def ensure_keys(map, key1, key2):
 @dataclass
 class Pipeline:
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     scene_name = None
     scene_type = None
     permutation_limit = None
@@ -252,6 +254,7 @@ class Pipeline:
 
     def start(self):
         print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
+        print("device: {}".format(self.device))
 
         self.log()
         self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type, file_name_suffix=self.file_name_suffix)
@@ -454,11 +457,13 @@ class Pipeline:
             assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
 
         depth_data_file_name = "{}.npy".format(img_name)
-        depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir)
+        depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, height=None, width=None, device=self.device)
+        print("depth_data device {}".format(depth_data.device))
 
         img_processing_dir = "{}/imgs".format(self.output_dir)
         sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
-        filter_mask = get_nonsky_mask(img, depth_data.shape[2], depth_data.shape[3])
+        # filter_mask is a numpy array
+        filter_mask = get_nonsky_mask(img, depth_data.shape[2], depth_data.shape[3], self.device == torch.device("cuda"))
         show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
         counter = 0
@@ -471,14 +476,18 @@ class Pipeline:
                                                          orig_width,
                                                          depth_data,
                                                          simple_weighing=True,
-                                                         smaller_window=(sigma == 0.0))
+                                                         smaller_window=(sigma == 0.0),
+                                                         device=self.device)
+
+            print("orig_normals.device: {}".format(orig_normals.device))
 
             for normal_sigma in [0.0, 3.0, 5.0]:
 
                 if normal_sigma != 0.0:
                     bf_key = "bilateral_filter_{}".format(normal_sigma)
                     Timer.start_check_point(bf_key)
-                    normals = bilateral_filter(orig_normals, filter_mask=filter_mask, normal_sigma=normal_sigma)
+                    normals = bilateral_filter(orig_normals, filter_mask=filter_mask, normal_sigma=normal_sigma, device=self.device)
+                    print("normals.device after bilateral_filter: {}".format(normals.device))
                     Timer.end_check_point(bf_key)
                 else:
                     normals = orig_normals
@@ -534,6 +543,7 @@ class Pipeline:
                                 smallest_singular_values = smallest_singular_values.reshape(w * h)
                                 sorted, indices = torch.sort(smallest_singular_values)
 
+                                # still numpy
                                 mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
                                 mask[indices[:(int(indices.shape[0] * singular_value_quantil))]] = True
                                 mask = mask.reshape(w, h).numpy()
@@ -545,6 +555,7 @@ class Pipeline:
                                 cp_key = "clustering_{}_{}".format(mean_shift, adaptive)
                                 Timer.start_check_point(cp_key)
                                 normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals, filter_mask=filter_mask & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True)
+
                                 Timer.end_check_point(cp_key)
 
                                 sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])

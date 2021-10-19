@@ -95,7 +95,7 @@ def angle_2_unit_vectors(v1, v2):
     return math.acos(arg) / math.pi * 180
 
 
-def bilateral_filter(normals: torch.Tensor, filter_mask, filter_range=9, spatial_sigma=10.0, normal_sigma=3.0):
+def bilateral_filter(normals: torch.Tensor, filter_mask, filter_range=9, spatial_sigma=10.0, normal_sigma=3.0, device=torch.device("cpu")):
     """
     :param normals: Tensor(h, w, 3)
     :param filter_mask: (h, w)
@@ -125,7 +125,10 @@ def bilateral_filter(normals: torch.Tensor, filter_mask, filter_range=9, spatial
             norm_diff = -norm_diff / (2 * normal_sigma ** 2)
             weights[s_1, s_2] = torch.exp(norm_diff + spatial_diff)
 
-    filtered = torch.zeros_like(normals)
+    filtered = torch.zeros_like(normals).to(device)
+    print("filtered device: {}".format(filtered.device))
+    print("weights device: {}".format(weights.device))
+    print("padded_normals device: {}".format(padded_normals.device))
     for s_1 in range(filter_range):
         for s_2 in range(filter_range):
             filtered = filtered + padded_normals[:, s_1:s_1 + normals.shape[1], s_2:s_2 + normals.shape[2]] * weights[s_1, s_2]
@@ -141,7 +144,7 @@ def bilateral_filter(normals: torch.Tensor, filter_mask, filter_range=9, spatial
     return filtered
 
 
-def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False, return_all=False):
+def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False, return_all=False, device=torch.device("cpu")):
     """
     :param normals: Tensor(h, w, 3)
     :param filter_mask: (h, w)
@@ -150,10 +153,11 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
     """
 
     points_threshold = torch.prod(torch.tensor(normals.shape[:2])) * Clustering.points_threshold_ratio
+    points_threshold = points_threshold.to(device)
 
     timer_label = "clustering for N={}".format(Clustering.N_points)
     Timer.start_check_point(timer_label)
-    n_centers = n_points_across_half_sphere(Clustering.N_points)
+    n_centers = n_points_across_half_sphere(Clustering.N_points).to(device)
 
     n_centers = n_centers.expand(normals.shape[0], normals.shape[1], -1, -1)
     n_centers = n_centers.permute(2, 0, 1, 3)
@@ -170,7 +174,7 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
 
     cluster_centers = []
 
-    arg_mins = torch.ones(normals.shape[:2]) * 3
+    arg_mins = torch.ones(normals.shape[:2]).to(device) * 3
     arg_mins = arg_mins.to(torch.int)
 
     max_clusters = 3
@@ -248,7 +252,7 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
                         return torch.exp(distances_sq * -0.5) * 0.5 / math.pi
 
                     def uniform_kernel_values(distances_sq):
-                        return torch.ones_like(distances_sq)
+                        return torch.ones_like(distances_sq).to(device)
 
                     # normalization const. ignored (should be very close to 1 anyway)
                     kernel_values = uniform_kernel_values(distances_squared)

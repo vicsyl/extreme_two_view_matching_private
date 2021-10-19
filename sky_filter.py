@@ -22,7 +22,7 @@ net_decoder = ModelBuilder.build_decoder(
     use_softmax=True)
 
 
-def get_nonsky_mask(np_image, height, width):
+def get_nonsky_mask(np_image, height, width, use_cuda=False):
 
     Timer.start_check_point("sky masking")
 
@@ -30,9 +30,9 @@ def get_nonsky_mask(np_image, height, width):
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
     segmentation_module.eval()
     semseg_model = segmentation_module
-    #semseg_model = semseg_model.cuda()
+    if use_cuda:
+        semseg_model = semseg_model.cuda()
     pil_to_tensor = tv.transforms.Compose([
-        # TODO resiz
         tv.transforms.Resize((height, width)),
         tv.transforms.ToTensor(),
         tv.transforms.Normalize(
@@ -41,7 +41,8 @@ def get_nonsky_mask(np_image, height, width):
     ])
     PIL_image = Image.fromarray(np.uint8(np_image)).convert('RGB')
     img_data = pil_to_tensor(PIL_image)
-    #singleton_batch = {'img_data': img_data[None].cuda()}
+    if use_cuda:
+        img_data = img_data.cuda()
     singleton_batch = {'img_data': img_data[None]}
     output_size = img_data.shape[1:]
     # Run the segmentation at the highest resolution.

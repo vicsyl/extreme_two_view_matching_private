@@ -40,7 +40,7 @@ Problems:
 """
 
 
-def get_smaller_window_coeffs():
+def get_smaller_window_coeffs(device=torch.device('cpu')):
 
     return torch.Tensor([
         [0, 0, 0, 0, 0,
@@ -48,12 +48,12 @@ def get_smaller_window_coeffs():
          0, 1, 1, 1, 0,
          0, 1, 1, 1, 0,
          0, 0, 0, 0, 0],
-    ])
+    ]).to(device)
 
 
-def get_gauss_weighted_coeffs_for_window(window_size=5, sigma=1.33):
+def get_gauss_weighted_coeffs_for_window(window_size=5, sigma=1.33, device=torch.device('cpu')):
 
-    x = torch.linspace(-float(window_size//2), float(window_size//2), window_size)
+    x = torch.linspace(-float(window_size//2), float(window_size//2), window_size).to(device)
     x, y = torch.meshgrid(x, x)
 
     normalizing_gauss_coeffs = 1.0 / (2.0 * math.pi * sigma ** 2)
@@ -213,7 +213,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         show_and_save_normal_clusters_3d(normals, cluster_repr_normal_np, normal_indices_np, show, save, out_dir, img_name)
 
 
-def cluster_normals(normals, filter_mask=None, mean_shift=None, adaptive=False, return_all=False):
+def cluster_normals(normals, filter_mask=None, mean_shift=None, adaptive=False, return_all=False, device=torch.device("cpu")):
 
     # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
@@ -222,13 +222,16 @@ def cluster_normals(normals, filter_mask=None, mean_shift=None, adaptive=False, 
 
     if filter_mask is None:
         # only ones
-        filter_mask = torch.ones(normals.shape[:2])
+        filter_mask = torch.ones(normals.shape[:2]).to(device)
     elif isinstance(filter_mask, np.ndarray):
-        filter_mask = torch.from_numpy(filter_mask)
+        filter_mask = torch.from_numpy(filter_mask).to(device)
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices, valid_clusters = clustering.cluster(normals, filter_mask, mean_shift, adaptive, return_all)
+    cluster_repr_normal, normal_indices, valid_clusters = clustering.cluster(normals, filter_mask, mean_shift, adaptive, return_all, device=device)
+
+    print("cluster_repr_normal.device: {}".format(cluster_repr_normal.device))
+    print("normal_indices.device: {}".format(normal_indices.device))
 
     normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
     cluster_repr_normal_np = cluster_repr_normal.numpy()
@@ -269,10 +272,11 @@ def compute_only_normals(
         depth_data_read_directory,
         depth_data_file_name,
         simple_weighing=True,
-        smaller_window=False,):
+        smaller_window=False,
+        device=torch.device('cpu')):
 
     depth_data = read_depth_data(depth_data_file_name, depth_data_read_directory)
-    normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, simple_weighing, smaller_window)
+    normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, simple_weighing, smaller_window, device=device)
     return normals, s_values
 
 
@@ -352,6 +356,7 @@ def compute_normals_from_svd(
         depth_data,
         simple_weighing=True,
         smaller_window=False,
+        device=torch.device('cpu')
 ):
 
     window_size = 5
@@ -376,15 +381,15 @@ def compute_normals_from_svd(
     assert depth_width % 2 == 0
 
     # TODO this can be done only once #performance
-    width_linspace = torch.linspace(-depth_width/2, depth_width/2 - 1, steps=depth_width) # / real_focal_length_x
-    height_linspace = torch.linspace(-depth_height/2, depth_height/2 - 1, steps=depth_height) # / real_focal_length_y
+    width_linspace = torch.linspace(-depth_width/2, depth_width/2 - 1, steps=depth_width).to(device)
+    height_linspace = torch.linspace(-depth_height/2, depth_height/2 - 1, steps=depth_height).to(device)
 
     grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
 
     origin_to_z1 = torch.sqrt(1 + (grid_x / real_focal_length_x) ** 2 + (grid_y / real_focal_length_y) ** 2)
 
     # (1, h, w, 3)
-    point_cloud = torch.Tensor(depth_data.shape[1:] + (3,))
+    point_cloud = torch.Tensor(depth_data.shape[1:] + (3,)).to(device)
     point_cloud[:, :, :, 2] = depth_data[0] / origin_to_z1
     point_cloud[:, :, :, 0] = point_cloud[:, :, :, 2] * grid_x / real_focal_length_x
     point_cloud[:, :, :, 1] = point_cloud[:, :, :, 2] * grid_y / real_focal_length_y
@@ -424,6 +429,7 @@ def compute_normals_from_svd(
             w_diag = torch.diag_embed(get_smaller_window_coeffs())
         else:
             w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
+        print("w_diag device: {}".format(w_diag.device))
         if simple_weighing:
             # possible modification: possibly a better weighing
             c2 = w_diag @ centered
