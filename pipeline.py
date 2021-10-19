@@ -556,7 +556,7 @@ class Pipeline:
                                 Timer.start_check_point(cp_key)
                                 normals_deviced = normals.to(self.device)
                                 print("normals_deviced.device: {}".format(normals_deviced.device))
-                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced, filter_mask=filter_mask & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True)
+                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced, filter_mask=filter_mask & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True, device=self.device)
 
                                 Timer.end_check_point(cp_key)
 

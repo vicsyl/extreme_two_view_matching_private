@@ -233,7 +233,7 @@ def cluster_normals(normals, filter_mask=None, mean_shift=None, adaptive=False, 
     print("cluster_repr_normal.device: {}".format(cluster_repr_normal.device))
     print("normal_indices.device: {}".format(normal_indices.device))
 
-    normal_indices_np = normal_indices.numpy().astype(dtype=np.uint8)
+    normal_indices_np = normal_indices.detach().cpu().numpy().astype(dtype=np.uint8)
     cluster_repr_normal_np = cluster_repr_normal.numpy()
 
     Timer.end_check_point("clustering normals")
