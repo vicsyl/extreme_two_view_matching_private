@@ -429,6 +429,8 @@ def compute_normals_from_svd(
             w_diag = torch.diag_embed(get_smaller_window_coeffs())
         else:
             w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
+        # TODO why is this necessary?
+        w_diag = w_diag.to(device)
         print("w_diag device: {}".format(w_diag.device))
         if simple_weighing:
             # possible modification: possibly a better weighing

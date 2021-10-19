@@ -457,7 +457,7 @@ class Pipeline:
             assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
 
         depth_data_file_name = "{}.npy".format(img_name)
-        depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, height=None, width=None, device=self.device)
+        depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, height=None, width=None, device=torch.device('cpu'))
         print("depth_data device {}".format(depth_data.device))
 
         img_processing_dir = "{}/imgs".format(self.output_dir)
@@ -477,7 +477,7 @@ class Pipeline:
                                                          depth_data,
                                                          simple_weighing=True,
                                                          smaller_window=(sigma == 0.0),
-                                                         device=self.device)
+                                                         device=torch.device('cpu'))
 
             print("orig_normals.device: {}".format(orig_normals.device))
 
@@ -486,7 +486,7 @@ class Pipeline:
                 if normal_sigma != 0.0:
                     bf_key = "bilateral_filter_{}".format(normal_sigma)
                     Timer.start_check_point(bf_key)
-                    normals = bilateral_filter(orig_normals, filter_mask=filter_mask, normal_sigma=normal_sigma, device=self.device)
+                    normals = bilateral_filter(orig_normals, filter_mask=filter_mask, normal_sigma=normal_sigma, device=torch.device('cpu'))
                     print("normals.device after bilateral_filter: {}".format(normals.device))
                     Timer.end_check_point(bf_key)
                 else:
@@ -541,7 +541,7 @@ class Pipeline:
 
                                 w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
                                 smallest_singular_values = smallest_singular_values.reshape(w * h)
-                                sorted, indices = torch.sort(smallest_singular_values)
+                                _, indices = torch.sort(smallest_singular_values)
 
                                 # still numpy
                                 mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
@@ -554,7 +554,9 @@ class Pipeline:
 
                                 cp_key = "clustering_{}_{}".format(mean_shift, adaptive)
                                 Timer.start_check_point(cp_key)
-                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals, filter_mask=filter_mask & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True)
+                                normals_deviced = normals.to(self.device)
+                                print("normals_deviced.device: {}".format(normals_deviced.device))
+                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced, filter_mask=filter_mask & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True)
 
                                 Timer.end_check_point(cp_key)
 
