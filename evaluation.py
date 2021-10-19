@@ -1,22 +1,13 @@
-import numpy as np
-
-import kornia.geometry.epipolar
 import argparse
-
-import torch
-
-from scene_info import *
-from utils import quaternions_to_R
-import cv2 as cv
 import math
-import time
-import os
-import matplotlib as plt
-import glob
 import pickle
 from typing import List
 
-from pathlib import Path
+import cv2 as cv
+import kornia.geometry.epipolar
+import torch
+
+from scene_info import *
 
 """
 DISCLAIMER: the following methods have been adopted from https://github.com/ducha-aiki/ransac-tutorial-2020-data:
@@ -480,8 +471,6 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     samson_factor = 1 / np.sqrt(np.linalg.norm(F_x1 * F_x1, axis=0) ** 2 + np.linalg.norm(x2_F * x2_F, axis=1) ** 2)
     x2_F_x1 = x2_F_x1 * samson_factor
 
-
-
     F_torch = torch.from_numpy(F_ground_truth).unsqueeze(0)
     src_pts_torch = torch.from_numpy(src_tentatives_2d).type(torch.DoubleTensor)
     dst_pts_torch = torch.from_numpy(dst_tentatives_2d).type(torch.DoubleTensor)
@@ -800,37 +789,70 @@ def evaluate_file(scene_name, file_name):
 
 def evaluate_normals(stats_map):
 
-    deg = stats_map['normals_degrees']
+    normals_degrees = stats_map['normals_degrees']
+    valid_normals = stats_map['valid_normals']
+    normals = stats_map['normals']
 
-    at_least_two_sets = {}
-    for k in deg:
-        at_least_two_sets[k] = set()
-        for img in deg[k]:
-            deg_list = deg[k][img]
-            if len(deg_list) > 0:
-                at_least_two_sets[k].add(img)
+    def shared_pairs(keys):
 
-    first_key = list(at_least_two_sets.keys())[0]
-    shared_at_least_two = at_least_two_sets[first_key]
-    for k in at_least_two_sets:
-        shared_at_least_two = shared_at_least_two.intersection(at_least_two_sets[k])
+        at_least_two_sets = {}
+        for k in keys:
+            at_least_two_sets[k] = set()
+            for img in normals_degrees[k]:
+                deg_list = normals_degrees[k][img]
+                if len(deg_list) > 0: #if valid_normals.get(img, 0) >= 2:
+                    at_least_two_sets[k].add(img)
+
+        first_key = list(at_least_two_sets.keys())[0]
+        shared_keys = at_least_two_sets[first_key]
+        for k in at_least_two_sets:
+            shared_keys = shared_keys.intersection(at_least_two_sets[k])
+
+        return shared_keys, at_least_two_sets
+
+    shared_at_least_two, _ = shared_pairs(normals_degrees.keys())
+
+    ms_None_1_0_25_0_8_list = ["frame_0000000165_2", "frame_0000000175_4", "frame_0000000220_4", "frame_0000000050_4", "frame_0000000095_1", "frame_0000000130_3", "frame_0000000105_1", "frame_0000000170_4", "frame_0000000130_2", "frame_0000000030_3", "frame_0000000230_1", "frame_0000000125_1", "frame_0000000035_4", "frame_0000000080_4", "frame_0000000220_3", "frame_0000000260_4", "frame_0000000125_3", "frame_0000000040_1", "frame_0000000100_4", "frame_0000000215_4", "frame_0000000235_4", "frame_0000000180_3", "frame_0000000145_3", "frame_0000000240_3", "frame_0000000085_2", "frame_0000000130_4", "frame_0000000045_2", "frame_0000000060_2", "frame_0000000180_4", "frame_0000000080_1", "frame_0000000110_1", "frame_0000000270_1", "frame_0000000210_1", "frame_0000000150_1", "frame_0000000140_3", "frame_0000000165_4", "frame_0000000045_1", "frame_0000000120_4", "frame_0000000205_4", "frame_0000000090_4", "frame_0000000165_1", "frame_0000000080_3", "frame_0000000160_4", "frame_0000000115_4", "frame_0000000190_1", "frame_0000000185_1", "frame_0000000190_4", "frame_0000000235_3", "frame_0000000245_3", "frame_0000000245_4", "frame_0000000050_2", "frame_0000000055_4", "frame_0000000250_3", "frame_0000000155_3", "frame_0000000040_2", "frame_0000000050_3", "frame_0000000220_1", "frame_0000000155_4", "frame_0000000060_3", "frame_0000000260_3", "frame_0000000105_3", "frame_0000000250_4", "frame_0000000255_4", "frame_0000000175_3", "frame_0000000060_4", "frame_0000000125_4", "frame_0000000150_4", "frame_0000000145_4", "frame_0000000145_2", "frame_0000000175_1", "frame_0000000225_1", "frame_0000000110_3", "frame_0000000095_3", "frame_0000000040_3", "frame_0000000035_3", "frame_0000000015_3", "frame_0000000090_2", "frame_0000000085_4", "frame_0000000065_4", "frame_0000000010_3", "frame_0000000100_1", "frame_0000000085_3", "frame_0000000240_4", "frame_0000000070_4", "frame_0000000115_3", "frame_0000000140_1", "frame_0000000085_1", "frame_0000000050_1", "frame_0000000070_2", "frame_0000000110_2", "frame_0000000150_3", "frame_0000000025_3", "frame_0000000075_1", "frame_0000000165_3", "frame_0000000045_3", "frame_0000000065_1", "frame_0000000195_1", "frame_0000000080_2", "frame_0000000115_2", "frame_0000000225_4", "frame_0000000020_3", "frame_0000000140_2", "frame_0000000155_1", "frame_0000000185_4", "frame_0000000170_2", "frame_0000000115_1", "frame_0000000065_2", "frame_0000000095_2", "frame_0000000210_4", "frame_0000000170_1", "frame_0000000185_3", "frame_0000000100_2", "frame_0000000215_3", "frame_0000000265_3", "frame_0000000135_2", "frame_0000000160_3", "frame_0000000075_2", "frame_0000000065_3", "frame_0000000095_4", "frame_0000000090_3", "frame_0000000265_4", "frame_0000000225_3", "frame_0000000120_1", "frame_0000000120_2", "frame_0000000130_1", "frame_0000000230_3", "frame_0000000100_3", "frame_0000000020_4", "frame_0000000195_4", "frame_0000000200_1", "frame_0000000255_3", "frame_0000000195_3", "frame_0000000190_3", "frame_0000000135_3", "frame_0000000180_1", "frame_0000000070_3", "frame_0000000055_1", "frame_0000000055_3", "frame_0000000260_1", "frame_0000000135_4", "frame_0000000125_2", "frame_0000000200_3", "frame_0000000060_1", "frame_0000000035_2", "frame_0000000205_1", "frame_0000000015_4", "frame_0000000210_3", "frame_0000000230_4", "frame_0000000120_3", "frame_0000000205_3", "frame_0000000075_3", "frame_0000000110_4", "frame_0000000140_4", "frame_0000000170_3", "frame_0000000145_1", "frame_0000000040_4", "frame_0000000075_4", "frame_0000000045_4", "frame_0000000160_1", "frame_0000000215_1", "frame_0000000135_1", "frame_0000000105_4", "frame_0000000105_2", "frame_0000000030_4", "frame_0000000265_1", "frame_0000000025_4", "frame_0000000070_1", "frame_0000000030_2", "frame_0000000090_1", "frame_0000000055_2"]
+    ms_mean_0_s8_35_0_8_list = ["frame_0000000165_2", "frame_0000000175_2", "frame_0000000175_4", "frame_0000000220_4", "frame_0000000050_4", "frame_0000000095_1", "frame_0000000130_3", "frame_0000000105_1", "frame_0000000170_4", "frame_0000000130_2", "frame_0000000030_3", "frame_0000000125_1", "frame_0000000035_4", "frame_0000000080_4", "frame_0000000220_3", "frame_0000000260_4", "frame_0000000125_3", "frame_0000000040_1", "frame_0000000100_4", "frame_0000000215_4", "frame_0000000235_4", "frame_0000000145_3", "frame_0000000240_3", "frame_0000000085_2", "frame_0000000130_4", "frame_0000000045_2", "frame_0000000060_2", "frame_0000000180_4", "frame_0000000080_1", "frame_0000000110_1", "frame_0000000270_1", "frame_0000000210_1", "frame_0000000150_1", "frame_0000000140_3", "frame_0000000165_4", "frame_0000000045_1", "frame_0000000120_4", "frame_0000000205_4", "frame_0000000090_4", "frame_0000000165_1", "frame_0000000080_3", "frame_0000000160_4", "frame_0000000115_4", "frame_0000000190_1", "frame_0000000185_1", "frame_0000000190_4", "frame_0000000235_3", "frame_0000000245_3", "frame_0000000245_4", "frame_0000000050_2", "frame_0000000055_4", "frame_0000000250_3", "frame_0000000155_3", "frame_0000000040_2", "frame_0000000050_3", "frame_0000000220_1", "frame_0000000155_4", "frame_0000000060_3", "frame_0000000260_3", "frame_0000000105_3", "frame_0000000250_4", "frame_0000000060_4", "frame_0000000125_4", "frame_0000000150_4", "frame_0000000145_4", "frame_0000000145_2", "frame_0000000175_1", "frame_0000000225_1", "frame_0000000110_3", "frame_0000000150_2", "frame_0000000095_3", "frame_0000000040_3", "frame_0000000035_3", "frame_0000000015_3", "frame_0000000090_2", "frame_0000000085_4", "frame_0000000065_4", "frame_0000000010_3", "frame_0000000100_1", "frame_0000000085_3", "frame_0000000240_4", "frame_0000000070_4", "frame_0000000115_3", "frame_0000000140_1", "frame_0000000085_1", "frame_0000000050_1", "frame_0000000070_2", "frame_0000000110_2", "frame_0000000150_3", "frame_0000000025_3", "frame_0000000075_1", "frame_0000000165_3", "frame_0000000045_3", "frame_0000000065_1", "frame_0000000195_1", "frame_0000000080_2", "frame_0000000115_2", "frame_0000000225_4", "frame_0000000020_3", "frame_0000000140_2", "frame_0000000155_1", "frame_0000000185_4", "frame_0000000170_2", "frame_0000000115_1", "frame_0000000065_2", "frame_0000000095_2", "frame_0000000210_4", "frame_0000000170_1", "frame_0000000100_2", "frame_0000000215_3", "frame_0000000265_3", "frame_0000000135_2", "frame_0000000160_3", "frame_0000000075_2", "frame_0000000065_3", "frame_0000000095_4", "frame_0000000090_3", "frame_0000000265_4", "frame_0000000225_3", "frame_0000000160_2", "frame_0000000120_1", "frame_0000000120_2", "frame_0000000130_1", "frame_0000000230_3", "frame_0000000100_3", "frame_0000000195_4", "frame_0000000200_1", "frame_0000000195_3", "frame_0000000255_3", "frame_0000000135_3", "frame_0000000180_1", "frame_0000000070_3", "frame_0000000055_1", "frame_0000000055_3", "frame_0000000260_1", "frame_0000000135_4", "frame_0000000125_2", "frame_0000000200_3", "frame_0000000060_1", "frame_0000000035_2", "frame_0000000205_1", "frame_0000000210_3", "frame_0000000230_4", "frame_0000000120_3", "frame_0000000205_3", "frame_0000000075_3", "frame_0000000110_4", "frame_0000000140_4", "frame_0000000170_3", "frame_0000000145_1", "frame_0000000040_4", "frame_0000000155_2", "frame_0000000075_4", "frame_0000000045_4", "frame_0000000160_1", "frame_0000000215_1", "frame_0000000135_1", "frame_0000000105_4", "frame_0000000105_2", "frame_0000000030_4", "frame_0000000265_1", "frame_0000000025_4", "frame_0000000030_2", "frame_0000000090_1", "frame_0000000055_2"]
+    shared_at_least_two = ms_None_1_0_25_0_8_list
 
     print("{} imgs are common to all keys".format(len(shared_at_least_two)))
 
-    for k in deg:
+    # key1 = "ms_mean_0.8_35_0.8" #_0.0_False"
+    # key2 = "ms_None_1.0_25_0.8" #_0.0_False"
+    # stats1 = deg[key1]
+    # stats2 = deg[key2]
+    #
+    # shared_for_2, at_least_2_planes = shared_pairs([key1, key2])
+    #
+    # stats1_extra_keys = at_least_2_planes[key1] - shared_for_2
+    # stats2_extra_keys = at_least_2_planes[key2] - shared_for_2
+    # print("extra: {},\n {}".format(stats1_extra_keys, stats2_extra_keys))
+
+    for k in normals_degrees:
+        # out = False
+        # if k.startswith("ms_None_1.0_25_0.8"):
+        #     out = True
         count = 0
         count_shared = 0
+        count_valid = 0
         avg_l2 = 0.0
         avg_l1 = 0.0
         avg_l2_shared = 0.0
         avg_l1_shared = 0.0
-        for img in deg[k]:
-            deg_list = deg[k][img]
+        for img in normals_degrees[k]:
+            deg_list = normals_degrees[k][img]
+            if valid_normals[k][img] > 1:
+                count_valid = count_valid + 1
             if len(deg_list) > 0:
                 avg_l2 = avg_l2 + (90.0 - deg_list[0]) ** 2
                 avg_l1 = avg_l1 + math.fabs(90.0 - deg_list[0])
                 count = count + 1
                 if shared_at_least_two.__contains__(img):
+                    # if out:
+                    #     print("img: {}: {}".format(img, deg_list))
+                    #     print("normals: {}".format(normals[k][img]))
+
                     avg_l2_shared = avg_l2_shared + (90.0 - deg_list[0]) ** 2
                     avg_l1_shared = avg_l1_shared + math.fabs(90.0 - deg_list[0])
                     count_shared = count_shared + 1
@@ -841,7 +863,7 @@ def evaluate_normals(stats_map):
         if count_shared > 0:
             avg_l2_shared = avg_l2_shared / count_shared
             avg_l1_shared = avg_l1_shared / count_shared
-        print("{} {:.3f} {}".format(k, avg_l1, count))
+        print("{} {:.3f} {} / {}".format(k, avg_l1, count, count_valid))
         print("{} - shared {:.3f} {}".format(k, avg_l1_shared, count_shared))
 
 

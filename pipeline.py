@@ -370,7 +370,6 @@ class Pipeline:
                                   show=self.show_clusters,
                                   save=self.save_clusters)
 
-
             if self.upsample_early:
                 normal_indices = possibly_upsample_normals(img, normal_indices)
 
@@ -440,6 +439,48 @@ class Pipeline:
             Timer.end_check_point("processing img")
             return img_data
 
+    def get_nonsky_mask_possibly_cached(self, img_name, np_image, h_w):
+        height, width = h_w
+        Timer.start_check_point("sky_mask")
+        sky_cache_dir = "{}/cache/sky".format(self.output_dir)
+        Path(sky_cache_dir).mkdir(parents=True, exist_ok=True)
+        sky_cache_file = "{}/{}.npy".format(sky_cache_dir, img_name)
+        if os.path.isfile(sky_cache_file):
+            with open(sky_cache_file, "rb") as f:
+                ret = pickle.load(f)
+        else:
+            ret = get_nonsky_mask(np_image, height, width, self.device == torch.device("cuda"))
+            with open(sky_cache_file, "wb") as f:
+                pickle.dump(ret, f)
+        Timer.end_check_point("sky_mask")
+        return ret
+
+    def compute_normals_possibly_cached(self,
+            img_name,
+            focal_length,
+            orig_height,
+            orig_width,
+            depth_data,
+            simple_weighing=True,
+            smaller_window=False,
+            device=torch.device('cpu')
+    ):
+
+        Timer.start_check_point("compute_normals")
+        cache_dir = "{}/cache/normals".format(self.output_dir)
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        cache_file = "{}/{}_{}.npy".format(cache_dir, img_name, Config.svd_weighted_sigma)
+        if os.path.isfile(cache_file):
+            with open(cache_file, "rb") as f:
+                ret = pickle.load(f)
+        else:
+            ret = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data,
+                                           simple_weighing, smaller_window, device)
+            with open(cache_file, "wb") as f:
+                pickle.dump(ret, f)
+        Timer.end_check_point("compute_normals")
+        return ret
+
     def compute_img_normals(self, img, img_name):
 
         Timer.start_check_point("processing img", img_name)
@@ -463,7 +504,7 @@ class Pipeline:
         img_processing_dir = "{}/imgs".format(self.output_dir)
         sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
         # filter_mask is a numpy array
-        filter_mask = get_nonsky_mask(img, depth_data.shape[2], depth_data.shape[3], self.device == torch.device("cuda"))
+        filter_mask = self.get_nonsky_mask_possibly_cached(img_name, img, depth_data.shape[2:4])
         show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
         counter = 0
@@ -471,26 +512,27 @@ class Pipeline:
 
             Config.svd_weighted_sigma = sigma
 
-            orig_normals, s_values = compute_normals_from_svd(focal_length,
-                                                         orig_height,
-                                                         orig_width,
-                                                         depth_data,
-                                                         simple_weighing=True,
-                                                         smaller_window=(sigma == 0.0),
-                                                         device=torch.device('cpu'))
+            orig_normals, s_values = self.compute_normals_possibly_cached(img_name,
+                                                                          focal_length,
+                                                                          orig_height,
+                                                                          orig_width,
+                                                                          depth_data,
+                                                                          simple_weighing=True,
+                                                                          smaller_window=(sigma == 0.0),
+                                                                          device=torch.device('cpu'))
 
             print("orig_normals.device: {}".format(orig_normals.device))
 
-            for normal_sigma in [0.0, 3.0, 5.0]:
+            for normal_sigma in [None]:
 
-                if normal_sigma != 0.0:
+                if normal_sigma is None:
+                    normals = orig_normals
+                else:
                     bf_key = "bilateral_filter_{}".format(normal_sigma)
                     Timer.start_check_point(bf_key)
                     normals = bilateral_filter(orig_normals, filter_mask=filter_mask, normal_sigma=normal_sigma, device=torch.device('cpu'))
                     print("normals.device after bilateral_filter: {}".format(normals.device))
                     Timer.end_check_point(bf_key)
-                else:
-                    normals = orig_normals
 
                 for mean_shift in ["full", "mean", None]:
 
@@ -504,14 +546,12 @@ class Pipeline:
                                     continue
 
                                 compute = False
-                                if mean_shift is None and singular_value_quantil == 1.0 and angle_distance_threshold_degrees == 25 and sigma == 0.8 and normal_sigma == 0.0:
+                                if mean_shift is None and singular_value_quantil == 1.0 and angle_distance_threshold_degrees == 25 and sigma == 0.8:
                                     compute = True
-                                if mean_shift is "mean" and singular_value_quantil == 0.8 and angle_distance_threshold_degrees == 35 and sigma == 0.8 and normal_sigma == 0.8:
+                                if mean_shift in ["mean", "full"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
                                     compute = True
-                                if mean_shift in ["mean"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
+                                if mean_shift == "full" and angle_distance_threshold_degrees == 35 and singular_value_quantil == 0.8:
                                     compute = True
-                                # if mean_shift == "full" and angle_distance_threshold_degrees == 35 and singular_value_quantil == 0.8 and (sigma == 0.8 or normal_sigma == 0.0):
-                                #     compute = True
                                 if not compute:
                                     continue
 
