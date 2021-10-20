@@ -506,8 +506,8 @@ class Pipeline:
         img_processing_dir = "{}/imgs".format(self.output_dir)
         sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
         # filter_mask is a numpy array
-        filter_mask = self.get_nonsky_mask_possibly_cached(img_name, img, depth_data.shape[2:4])
-        show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
+        sky_mask_np = self.get_nonsky_mask_possibly_cached(img_name, img, depth_data.shape[2:4])
+        show_sky_mask(img, sky_mask_np, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
         counter = 0
         for sigma in [0.8, 1.2, 1.6]:
@@ -532,7 +532,7 @@ class Pipeline:
                 else:
                     bf_key = "bilateral_filter_{}".format(normal_sigma)
                     Timer.start_check_point(bf_key)
-                    normals = bilateral_filter(orig_normals, filter_mask=filter_mask, normal_sigma=normal_sigma, device=torch.device('cpu'))
+                    normals = bilateral_filter(orig_normals, filter_mask=sky_mask_np, normal_sigma=normal_sigma, device=torch.device('cpu'))
                     print("normals.device after bilateral_filter: {}".format(normals.device))
                     Timer.end_check_point(bf_key)
 
@@ -576,29 +576,35 @@ class Pipeline:
 
                                 s_values_ratio = True
                                 if s_values_ratio:
-                                    smallest_singular_values = s_values[:, :, 2] / s_values[:, :, 1]
+                                    singular_values_order = s_values[:, :, 2] / s_values[:, :, 1]
                                 else:
-                                    smallest_singular_values = s_values[:, :, 2]
-                                    smallest_singular_values = smallest_singular_values / depth_data[0, 0]
+                                    singular_values_order = s_values[:, :, 2]
+                                    singular_values_order = singular_values_order / depth_data[0, 0]
+                                singular_values_order = singular_values_order + (1 - sky_mask_np) * singular_values_order.max().item()
 
-                                w, h = smallest_singular_values.shape[0], smallest_singular_values.shape[1]
-                                smallest_singular_values = smallest_singular_values.reshape(w * h)
-                                _, indices = torch.sort(smallest_singular_values)
+                                h, w = singular_values_order.shape[0], singular_values_order.shape[1]
+                                singular_values_order = singular_values_order.reshape(h * w)
+                                _, indices = torch.sort(singular_values_order)
 
                                 # still numpy
-                                mask = torch.zeros_like(smallest_singular_values, dtype=torch.bool)
-                                mask[indices[:(int(indices.shape[0] * singular_value_quantil))]] = True
-                                mask = mask.reshape(w, h).numpy()
+                                if singular_value_quantil == 1.0:
+                                    mask = np.ones((h, w), dtype=np.bool)
+                                else:
+                                    mask = torch.zeros_like(singular_values_order, dtype=torch.bool)
+                                    non_sky = sky_mask_np.sum()
+                                    mask[indices[:int(non_sky * singular_value_quantil)]] = True
+                                    #mask[indices[:(int(indices.shape[0] * singular_value_quantil))]] = True
+                                    mask = mask.reshape(h, w).numpy()
 
                                 if singular_value_quantil != 1.0:
                                     show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
-                                    show_sky_mask(img, filter_mask & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
+                                    show_sky_mask(img, sky_mask_np & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
 
                                 cp_key = "clustering_{}_{}".format(mean_shift, adaptive)
                                 Timer.start_check_point(cp_key)
                                 normals_deviced = normals.to(self.device)
                                 print("normals_deviced.device: {}".format(normals_deviced.device))
-                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced, filter_mask=filter_mask & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True, device=self.device)
+                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced, filter_mask=sky_mask_np & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True, device=self.device)
 
                                 Timer.end_check_point(cp_key)
 
