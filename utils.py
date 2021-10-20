@@ -139,17 +139,20 @@ def read_depth_data_np(directory, limit=None):
     return data_map
 
 
-def read_depth_data(filename, directory, height=None, width=None, device=torch.device("cpu")):
-
-    file_path = '{}/{}'.format(directory, filename)
-    if not os.path.isfile(file_path):
-        raise Exception("ERROR: {} doesn't exist, skipping".format(file_path))
+def read_depth_data_from_path(file_path, height=None, width=None, device=torch.device("cpu")):
     depth_data_np = np.load(file_path).astype(np.float64)
     depth_data = torch.from_numpy(depth_data_np).to(device)
     depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
     if height is not None and width is not None:
         depth_data = upsample_bilinear(depth_data, height, width)
     return depth_data
+
+
+def read_depth_data(filename, directory, height=None, width=None, device=torch.device("cpu")):
+    file_path = '{}/{}'.format(directory, filename)
+    if not os.path.isfile(file_path):
+        raise Exception("ERROR: {} doesn't exist, skipping".format(file_path))
+    return read_depth_data_from_path(file_path, height, width, device)
 
 
 def quaternions_to_R(qs):
