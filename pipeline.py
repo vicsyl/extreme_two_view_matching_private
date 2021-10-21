@@ -716,7 +716,7 @@ class Pipeline:
                             Path(sky_cache_dir).mkdir(parents=True, exist_ok=True)
                         sky_cache_files = ["{}/{}.npy".format(sky_cache_dir, img_name), "{}/{}.npy".format(sky_cache_dir, img_name[:-5])]
                         depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, height=None, width=None, device=torch.device('cpu'))
-                        sky_mask = (depth_data[0, 0] != 0.0).to(torch.int)
+                        sky_mask = (depth_data[0, 0] != 0.0).to(torch.int).numpy()
                         for sky_cache_file in sky_cache_files:
                             with open(sky_cache_file, "wb") as f:
                                 pickle.dump(sky_mask, f)
