@@ -464,26 +464,30 @@ class Pipeline:
             depth_data,
             simple_weighing=True,
             smaller_window=False,
-            device=torch.device('cpu')
+            device=torch.device('cpu'),
+            use_cache=True
     ):
 
         Timer.start_check_point("compute_normals")
-        cache_dir = "{}/cache/normals".format(self.output_dir)
-        if not os.path.exists(cache_dir):
-            Path(cache_dir).mkdir(parents=True, exist_ok=True)
-        cache_file = "{}/{}_{}.npy".format(cache_dir, img_name, Config.svd_weighted_sigma)
-        if os.path.isfile(cache_file):
-            with open(cache_file, "rb") as f:
-                ret = pickle.load(f)
+        cache_file = None
+        if use_cache:
+            cache_dir = "{}/cache/normals".format(self.output_dir)
+            if not os.path.exists(cache_dir):
+                Path(cache_dir).mkdir(parents=True, exist_ok=True)
+            cache_file = "{}/{}_{}.npy".format(cache_dir, img_name, Config.svd_weighted_sigma)
+            if os.path.isfile(cache_file):
+                with open(cache_file, "rb") as f:
+                    ret = pickle.load(f)
         else:
             ret = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data,
                                            simple_weighing, smaller_window, device)
-            with open(cache_file, "wb") as f:
-                pickle.dump(ret, f)
+            if use_cache:
+                with open(cache_file, "wb") as f:
+                    pickle.dump(ret, f)
         Timer.end_check_point("compute_normals")
         return ret
 
-    def compute_img_normals(self, img, img_name):
+    def compute_img_normals(self, img, img_name, stats_key_prefix=None, use_normals_cache=True):
 
         Timer.start_check_point("processing img", img_name)
         print("processing img {}".format(img_name))
@@ -521,7 +525,8 @@ class Pipeline:
                                                                           depth_data,
                                                                           simple_weighing=True,
                                                                           smaller_window=(sigma == 0.0),
-                                                                          device=torch.device('cpu'))
+                                                                          device=torch.device('cpu'),
+                                                                          use_cache=use_normals_cache)
 
             print("orig_normals.device: {}".format(orig_normals.device))
 
@@ -552,7 +557,7 @@ class Pipeline:
                                     compute = True
                                 if mean_shift in ["mean", "full"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
                                     compute = True
-                                if mean_shift == "full" and angle_distance_threshold_degrees == 35 and singular_value_quantil == 0.8:
+                                if mean_shift == "mean" and angle_distance_threshold_degrees == 35 and sigma == 0.8:
                                     compute = True
                                 if not compute:
                                     continue
@@ -561,6 +566,8 @@ class Pipeline:
 
                                 ms_str = "ms_{}".format(mean_shift)
                                 params_key = "{}_{}_{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma, normal_sigma, adaptive)
+                                if stats_key_prefix is not None:
+                                    params_key = "{}_{}".format(stats_key_prefix, params_key)
 
                                 print("params_key: {}".format(params_key))
                                 print("Params: s_value_hist_ratio: {}, "
@@ -576,10 +583,10 @@ class Pipeline:
 
                                 s_values_ratio = True
                                 if s_values_ratio:
-                                    singular_values_order = s_values[:, :, 2] / s_values[:, :, 1]
+                                    singular_values_order = s_values[:, :, 2] / torch.clamp(s_values[:, :, 1], min=1e-19)
                                 else:
                                     singular_values_order = s_values[:, :, 2]
-                                    singular_values_order = singular_values_order / depth_data[0, 0]
+                                    singular_values_order = singular_values_order / torch.clamp(depth_data[0, 0], min=1e-19)
                                 singular_values_order = singular_values_order + (1 - sky_mask_np) * singular_values_order.max().item()
 
                                 h, w = singular_values_order.shape[0], singular_values_order.shape[1]
@@ -647,8 +654,7 @@ class Pipeline:
 
         self.save_stats("sequential")
 
-    def show_and_read_img(self, img_name):
-        img_file_path = self.scene_info.get_img_file_path(img_name)
+    def show_and_read_img_from_path(self, img_name, img_file_path):
         img = cv.imread(img_file_path, None)
         if self.show_input_img:
             plt.figure(figsize=(9, 9))
@@ -657,15 +663,72 @@ class Pipeline:
             show_or_close(True)
         return img
 
+    def show_and_read_img(self, img_name):
+        img_file_path = self.scene_info.get_img_file_path(img_name)
+        return self.show_and_read_img_from_path(img_name, img_file_path)
+
     def run(self):
         if self.method == "compute_normals":
             self.run_sequential_for_normals()
+        elif self.method == "compute_normals_compare":
+            self.run_sequential_for_normals_compare()
         elif self.method == "run_sequential_pipeline":
             self.run_sequential_pipeline()
         elif self.method == "run_matching_pipeline":
             self.run_matching_pipeline()
         else:
             print("incorrect value of '{}' for method. Choose one from 'compute_normals', 'run_sequential_pipeline' or 'run_matching_pipeline'".format(self.method))
+
+    def run_sequential_for_normals_compare(self):
+
+        self.start()
+
+        globs_and_prefixes = [("depth_data/megadepth_ds/depths/*_orig.npy", "gt"),
+                              ("depth_data/megadepth_ds/depths/*_o.npy", "estimated")]
+
+        self.depth_input_dir = "depth_data/megadepth_ds/depths"
+        imgs_base = "depth_data/megadepth_ds/imgs"
+
+        for glob_str, prefix in globs_and_prefixes:
+
+            gl = glob.glob(glob_str)
+            if gl is None or len(gl) == 0:
+                raise Exception("nothing under {}".format(glob_str))
+
+            file_names = [path.split("/")[-1] for path in gl]
+            print("file_names: {}".format(file_names))
+
+            for focal_point_mean_factor in [0.45, 0.5, 0.55]:
+                self.focal_point_mean_factor = focal_point_mean_factor
+
+                for i, depth_data_file_name in enumerate(file_names):
+                    # if not depth_data_file_name.__contains__("110724086_954bbd1a5e"):
+                    #     continue
+
+                    img_name = depth_data_file_name[:-4]
+                    img_name_img = img_name[:-5] if img_name.endswith("orig") else img_name
+                    img_path = "{}/{}.jpg".format(imgs_base, img_name_img)
+                    img = self.show_and_read_img_from_path(img_name, img_path)
+
+                    if prefix == "gt":
+                        sky_cache_dir = "{}/cache/sky".format(self.output_dir)
+                        if not os.path.exists(sky_cache_dir):
+                            Path(sky_cache_dir).mkdir(parents=True, exist_ok=True)
+                        sky_cache_files = ["{}/{}.npy".format(sky_cache_dir, img_name), "{}/{}.npy".format(sky_cache_dir, img_name[:-5])]
+                        depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, height=None, width=None, device=torch.device('cpu'))
+                        sky_mask = (depth_data[0, 0] != 0.0).to(torch.int)
+                        for sky_cache_file in sky_cache_files:
+                            with open(sky_cache_file, "wb") as f:
+                                pickle.dump(sky_mask, f)
+
+                    prefix = "{}_{}".format(prefix, focal_point_mean_factor)
+                    self.compute_img_normals(img, img_name, prefix, use_normals_cache=False)
+                    if i % 10 == 0:
+                        self.save_stats("normals_{}".format(i))
+                    evaluate_normals(self.stats)
+                    Timer.end()
+
+        self.save_stats("normals")
 
     def run_sequential_for_normals(self):
 
