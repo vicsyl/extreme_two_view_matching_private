@@ -595,7 +595,7 @@ class Pipeline:
 
                                 # still numpy
                                 if singular_value_quantil == 1.0:
-                                    mask = np.ones((h, w), dtype=np.bool)
+                                    mask = np.ones((h, w), dtype=bool)
                                 else:
                                     mask = torch.zeros_like(singular_values_order, dtype=torch.bool)
                                     non_sky = sky_mask_np.sum()
@@ -721,8 +721,8 @@ class Pipeline:
                             with open(sky_cache_file, "wb") as f:
                                 pickle.dump(sky_mask, f)
 
-                    prefix = "{}_{}".format(prefix, focal_point_mean_factor)
-                    self.compute_img_normals(img, img_name, prefix, use_normals_cache=False)
+                    prefix_full = "{}_{}".format(prefix, focal_point_mean_factor)
+                    self.compute_img_normals(img, img_name, prefix_full, use_normals_cache=False)
                     if i % 10 == 0:
                         self.save_stats("normals_{}".format(i))
                     evaluate_normals(self.stats)
