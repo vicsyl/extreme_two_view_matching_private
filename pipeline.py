@@ -557,7 +557,7 @@ class Pipeline:
                                     compute = True
                                 if mean_shift in ["mean", "full"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
                                     compute = True
-                                if mean_shift == "mean" and angle_distance_threshold_degrees == 35 and sigma == 0.8:
+                                if mean_shift in ["mean"] and angle_distance_threshold_degrees in [35] and sigma == 0.8:
                                     compute = True
                                 if not compute:
                                     continue
@@ -611,7 +611,13 @@ class Pipeline:
                                 Timer.start_check_point(cp_key)
                                 normals_deviced = normals.to(self.device)
                                 print("normals_deviced.device: {}".format(normals_deviced.device))
-                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced, filter_mask=sky_mask_np & mask, mean_shift=mean_shift, adaptive=adaptive, return_all=True, device=self.device)
+                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
+                                                                                                       filter_mask=sky_mask_np & mask,
+                                                                                                       mean_shift=mean_shift,
+                                                                                                       adaptive=adaptive,
+                                                                                                       return_all=True,
+                                                                                                       device=self.device,
+                                                                                                       handle_antipodal_points=True)
 
                                 Timer.end_check_point(cp_key)
 
@@ -635,7 +641,7 @@ class Pipeline:
                                                       normal_indices,
                                                       normals_clusters_repr,
                                                       img_processing_dir,
-                                                      depth_data_file_name,
+                                                      "{}: {} ".format(depth_data_file_name, params_key),
                                                       show=self.show_clusters,
                                                       save=self.save_clusters)
         print("counter: {}".format(counter))
@@ -698,12 +704,14 @@ class Pipeline:
             file_names = [path.split("/")[-1] for path in gl]
             print("file_names: {}".format(file_names))
 
-            for focal_point_mean_factor in [0.45, 0.5, 0.55]:
+            for focal_point_mean_factor in [0.47]: #5, 0.5, 0.55]:
                 self.focal_point_mean_factor = focal_point_mean_factor
 
                 for i, depth_data_file_name in enumerate(file_names):
-                    # if not depth_data_file_name.__contains__("110724086_954bbd1a5e"):
+                    # if not depth_data_file_name.__contains__("101426383_d1d108b4c5"):
                     #     continue
+                    if not depth_data_file_name.__contains__("110724086_954bbd1a5e"):
+                        continue
 
                     img_name = depth_data_file_name[:-4]
                     img_name_img = img_name[:-5] if img_name.endswith("orig") else img_name

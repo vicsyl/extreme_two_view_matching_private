@@ -144,7 +144,14 @@ def bilateral_filter(normals: torch.Tensor, filter_mask, filter_range=9, spatial
     return filtered
 
 
-def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False, return_all=False, device=torch.device("cpu")):
+def cluster(normals: torch.Tensor,
+            filter_mask,
+            mean_shift=None,
+            adaptive=False,
+            return_all=False,
+            device=torch.device("cpu"),
+            handle_antipodal_points=True
+            ):
     """
     :param normals: Tensor(h, w, 3)
     :param filter_mask: (h, w)
@@ -162,8 +169,18 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
     n_centers = n_centers.expand(normals.shape[0], normals.shape[1], -1, -1)
     n_centers = n_centers.permute(2, 0, 1, 3)
 
-    diffs = n_centers[:] - normals
-    diff_norm = torch.norm(diffs, dim=3)
+    # handle all centers at once
+    if handle_antipodal_points:
+        one = (n_centers - normals)[None]
+        two = (n_centers + normals)[None]
+        diffs = torch.vstack((one, two))
+        diff_norm = torch.norm(diffs, dim=4)
+        mins_args = torch.min(diff_norm, dim=0)
+        diff_norm = mins_args[0]
+        argmin_factor = 1 - 2 * mins_args[1]
+    else:
+        diffs = n_centers - normals
+        diff_norm = torch.norm(diffs, dim=3)
 
     near_ones_per_cluster_center = torch.where(diff_norm < Clustering.distance_threshold, 1, 0)
     near_ones_per_cluster_center = torch.logical_and(near_ones_per_cluster_center, filter_mask)
@@ -190,8 +207,14 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
 
         def is_distance_ok(new_center, threshold):
             for cluster_center in cluster_centers:
-                diff = new_center - cluster_center
-                diff_norm = torch.norm(diff)
+                if handle_antipodal_points:
+                    one = (new_center - cluster_center)[None]
+                    two = (new_center + cluster_center)[None]
+                    diff_new = torch.vstack((one, two))
+                    diff_norm = torch.norm(diff_new, dim=1).min()
+                else:
+                    diff = new_center - cluster_center
+                    diff_norm = torch.norm(diff)
                 if diff_norm < threshold:
                     return False
             return True
@@ -211,24 +234,42 @@ def cluster(normals: torch.Tensor, filter_mask, mean_shift=None, adaptive=False,
             elif mean_shift == "mean":
                 # near_ones_per_cluster_center needs recomputing
                 coords = torch.where(near_ones_per_cluster_center[center_index, :, :])
-                normals_to_mean = normals[coords[0], coords[1]]
+                if handle_antipodal_points:
+                    normals_to_mean = normals * argmin_factor[center_index].unsqueeze(2)
+                    normals_to_mean = normals_to_mean[coords[0], coords[1]]
+                else:
+                    normals_to_mean = normals[coords[0], coords[1]]
 
                 # normals_to_mean conv with kernel + normalization (to norm == 1)
                 cluster_center = normals_to_mean.sum(dim=0) / normals_to_mean.shape[0]
                 cluster_center = cluster_center / torch.norm(cluster_center)
+                cluster_centers.append(cluster_center)
 
                 # just printing the shift
                 angle = angle_2_unit_vectors(cluster_center, n_centers[center_index, 0, 0])
                 print("delta (mean vs. cluster center): {} degrees".format(angle))
 
-                cluster_centers.append(cluster_center)
-                distances = torch.norm(cluster_center - normals, dim=2).expand(normals.shape[0], normals.shape[1])
-                neighborhood = torch.where(distances < Clustering.distance_threshold, 1, 0)
-                neighborhood = torch.logical_and(neighborhood, filter_mask)
+                # recompute the neighborhood just for the new center
+                if handle_antipodal_points:
+                    one = (cluster_center - normals)[None]
+                    two = (cluster_center + normals)[None]
+                    diffs = torch.vstack((one, two))
+                    distances_new = torch.norm(diffs, dim=3)
+                    distances_new = torch.min(distances_new, dim=0)[0]
+                    neighborhood = torch.where(distances_new < Clustering.distance_threshold, 1, 0)
+                    neighborhood = torch.logical_and(neighborhood, filter_mask)
+                else:
+                    distances = torch.norm(cluster_center - normals, dim=2) #.expand(normals.shape[0], normals.shape[1])
+                    neighborhood = torch.where(distances < Clustering.distance_threshold, 1, 0)
+                    neighborhood = torch.logical_and(neighborhood, filter_mask)
+
                 coords = torch.where(neighborhood)
                 arg_mins[coords[0], coords[1]] = len(cluster_centers) - 1
 
             elif mean_shift == "full":
+
+                if handle_antipodal_points:
+                    raise Exception("handle_antipodal_points not implemented for full mean shift")
 
                 cluster_center = n_centers[center_index, 0, 0]
                 orig_center = cluster_center

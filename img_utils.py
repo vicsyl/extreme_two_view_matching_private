@@ -79,10 +79,12 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
 
     rel_normals = normals[normal_indices == 3]
     ax.plot((rel_normals[::10, 0]), (rel_normals[::10, 2]), (rel_normals[::10, 1]), '.', color="yellow", markersize=0.5)
+    ax.plot((-rel_normals[::10, 0]), (-rel_normals[::10, 2]), (-rel_normals[::10, 1]), '.', color="yellow", markersize=0.5)
 
     for i in range(len(clustered_normals)):
         rel_normals = normals[normal_indices == i]
         ax.plot((rel_normals[::10, 0]), (rel_normals[::10, 2]), (rel_normals[::10, 1]), '.', color=cluster_color_names[i], markersize=0.5)
+        ax.plot((-rel_normals[::10, 0]), (-rel_normals[::10, 2]), (-rel_normals[::10, 1]), '.', color=cluster_color_names[i], markersize=0.5)
 
     if len(clustered_normals.shape) == 1:
         clustered_normals = np.expand_dims(clustered_normals, axis=0)

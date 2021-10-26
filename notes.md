@@ -87,3 +87,46 @@
  * read the ds to be able to try the pipeline on it (normals orthogonal? improves matching?)
  * pick the best clustering params as default
  * try some ideas on matching (union rectified and unrectified kpts)
+
+
+# notes from 10/22/2021
+
+## running on GPU on cluster
+
+ * 80-fold speed up for the clustering experiment (+ caching scheme for sky mask and normals)
+ * https://github.com/pytorch/pytorch/issues/41306
+
+## last experiments on clustering
+
+ * real robust optimum actually may be around 25 degrees (35 degrees kind of enforces orthogonality) 
+
+## megadepth ds
+
+ * overview of the ds (one "scene") / many scenes
+ * depth estimation demo
+   * how to measure that?
+ * cluster normals orthogonality demo   
+ * antipodal points demo
+
+## next steps
+ 
+ * finally start experiments with matching
+   * maybe again try some combinatorial search for the rectification angle
+   * many other options
+   * AI: let's start with the unrectified kpts added
+ * honestly more/better ds would be helpful
+   * may again try some synthetic data
+ * plane normals idea
+ * plane patches - bilateral filtering
+ * AI: use kornia for computations on GPU 
+ * AI: try to use other depths gt: bookmarked
+ * AI: check the antipodal points logic 
+
+
+
+
+
+
+
+
+
