@@ -371,7 +371,7 @@ class Pipeline:
 
             depth_data_file_name = "{}.npy".format(img_name)
             depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, device=torch.device('cpu'))
-            normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=self.device)
+            normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'))
 
             Timer.start_check_point("sky_mask")
             non_sky_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
