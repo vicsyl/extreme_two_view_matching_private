@@ -502,6 +502,7 @@ class Pipeline:
 
         Timer.start_check_point("compute_normals")
         cache_file = None
+        ret = None
         if use_cache:
             cache_dir = "{}/cache/normals".format(self.output_dir)
             if not os.path.exists(cache_dir):
@@ -510,7 +511,7 @@ class Pipeline:
             if os.path.isfile(cache_file):
                 with open(cache_file, "rb") as f:
                     ret = pickle.load(f)
-        else:
+        if ret is None:
             ret = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data,
                                            simple_weighing, smaller_window, device)
             if use_cache:
