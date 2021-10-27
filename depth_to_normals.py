@@ -386,7 +386,7 @@ def compute_normals_from_svd(
 
     grid_y, grid_x = torch.meshgrid(height_linspace, width_linspace)
 
-    origin_to_z1 = torch.sqrt(1 + (grid_x / real_focal_length_x) ** 2 + (grid_y / real_focal_length_y) ** 2)
+    origin_to_z1 = torch.sqrt(1 + (grid_x / real_focal_length_x) ** 2 + (grid_y / real_focal_length_y) ** 2).to(device)
 
     # (1, h, w, 3)
     point_cloud = torch.Tensor(depth_data.shape[1:] + (3,)).to(device)
