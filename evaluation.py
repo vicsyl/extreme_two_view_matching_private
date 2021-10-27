@@ -787,6 +787,32 @@ def evaluate_file(scene_name, file_name):
 #     end = time.time()
 #     print("Time elapsed: {}".format(end - start))
 
+def evaluate_stats(stats_map):
+    evaluate_normals(stats_map)
+    evaluate_matching_stats(stats_map)
+
+
+def evaluate_matching_stats(stats_map):
+
+    matching_map = stats_map["matching"]
+    kps = 0
+    tentatives = 0
+    inliers = 0
+    for pair_name in matching_map:
+        kps = kps + matching_map[pair_name]["kps1"]
+        kps = kps + matching_map[pair_name]["kps2"]
+        tentatives = tentatives + matching_map[pair_name]["tentatives"]
+        inliers = inliers + matching_map[pair_name]["inliers"]
+
+    avg_kps = kps / (2 * len(matching_map))
+    avg_tentatives = tentatives / len(matching_map)
+    avg_inliers = inliers / len(matching_map)
+    print("processed: {} pairs".format(len(matching_map)))
+    print("avg. kpts: {}".format(avg_kps))
+    print("avg. tentatives: {}".format(avg_tentatives))
+    print("avg. inliers: {}".format(avg_inliers))
+
+
 def evaluate_normals(stats_map):
 
     normals_degrees = stats_map['normals_degrees']

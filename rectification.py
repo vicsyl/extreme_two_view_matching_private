@@ -133,7 +133,6 @@ def get_perspective_transform(img, R, K, K_inv, component_indices, index, clip_a
     return P, bounding_box_new
 
 
-# FIXME: keypoints not belonging to any component are simply disregarded
 def get_rectified_keypoints(normals,
                             components_indices,
                             valid_components_dict,
@@ -145,7 +144,8 @@ def get_rectified_keypoints(normals,
                             show=False,
                             save=False,
                             out_prefix=None,
-                            rotation_factor=1.0):
+                            rotation_factor=1.0,
+                            all_unrectified=False):
 
     K_inv = np.linalg.inv(K)
 
@@ -235,27 +235,29 @@ def get_rectified_keypoints(normals,
     # TODO corner case - None, [], ...
     kps, descs = descriptor.detectAndCompute(img, None)
 
-    kps_floats = np.float32([kp.pt for kp in kps])
-    # TODO is this the way to round it?
-    kps_ints = np.int32(kps_floats)
-    in_img_mask = kps_ints[:, 0] >= 0
-    in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 0] < img.shape[1])
-    in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 1] >= 0)
-    in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 1] < img.shape[0])
-    kps_ints = kps_ints[in_img_mask]
-    kps = [kp for i, kp in enumerate(kps) if in_img_mask[i]]
-    descs = descs[in_img_mask]
+    if not all_unrectified:
 
-    valid_keys_set = set(valid_components_dict.keys())
-    all_indices_set = set(range(np.max(components_indices) + 1))
-    non_valid_indices = list(all_indices_set - valid_keys_set)
+        kps_floats = np.float32([kp.pt for kp in kps])
+        # TODO is this the way to round it?
+        kps_ints = np.int32(kps_floats)
+        in_img_mask = kps_ints[:, 0] >= 0
+        in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 0] < img.shape[1])
+        in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 1] >= 0)
+        in_img_mask = np.logical_and(in_img_mask, kps_ints[:, 1] < img.shape[0])
+        kps_ints = kps_ints[in_img_mask]
+        kps = [kp for i, kp in enumerate(kps) if in_img_mask[i]]
+        descs = descs[in_img_mask]
 
-    filter_non_valid = np.zeros(kps_ints.shape[0])
-    for non_valid_index in non_valid_indices:
-        filter_non_valid = np.logical_or(filter_non_valid, components_indices[kps_ints[:, 1], kps_ints[:, 0]] == non_valid_index)
+        valid_keys_set = set(valid_components_dict.keys())
+        all_indices_set = set(range(np.max(components_indices) + 1))
+        non_valid_indices = list(all_indices_set - valid_keys_set)
 
-    kps = [kp for i, kp in enumerate(kps) if filter_non_valid[i]]
-    descs = descs[filter_non_valid]
+        filter_non_valid = np.zeros(kps_ints.shape[0])
+        for non_valid_index in non_valid_indices:
+            filter_non_valid = np.logical_or(filter_non_valid, components_indices[kps_ints[:, 1], kps_ints[:, 0]] == non_valid_index)
+
+        kps = [kp for i, kp in enumerate(kps) if filter_non_valid[i]]
+        descs = descs[filter_non_valid]
 
     all_kps.extend(kps)
 

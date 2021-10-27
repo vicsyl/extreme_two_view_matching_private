@@ -23,7 +23,7 @@ class Clustering:
 
     # primary params
     N_points = 300
-    angle_distance_threshold_degrees = 30
+    angle_distance_threshold_degrees = 35
     distance_threshold = from_degrees_to_dist(angle_distance_threshold_degrees, "bin angle")
     distance_inter_cluster_threshold_factor = 2.5
     distance_inter_cluster_threshold = from_degrees_to_dist(angle_distance_threshold_degrees, "seed inter cluster angle", distance_inter_cluster_threshold_factor)

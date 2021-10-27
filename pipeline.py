@@ -60,6 +60,11 @@ class Pipeline:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    mean_shift = "mean"
+    handle_antipodal_points = True
+    singular_value_quantil = 1.0
+    all_unrectified = False
+
     scene_name = None
     scene_type = None
     permutation_limit = None
@@ -152,6 +157,26 @@ class Pipeline:
 
                 if k == "scene_name":
                     pipeline.scene_name = v
+                elif k == "handle_antipodal_points":
+                    pipeline.handle_antipodal_points = v.lower() == "true"
+                elif k == "device":
+                    if v == "cpu":
+                        pipeline.device = torch.device("cpu")
+                    elif v == "cuda":
+                        pipeline.device = torch.device("cuda")
+                    else:
+                        raise Exception("Unknown param value for 'device': {}".format(v))
+                elif k == "mean_shift":
+                    if v.lower() == "none":
+                        pipeline.mean_shift = None
+                    elif v.lower() == "mean":
+                        pipeline.mean_shift = "mean"
+                    elif v.lower() == "full":
+                        pipeline.mean_shift = "full"
+                    else:
+                        raise Exception("Unknown param value for 'mean_shift': {}".format(v))
+                elif k == "singular_value_quantil":
+                    pipeline.singular_value_quantil = float(v)
                 elif k == "permutation_limit":
                     pipeline.permutation_limit = int(v)
                 elif k == "method":
@@ -160,6 +185,8 @@ class Pipeline:
                     pipeline.scene_type = v
                 elif k == "file_name_suffix":
                     pipeline.file_name_suffix = v
+                elif k == "all_unrectified":
+                    pipeline.all_unrectified = v.lower() == "true"
                 elif k == "rectify":
                     pipeline.rectify = v.lower() == "true"
                 elif k == "use_degensac":
@@ -343,24 +370,28 @@ class Pipeline:
             Timer.start_check_point("processing img from scratch")
 
             depth_data_file_name = "{}.npy".format(img_name)
-            normals, _ = compute_only_normals(focal_length,
-                                                 orig_height,
-                                                 orig_width,
-                                                 self.depth_input_dir,
-                                                 depth_data_file_name,
-                                                 simple_weighing=True)
+            depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, device=torch.device('cpu'))
+            normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=self.device)
 
-            filter_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+            Timer.start_check_point("sky_mask")
+            non_sky_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+            Timer.end_check_point("sky_mask")
 
-            sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
-            show_sky_mask(img, filter_mask, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
+            Timer.start_check_point("quantil_mask")
+            quantil_mask = self.get_quantil_mask(img, img_name, self.singular_value_quantil, depth_data[2:4], s_values, depth_data, non_sky_mask)
+            filter_mask = non_sky_mask & quantil_mask
+            Timer.end_check_point("quantil_mask")
 
-            normals_clusters_repr, normal_indices, _ = cluster_normals(normals, filter_mask=filter_mask)
-
-            degrees_list = get_degrees_between_normals(normals_clusters_repr)
-            if not self.stats["imgs_data"].__contains__(img_name):
-                self.stats["imgs_data"][img_name] = {}
-            self.stats["imgs_data"][img_name]["deg_between_normals"] = degrees_list
+            Timer.start_check_point("clustering")
+            normals_deviced = normals.to(self.device)
+            print("normals_deviced.device: {}".format(normals_deviced.device))
+            normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
+                                                                                   filter_mask=filter_mask,
+                                                                                   mean_shift=self.mean_shift,
+                                                                                   device=self.device,
+                                                                                   handle_antipodal_points=self.handle_antipodal_points)
+            Timer.end_check_point("clustering")
+            self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, "", img_name)
 
             show_or_save_clusters(normals,
                                   normal_indices,
@@ -417,7 +448,8 @@ class Pipeline:
                                                  clip_angle=self.clip_angle,
                                                  show=self.show_rectification,
                                                  save=self.save_rectification,
-                                                 out_prefix=rectification_path_prefix
+                                                 out_prefix=rectification_path_prefix,
+                                                 all_unrectified=self.all_unrectified
                                                  )
 
             img_data = ImageData(img=img,
@@ -487,6 +519,51 @@ class Pipeline:
         Timer.end_check_point("compute_normals")
         return ret
 
+    def update_normals_stats(self, normal_indices, normals_clusters_repr, valid_normals, params_key, img_name):
+
+        sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
+        indices = np.argsort(-sums)
+
+        # eventually delete this check and the two lines above
+        for i in range(len(indices)):
+            if i != indices[i]:
+                print("Warning: i != indices[i]")
+
+        normals_clusters_repr_sorted = normals_clusters_repr[indices]
+
+        degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
+        print("pipeline:compute_img_normals:normals_clusters_repr_sorted: {}".format(normals_clusters_repr_sorted))
+        print("pipeline:compute_img_normals:degrees_list: {}".format(degrees_list))
+        self.update_stats_map("normals_degrees", params_key, img_name, degrees_list)
+        self.update_stats_map("normals", params_key, img_name, normals_clusters_repr)
+        self.update_stats_map("valid_normals", params_key, img_name, valid_normals)
+
+    def get_quantil_mask(self, img, img_name, singular_value_quantil, h_w_size, s_values, depth_data, sky_mask_np):
+        if singular_value_quantil == 1.0:
+            mask = np.ones(h_w_size, dtype=bool)
+        else:
+            s_values_ratio = True
+            if s_values_ratio:
+                singular_values_order = s_values[:, :, 2] / torch.clamp(s_values[:, :, 1], min=1e-19)
+            else:
+                singular_values_order = s_values[:, :, 2]
+                singular_values_order = singular_values_order / torch.clamp(depth_data[0, 0], min=1e-19)
+            singular_values_order = singular_values_order + (1 - sky_mask_np) * singular_values_order.max().item()
+
+            h, w = singular_values_order.shape[0], singular_values_order.shape[1]
+            singular_values_order = singular_values_order.reshape(h * w)
+            _, indices = torch.sort(singular_values_order)
+
+            mask = torch.zeros_like(singular_values_order, dtype=torch.bool)
+            non_sky = sky_mask_np.sum()
+            mask[indices[:int(non_sky * singular_value_quantil)]] = True
+            mask = mask.reshape(h, w).numpy()
+
+            show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
+            show_sky_mask(img, sky_mask_np & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
+
+        return mask
+
     def compute_img_normals(self, img, img_name, stats_key_prefix=None, use_normals_cache=True):
 
         Timer.start_check_point("processing img", img_name)
@@ -553,11 +630,11 @@ class Pipeline:
                                     continue
 
                                 compute = False
-                                if mean_shift is None and singular_value_quantil == 1.0 and angle_distance_threshold_degrees == 25 and sigma == 0.8:
-                                    compute = True
-                                if mean_shift in ["mean", "full"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
-                                    compute = True
-                                if mean_shift in ["mean"] and angle_distance_threshold_degrees in [35] and sigma == 0.8:
+                                # if mean_shift is None and singular_value_quantil == 1.0 and angle_distance_threshold_degrees == 25 and sigma == 0.8:
+                                #     compute = True
+                                # if mean_shift in ["mean", "full"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
+                                #     compute = True
+                                if mean_shift in ["mean"] and angle_distance_threshold_degrees in [25] and sigma == 0.8 and singular_value_quantil in [0.8, 1.0]:
                                     compute = True
                                 if not compute:
                                     continue
@@ -581,38 +658,15 @@ class Pipeline:
                                 Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
                                 Clustering.recompute(math.sqrt(singular_value_quantil))
 
-                                s_values_ratio = True
-                                if s_values_ratio:
-                                    singular_values_order = s_values[:, :, 2] / torch.clamp(s_values[:, :, 1], min=1e-19)
-                                else:
-                                    singular_values_order = s_values[:, :, 2]
-                                    singular_values_order = singular_values_order / torch.clamp(depth_data[0, 0], min=1e-19)
-                                singular_values_order = singular_values_order + (1 - sky_mask_np) * singular_values_order.max().item()
-
-                                h, w = singular_values_order.shape[0], singular_values_order.shape[1]
-                                singular_values_order = singular_values_order.reshape(h * w)
-                                _, indices = torch.sort(singular_values_order)
-
-                                # still numpy
-                                if singular_value_quantil == 1.0:
-                                    mask = np.ones((h, w), dtype=bool)
-                                else:
-                                    mask = torch.zeros_like(singular_values_order, dtype=torch.bool)
-                                    non_sky = sky_mask_np.sum()
-                                    mask[indices[:int(non_sky * singular_value_quantil)]] = True
-                                    #mask[indices[:(int(indices.shape[0] * singular_value_quantil))]] = True
-                                    mask = mask.reshape(h, w).numpy()
-
-                                if singular_value_quantil != 1.0:
-                                    show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
-                                    show_sky_mask(img, sky_mask_np & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
+                                quantil_mask = self.get_quantil_mask(img, img_name, singular_value_quantil, depth_data[2:4], s_values, depth_data, sky_mask_np)
+                                filter_mask = sky_mask_np & quantil_mask
 
                                 cp_key = "clustering_{}_{}".format(mean_shift, adaptive)
                                 Timer.start_check_point(cp_key)
                                 normals_deviced = normals.to(self.device)
                                 print("normals_deviced.device: {}".format(normals_deviced.device))
                                 normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
-                                                                                                       filter_mask=sky_mask_np & mask,
+                                                                                                       filter_mask=filter_mask,
                                                                                                        mean_shift=mean_shift,
                                                                                                        adaptive=adaptive,
                                                                                                        return_all=True,
@@ -620,22 +674,7 @@ class Pipeline:
                                                                                                        handle_antipodal_points=True)
 
                                 Timer.end_check_point(cp_key)
-
-                                sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
-                                indices = np.argsort(-sums)
-
-                                # then delete the previous two lines - or just debug this
-                                # for i in range(len(indices)):
-                                #     assert i == indices[i]
-
-                                normals_clusters_repr_sorted = normals_clusters_repr[indices]
-
-                                degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
-                                print("pipeline:compute_img_normals:normals_clusters_repr_sorted: {}".format(normals_clusters_repr_sorted))
-                                print("pipeline:compute_img_normals:degrees_list: {}".format(degrees_list))
-                                self.update_stats_map("normals_degrees", params_key, img_name, degrees_list)
-                                self.update_stats_map("normals", params_key, img_name, normals_clusters_repr)
-                                self.update_stats_map("valid_normals", params_key, img_name, valid_normals)
+                                self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, params_key, img_name)
 
                                 show_or_save_clusters(normals,
                                                       normal_indices,
@@ -755,12 +794,20 @@ class Pipeline:
 
         self.save_stats("normals")
 
+    def update_matching_stats(self, stats_struct: Stats, img_pair_name):
+        self.update_stats_map("matching", img_pair_name, "kps1", stats_struct.all_features_1)
+        self.update_stats_map("matching", img_pair_name, "kps2", stats_struct.all_features_2)
+        self.update_stats_map("matching", img_pair_name, "tentatives", stats_struct.tentative_matches)
+        self.update_stats_map("matching", img_pair_name, "inliers", stats_struct.inliers)
+
     def run_matching_pipeline(self):
 
         self.start()
 
         stats_map = {}
         already_processed = set()
+
+        stats_counter = 0
 
         for difficulty in self.matching_difficulties:
             print("Difficulty: {}".format(difficulty))
@@ -789,28 +836,22 @@ class Pipeline:
 
                 # I might not need normals yet
                 # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
+
+                image_data = []
                 try:
-                    image_data1 = self.process_image(img_pair.img1)
-                except Exception as e:
-                    print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img1,
-                                                                                              img_pair.img1,
-                                                                                              img_pair.img2))
+                    for img in [img_pair.img1, img_pair.img2]:
+                        image_data.append(self.process_image(img))
+                except:
+                    print("{}_{} couldn't be processed, skipping the matching pair".format(img_pair.img1, img_pair.img1))
                     print(traceback.format_exc(), file=sys.stderr)
                     continue
 
-                try:
-                    image_data2 = self.process_image(img_pair.img2)
-                except Exception as e:
-                    print("{} couldn't be processed, skipping the matching pair {}_{}".format(img_pair.img2,
-                                                                                              img_pair.img1,
-                                                                                              img_pair.img2))
-                    print(traceback.format_exc(), file=sys.stderr)
-                    continue
+                stats_counter = stats_counter + 1
 
                 if self.planes_based_matching:
                     E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_with_dominant_planes(
-                        image_data1,
-                        image_data2,
+                        image_data[0],
+                        image_data[1],
                         use_degensac=self.use_degensac,
                         find_fundamental=self.estimate_k,
                         img_pair=img_pair,
@@ -825,14 +866,14 @@ class Pipeline:
 
                 elif self.use_degensac:
                     E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
-                        image_data1.img,
-                        image_data1.key_points,
-                        image_data1.descriptions,
-                        image_data1.real_K,
-                        image_data2.img,
-                        image_data2.key_points,
-                        image_data2.descriptions,
-                        image_data2.real_K,
+                        image_data[0].img,
+                        image_data[0].key_points,
+                        image_data[0].descriptions,
+                        image_data[0].real_K,
+                        image_data[1].img,
+                        image_data[1].key_points,
+                        image_data[1].descriptions,
+                        image_data[1].real_K,
                         img_pair,
                         matching_out_dir,
                         show=self.show_matching,
@@ -846,14 +887,14 @@ class Pipeline:
                 else:
                     # NOTE using img_datax.real_K for a call to findE
                     E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
-                        image_data1.img,
-                        image_data1.key_points,
-                        image_data1.descriptions,
-                        image_data1.real_K,
-                        image_data2.img,
-                        image_data2.key_points,
-                        image_data2.descriptions,
-                        image_data2.real_K,
+                        image_data[0].img,
+                        image_data[0].key_points,
+                        image_data[0].descriptions,
+                        image_data[0].real_K,
+                        image_data[1].img,
+                        image_data[1].key_points,
+                        image_data[1].descriptions,
+                        image_data[1].real_K,
                         find_fundamental=self.estimate_k,
                         img_pair=img_pair,
                         out_dir=matching_out_dir,
@@ -865,20 +906,25 @@ class Pipeline:
                         ransac_iters=self.ransac_iters
                     )
 
-                evaluate_matching(self.scene_info,
+                stats_struct = evaluate_matching(self.scene_info,
                                   E,
-                                  image_data1.key_points,
-                                  image_data2.key_points,
+                                  image_data[0].key_points,
+                                  image_data[1].key_points,
                                   tentative_matches,
                                   inlier_mask,
                                   img_pair,
                                   stats_map_diff,
-                                  image_data1.normals,
-                                  image_data2.normals,
+                                  image_data[0].normals,
+                                  image_data[1].normals,
                                   )
+                self.update_matching_stats(stats_struct, "{}_{}".format(img_pair.img1, img_pair.img2))
 
                 processed_pairs = processed_pairs + 1
                 Timer.end_check_point("complete image pair matching")
+
+                if stats_counter % 10 == 0:
+                    self.save_stats()
+                    evaluate_stats(self.stats)
 
             if len(stats_map_diff) > 0:
                 stats_map[difficulty] = stats_map_diff
@@ -897,7 +943,7 @@ class Pipeline:
         self.log()
         evaluate_all(stats_map, n_worst_examples=None)
 
-    def save_stats(self, key):
+    def save_stats(self, key=""):
         file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())
         with open(file_name, "wb") as f:
             pickle.dump(self.stats, f)
