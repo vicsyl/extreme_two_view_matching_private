@@ -6,6 +6,7 @@ from typing import List
 import cv2 as cv
 import kornia.geometry.epipolar
 import torch
+from utils import comma_float
 
 from scene_info import *
 
@@ -794,23 +795,38 @@ def evaluate_stats(stats_map):
 
 def evaluate_matching_stats(stats_map):
 
-    matching_map = stats_map["matching"]
-    kps = 0
-    tentatives = 0
-    inliers = 0
-    for pair_name in matching_map:
-        kps = kps + matching_map[pair_name]["kps1"]
-        kps = kps + matching_map[pair_name]["kps2"]
-        tentatives = tentatives + matching_map[pair_name]["tentatives"]
-        inliers = inliers + matching_map[pair_name]["inliers"]
+    matching_map_all = stats_map["matching"]
 
-    avg_kps = kps / (2 * len(matching_map))
-    avg_tentatives = tentatives / len(matching_map)
-    avg_inliers = inliers / len(matching_map)
-    print("processed: {} pairs".format(len(matching_map)))
-    print("avg. kpts: {}".format(avg_kps))
-    print("avg. tentatives: {}".format(avg_tentatives))
-    print("avg. inliers: {}".format(avg_inliers))
+    stats_local = {"all_keypoints": {}, "tentatives": {}, "inliers": {}, "inlier_ratio": {}}
+
+    for difficulty in matching_map_all:
+
+        matching_map = matching_map_all[difficulty]
+
+        kps = 0
+        tentatives = 0
+        inliers = 0
+        for pair_name in matching_map:
+            kps = kps + matching_map[pair_name]["kps1"]
+            kps = kps + matching_map[pair_name]["kps2"]
+            tentatives = tentatives + matching_map[pair_name]["tentatives"]
+            inliers = inliers + matching_map[pair_name]["inliers"]
+
+        stats_local["all_keypoints"][difficulty] = kps / (2 * len(matching_map))
+        stats_local["tentatives"][difficulty] = tentatives / len(matching_map)
+        stats_local["inliers"][difficulty] = inliers / len(matching_map)
+        stats_local["inlier_ratio"][difficulty] = stats_local["inliers"][difficulty] / stats_local["tentatives"][difficulty]
+
+    for key in ["all_keypoints", "tentatives", "inliers", "inlier_ratio"]:
+        print("{} across difficulties: ".format(key))
+        for difficulty in matching_map_all:
+            print("{}: {}".format(difficulty, comma_float(stats_local[key][difficulty])))
+
+        #
+        # print("processed: {} pairs".format(len(matching_map)))
+        # print("avg. kpts: {}".format(avg_kps))
+        # print("avg. tentatives: {}".format(avg_tentatives))
+        # print("avg. inliers: {}".format(avg_inliers))
 
 
 def evaluate_normals(stats_map):

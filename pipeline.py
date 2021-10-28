@@ -50,10 +50,11 @@ def ensure_key(map, key):
         map[key] = {}
 
 
-def ensure_keys(map, key1, key2):
-    ensure_key(map, key1)
-    ensure_key(map[key1], key2)
-
+def ensure_keys(map, keys_list):
+    for i in range(len(keys_list)):
+        ensure_key(map, keys_list[i])
+        map = map[keys_list[i]]
+    return map
 
 @dataclass
 class Pipeline:
@@ -298,7 +299,7 @@ class Pipeline:
 
     def log(self):
         print("Pipeline config:")
-        attr_list = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__")]
+        attr_list = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and attr not in ["stats"]]
         for attr_name in attr_list:
             if attr_name in ["scene_info"]:
                 continue
@@ -535,9 +536,9 @@ class Pipeline:
         degrees_list = get_degrees_between_normals(normals_clusters_repr_sorted)
         print("pipeline:compute_img_normals:normals_clusters_repr_sorted: {}".format(normals_clusters_repr_sorted))
         print("pipeline:compute_img_normals:degrees_list: {}".format(degrees_list))
-        self.update_stats_map("normals_degrees", params_key, img_name, degrees_list)
-        self.update_stats_map("normals", params_key, img_name, normals_clusters_repr)
-        self.update_stats_map("valid_normals", params_key, img_name, valid_normals)
+        self.update_stats_map(["normals_degrees", params_key, img_name], degrees_list)
+        self.update_stats_map(["normals", params_key, img_name], normals_clusters_repr)
+        self.update_stats_map(["valid_normals", params_key, img_name], valid_normals)
 
     def get_quantil_mask(self, img, img_name, singular_value_quantil, h_w_size, s_values, depth_data, sky_mask_np):
         if singular_value_quantil == 1.0:
@@ -686,9 +687,9 @@ class Pipeline:
                                                       save=self.save_clusters)
         print("counter: {}".format(counter))
 
-    def update_stats_map(self, key1, key2, key3, obj):
-        ensure_keys(self.stats, key1, key2)
-        self.stats[key1][key2][key3] = obj
+    def update_stats_map(self, key_list, obj):
+        map = ensure_keys(self.stats, key_list[:-1])
+        map[key_list[-1]] = obj
 
     def run_sequential_pipeline(self):
 
@@ -795,11 +796,11 @@ class Pipeline:
 
         self.save_stats("normals")
 
-    def update_matching_stats(self, stats_struct: Stats, img_pair_name):
-        self.update_stats_map("matching", img_pair_name, "kps1", stats_struct.all_features_1)
-        self.update_stats_map("matching", img_pair_name, "kps2", stats_struct.all_features_2)
-        self.update_stats_map("matching", img_pair_name, "tentatives", stats_struct.tentative_matches)
-        self.update_stats_map("matching", img_pair_name, "inliers", stats_struct.inliers)
+    def update_matching_stats(self, stats_struct: Stats, difficulty, img_pair_name):
+        self.update_stats_map(["matching", difficulty, img_pair_name, "kps1"], stats_struct.all_features_1)
+        self.update_stats_map(["matching", difficulty, img_pair_name, "kps2"], stats_struct.all_features_2)
+        self.update_stats_map(["matching", difficulty, img_pair_name, "tentatives"], stats_struct.tentative_matches)
+        self.update_stats_map(["matching", difficulty, img_pair_name, "inliers"], stats_struct.inliers)
 
     def run_matching_pipeline(self):
 
@@ -918,13 +919,12 @@ class Pipeline:
                                   image_data[0].normals,
                                   image_data[1].normals,
                                   )
-                self.update_matching_stats(stats_struct, "{}_{}".format(img_pair.img1, img_pair.img2))
+                self.update_matching_stats(stats_struct, difficulty, "{}_{}".format(img_pair.img1, img_pair.img2))
 
                 processed_pairs = processed_pairs + 1
                 Timer.end_check_point("complete image pair matching")
 
                 if stats_counter % 10 == 0:
-                    self.save_stats()
                     evaluate_stats(self.stats)
 
             if len(stats_map_diff) > 0:
@@ -942,7 +942,9 @@ class Pipeline:
 
         self.save_stats("matching")
         self.log()
+        # These two are different approaches to stats
         evaluate_all(stats_map, n_worst_examples=None)
+        evaluate_stats(self.stats)
 
     def save_stats(self, key=""):
         file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())
