@@ -600,6 +600,7 @@ def compare_stats_maps(stats_map1: dict, stats_map2: dict, difficulty, n_worst_e
     print("Stats maps: {} keys only in 2nd map".format(len(only2)))
 
     rad_th = th_degrees * math.pi / 180
+
     def get_sat_keys(stats_map):
         filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
         keys = set([i[0] for i in filtered])
@@ -817,10 +818,11 @@ def evaluate_matching_stats(stats_map):
         stats_local["inliers"][difficulty] = inliers / len(matching_map)
         stats_local["inlier_ratio"][difficulty] = stats_local["inliers"][difficulty] / stats_local["tentatives"][difficulty]
 
+    print("difficulties: [{}]: ".format(", ".join([str(difficulty) for difficulty in matching_map_all])))
     for key in ["all_keypoints", "tentatives", "inliers", "inlier_ratio"]:
         print("{} across difficulties: ".format(key))
         for difficulty in matching_map_all:
-            print("{}: {}".format(difficulty, comma_float(stats_local[key][difficulty])))
+            print("{}".format(comma_float(stats_local[key][difficulty])))
 
         #
         # print("processed: {} pairs".format(len(matching_map)))

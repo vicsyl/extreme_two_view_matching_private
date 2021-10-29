@@ -123,10 +123,78 @@
  * AI: check the antipodal points logic 
 
 
+# notes from 10/29/2021
+
+## experiments
+
+* the last improvements in normal estimation improved the overall performance!
+  * but adding unrectified kpts and handling the antipodal points harmed the performance
+  * still interested in seeing how (exactly) the normals accuracy influence the overall performance
+    * correlation diff(right angle) <-> error in relative rotation
+    * recompute the normals for contiguous patches
+    * combinatorial search  
+    * enforcing the orthogonality
+  * the same goes for the area of the patches 
+    * bilinear filtering      
+    * grow - shrink the patch
+   
+## what to try next
+
+* smaller rotation for the rectification
+  * half the rotation
+  * search for R so that ||R(n_1_i) - n_2_i|| is minimized
+    * then use half the rotation for the rectification 
+    * I can observe how the final/GT R is consistent with ||R(n_1_i) - n_2_i||
+      * this is another way to check the normals estimation btw. (if I have GT R)
+      * this also may suggest some kind of reestimation loop, etc.
+    * plus constraints on R (Rz = I)
+
+* again try some DS with non rectangular surfaces 
+* Q: parameters for SIFT (n_features...) / possibly other feature extractor
+   
+## The thesis update(s)
+
+* update the description of the techniques
+* clean up the presentation (graphs), template
+* how to consult it? (diff?)
+
+* special section(s) for contribution
+
+## Workflow 
+
+* smoother workflow 
+  * generating better tabular data / graphs 
+  * better archiving, etc. 
+
+## minutes
+
+* (try 0.9 for all unrectified)
+  * but maybe better: https://github.com/ubc-vision/image-matching-benchmark/blob/master/methods/feature_matching/nn.py#L149
+* SIFT - try 8K
+* try HardNet from https://github.com/kornia/kornia-examples/blob/master/MKD_TFeat_descriptors_in_kornia.ipynb and from below
 
 
+def get_local_descriptors(img, cv2_sift_kpts, kornia_descriptor):
+  if len(cv2_sift_kpts)==0:
+    return np.array([])
+  
+  #We will not train anything, so let's save time and memory by no_grad()
+  with torch.no_grad():
+    kornia_descriptor.eval()
+    timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float()/255.)
+    lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts)
+    patches = KF.extract_patches_from_pyramid(timg,lafs, 32)
+    B, N, CH, H, W = patches.size()
+    # Descriptor accep
+    B, N, CH, H, W = patches.size()
+    # Descriptor accepts standard tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
+    # So we need to reshape a bit :) 
+    descs = kornia_descriptor(patches.view(B * N, CH, H, W)).view(B * N, -1)
+  return descs.detach().cpu().numpy()
+descs1 = get_local_descriptors(img1, kps1, descriptor)
 
 
+ 
 
 
 
