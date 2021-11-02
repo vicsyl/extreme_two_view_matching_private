@@ -174,10 +174,12 @@
 * try HardNet from https://github.com/kornia/kornia-examples/blob/master/MKD_TFeat_descriptors_in_kornia.ipynb and from below
 
 
+```
 def get_local_descriptors(img, cv2_sift_kpts, kornia_descriptor):
   if len(cv2_sift_kpts)==0:
     return np.array([])
-  
+```
+```
   #We will not train anything, so let's save time and memory by no_grad()
   with torch.no_grad():
     kornia_descriptor.eval()
@@ -192,9 +194,5 @@ def get_local_descriptors(img, cv2_sift_kpts, kornia_descriptor):
     descs = kornia_descriptor(patches.view(B * N, CH, H, W)).view(B * N, -1)
   return descs.detach().cpu().numpy()
 descs1 = get_local_descriptors(img1, kps1, descriptor)
-
-
- 
-
-
+```
 

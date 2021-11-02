@@ -37,3 +37,26 @@ class Config:
     def do_flann():
         return Config.config_map[Config.key_do_flann]
 
+
+def get_default_cfg():
+    return {
+        "fginn": False,
+        # TODO should I use it outside of fginn?
+        "num_nn": 2,
+        "fginn_spatial_th": 100,
+        "ratio_th": 0.5
+    }
+
+
+def parse_line(key: str, value: str, cfg_map):
+
+    if key == "fginn":
+        cfg_map["fginn"] = value.lower() == "true"
+    elif key == "num_nn":
+        cfg_map["num_nn"] = int(value)
+    elif key == "fginn_spatial_th":
+        cfg_map["fginn_spatial_th"] = int(value)
+    elif key == "ratio_th":
+        cfg_map["ratio_th"] = float(value)
+    else:
+        print("WARNING - unrecognized param: {}".format(key))

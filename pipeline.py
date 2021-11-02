@@ -1,7 +1,7 @@
-
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
+from hard_net_descriptor import HardNetDescriptor
 
 import cv2 as cv
 import pickle
@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import argparse
 
-from config import Config
+from config import *
 from connected_components import get_connected_components, get_and_show_components
 from depth_to_normals import *
 from matching import match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
@@ -78,6 +78,8 @@ class Pipeline:
     ransac_conf = 0.9999
     ransac_iters = 100000
 
+    config = get_default_cfg()
+
     # actually unused
     show_save_normals = False
     show_orig_image = True
@@ -128,6 +130,18 @@ class Pipeline:
     stats = {}
 
     @staticmethod
+    def get_descriptor(desc_name, n_features, use_hardnet):
+
+        if desc_name != "SIFT":
+            raise ValueError("'{}' unknown as a descriptor".format(desc_name))
+
+        sift_descriptor = cv.SIFT_create(n_features)
+        if use_hardnet:
+            return HardNetDescriptor(sift_descriptor)
+        else:
+            return sift_descriptor
+
+    @staticmethod
     def configure(config_file_name: str, args):
 
         # https://docs.python.org/2/library/configparser.html
@@ -138,11 +152,10 @@ class Pipeline:
         #     sc = cf['save_clusters']
         #     print()
 
-        feature_descriptors_str_map = {
-            "SIFT": cv.SIFT_create(),
-        }
-
         pipeline = Pipeline()
+        descriptor_name = "SIFT"
+        n_features = None
+        use_hardnet = False
 
         with open(config_file_name) as f:
             for line in f:
@@ -206,8 +219,12 @@ class Pipeline:
                     pipeline.matching_limit = int(v)
                 elif k == "planes_based_matching":
                     pipeline.planes_based_matching = v.lower() == "true"
+                elif k == "use_hardnet":
+                    use_hardnet = v.lower() == "true"
                 elif k == "feature_descriptor":
-                    pipeline.feature_descriptor = feature_descriptors_str_map[v]
+                    descriptor_name = v
+                elif k == "n_features":
+                    n_features = None if v.lower() == "none" else int(v)
                 elif k == "output_dir":
                     pipeline.output_dir = v
                 elif k == "show_input_img":
@@ -267,7 +284,9 @@ class Pipeline:
                 elif k == "connected_components_flood_fill":
                     pipeline.connected_components_flood_fill = v.lower() == "true"
                 else:
-                    print("WARNING - unrecognized param: {}".format(k))
+                    parse_line(k, v, pipeline.config)
+
+        pipeline.feature_descriptor = Pipeline.get_descriptor(descriptor_name, n_features, use_hardnet)
 
         pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
 
@@ -905,7 +924,8 @@ class Pipeline:
                         ratio_thresh=self.knn_ratio_threshold,
                         ransac_th=self.ransac_th,
                         ransac_conf=self.ransac_conf,
-                        ransac_iters=self.ransac_iters
+                        ransac_iters=self.ransac_iters,
+                        cfg=self.config,
                     )
 
                 stats_struct = evaluate_matching(self.scene_info,

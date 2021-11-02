@@ -83,9 +83,9 @@ def rich_split_points(tentative_matches, kps1, dsc1, kps2, dsc2):
     return src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc
 
 
-def get_cross_checked_tentatives(matcher, descs1, descs2, ratio_threshold):
+def get_cross_checked_tentatives(matcher, descs1, descs2, ratio_threshold, k):
 
-    knn_matches = matcher.knnMatch(descs1, descs2, k=2)
+    knn_matches = matcher.knnMatch(descs1, descs2, k=k)
     # For cross-check - TODO does is work for flann?
     matches2 = matcher.match(descs2, descs1)
     tentative_matches = []
@@ -101,7 +101,54 @@ def get_cross_checked_tentatives(matcher, descs1, descs2, ratio_threshold):
     return tentative_matches
 
 
-def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, save_suffix=None, ratio_thresh=None, show=True, save=True):
+def filter_fginn_matches(matches, desc1, desc2, num_nn, cfg):
+    """
+    :param matches:
+    :param desc1:
+    :param desc2:
+    :param num_nn:
+    :param cfg:
+    :return:
+
+    FGINN — 1st geometrically inconsistent nearest neighbor ratio
+    https://ducha-aiki.medium.com/how-to-match-to-learn-or-not-to-learn-part-2-1ab52ede2022
+    """
+
+    valid_matches = []
+
+    fginn_spatial_th = cfg["fginn_spatial_th"]
+    ratio_th = cfg["ratio_th"]
+
+    if fginn_spatial_th < 0 or fginn_spatial_th > 500:
+        raise ValueError('FGINN radius outside expected range')
+
+    if ratio_th < 0.1 or ratio_th > 1.01:
+        raise ValueError('Ratio test threshold outside expected range')
+
+    flann = cv.BFMatcher(cv.NORM_L2, crossCheck=False)
+    not_fginns = flann.radiusMatch(desc2.astype(np.float32),
+                                   desc2.astype(np.float32),
+                                   fginn_spatial_th)
+
+    for m_idx, cur_match in enumerate(matches):
+        for mii in range(num_nn):
+            cur_non_fginns = [
+                x.trainIdx for x in not_fginns[cur_match[mii].trainIdx]
+            ]
+            for nn_2 in cur_match[mii + 1:]:
+                if cur_match[mii].distance <= ratio_th * nn_2.distance:
+                    valid_matches.append(cur_match[mii])
+                    break
+                if nn_2.trainIdx not in cur_non_fginns:
+                    break
+
+    return valid_matches
+
+
+def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, cfg, out_dir=None, save_suffix=None, ratio_thresh=None, show=True, save=True):
+
+    fginn = cfg["fginn"]
+    num_nn = cfg["num_nn"]
 
     # TODO aren't we doing cross check down below?
     crossCheck = False
@@ -116,7 +163,13 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir=None, s
     assert descs1 is not None and len(descs1) != 0
     assert descs2 is not None and len(descs2) != 0
 
-    tentative_matches = get_cross_checked_tentatives(matcher, descs1, descs2, ratio_thresh)
+    if fginn:
+        k = 10 + num_nn # TODO why?
+        knn_matches = matcher.knnMatch(descs1, descs2, k=k)
+        tentative_matches = filter_fginn_matches(knn_matches, descs1, descs2, num_nn, cfg)
+    else:
+        k = 2   # max(2, num_nn + 1) # TODO resolve
+        tentative_matches = get_cross_checked_tentatives(matcher, descs1, descs2, ratio_thresh, k=k)
 
     if show or save:
         tentative_matches_in_singleton_list = [[m] for m in tentative_matches]
@@ -496,13 +549,13 @@ def show_save_matching(img1,
 def match_epipolar(img1, kps1, descs1, real_K_1,
                    img2, kps2, descs2, real_K_2,
                    find_fundamental, img_pair, out_dir, show, save, ratio_thresh,
-                   ransac_th, ransac_conf, ransac_iters):
+                   ransac_th, ransac_conf, ransac_iters, cfg):
 
     Timer.start_check_point("matching")
 
     save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
-    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
+    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, cfg, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
 
     src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
 
