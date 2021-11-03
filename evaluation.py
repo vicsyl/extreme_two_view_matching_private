@@ -874,7 +874,7 @@ def evaluate_matching_stats(stats_map):
     for key in ["all_keypoints", "tentatives", "inliers", "inlier_ratio"]:
         print("{} across difficulties: ".format(key))
         print("\t".join(keys_list))
-        for difficulty in range(len(stats_local["all_keypoints"])):
+        for difficulty in all_diffs:
             print("{}".format("\t".join(stats_local[key][difficulty])))
 
 
