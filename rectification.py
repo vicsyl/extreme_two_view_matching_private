@@ -260,6 +260,8 @@ def get_rectified_keypoints(normals,
         descs = descs[filter_non_valid]
 
     all_kps.extend(kps)
+    unrectified_indices = np.zeros(len(all_kps), dtype=bool)
+    unrectified_indices[-len(kps):] = True
 
     if all_descs is None:
         all_descs = descs
@@ -286,7 +288,7 @@ def get_rectified_keypoints(normals,
         show_or_close(show)
         print("{} keypoints found".format(len(all_kps)))
 
-    return all_kps, all_descs
+    return all_kps, all_descs, unrectified_indices
 
 
 def possibly_upsample_normals(img, normal_indices):
@@ -414,7 +416,7 @@ def play_with_rectification(scene_info: SceneInfo, normals_parent_dir, original_
         K = scene_info.get_img_K(img_name)
         components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
 
-        all_kps, all_descs = get_rectified_keypoints(normals,
+        all_kps, all_descs, _ = get_rectified_keypoints(normals,
                                 components_indices,
                                 valid_components_dict,
                                 img,

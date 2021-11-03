@@ -562,6 +562,9 @@ def match_epipolar(img1, kps1, descs1, real_K_1,
     # TODO threshold and prob params left to default values
     if find_fundamental:
         F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.USAC_MAGSAC, ransacReprojThreshold=ransac_th, confidence=ransac_conf, maxIters=ransac_iters)
+        if F is None or inlier_mask is None:
+            print("WARNING: F:{} or inlier mask:{} are None".format(F, inlier_mask))
+            return None, None, None, None, None
         print("F:\n{}".format(F))
         E = real_K_2.T @ F @ real_K_1
     else:
@@ -623,7 +626,7 @@ def prepare_data_for_keypoints_and_desc(scene_info, img_name, normal_indices, no
     if rectify:
         normal_indices = possibly_upsample_normals(img, normal_indices)
         components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
-        kps, descs = get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_prefix=out_dir)
+        kps, descs, _ = get_rectified_keypoints(normals, components_indices, valid_components_dict, img, K, descriptor, img_name, out_prefix=out_dir)
     else:
         kps, descs = descriptor.detectAndCompute(img, None)
 

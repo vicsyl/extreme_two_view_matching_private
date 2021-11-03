@@ -455,7 +455,7 @@ class Pipeline:
 
             # get rectification
             rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name)
-            kps, descs = get_rectified_keypoints(normals_clusters_repr,
+            kps, descs, unrectified_indices = get_rectified_keypoints(normals_clusters_repr,
                                                  components_indices,
                                                  valid_components_dict,
                                                  img,
@@ -939,6 +939,9 @@ class Pipeline:
                         ransac_iters=self.ransac_iters,
                         cfg=self.config,
                     )
+
+                    if E is None:
+                        continue
 
                 stats_struct = evaluate_matching(self.scene_info,
                                   E,

@@ -809,6 +809,9 @@ def evaluate_stats(stats_map):
 
 def evaluate_matching_stats(stats_map):
 
+    if not stats_map.__contains__("matching"):
+        print("WARNING: 'matching key' not found, skipping")
+        return
     matching_map_all = stats_map["matching"]
 
     stats_local = {"all_keypoints": {}, "tentatives": {}, "inliers": {}, "inlier_ratio": {}}

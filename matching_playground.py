@@ -255,7 +255,7 @@ def show_rectification_play(normals,
         show_or_close(True)
 
     # get rectification
-    kps, descs = get_rectified_keypoints(normals,
+    kps, descs, _ = get_rectified_keypoints(normals,
                                          components_indices,
                                          valid_components_dict,
                                          img,

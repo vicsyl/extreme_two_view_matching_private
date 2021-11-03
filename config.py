@@ -132,7 +132,19 @@ class CartesianConfig:
             print("{} = {}".format(k, cfg_map[k]))
 
     @staticmethod
+    def get_default_cache_keys():
+        return {
+            Property.cache_normals: "",
+            Property.cache_clusters: "",
+            Property.cache_img_data: "",
+            Property.cache_any: "",
+        }
+
+    @staticmethod
     def get_configs(cfg_map, cartesian=None):
+
+        if not cfg_map.__contains__(Property.cartesian_values):
+            return [(cfg_map.copy(), CartesianConfig.get_default_cache_keys())]
 
         if cartesian is None:
             if not cfg_map.__contains__(CartesianConfig.config_combination):
@@ -147,12 +159,7 @@ class CartesianConfig:
 
         def get_new_config():
 
-            cache_keys = {
-                Property.cache_normals: "",
-                Property.cache_clusters: "",
-                Property.cache_img_data: "",
-                Property.cache_any: "",
-            }
+            cache_keys = CartesianConfig.get_default_cache_keys()
 
             new_cfg = cfg_map.copy()
             del new_cfg[Property.cartesian_values]
