@@ -516,7 +516,7 @@ def evaluate_all(stats_map_all: dict):
                     difficulty, perc = evaluate_percentage_correct(stats_map_all[key][diff], diff, th_degrees=angle_threshold)
                     value_list.append("{:.3f}".format(perc))
                 else:
-                    value_list.append(None)
+                    value_list.append("--")
             print("{}\t{}".format(diff, "\t".join(value_list)))
 
 
