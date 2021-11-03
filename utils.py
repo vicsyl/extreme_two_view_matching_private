@@ -8,10 +8,6 @@ from resize import upsample_bilinear
 import torch.nn.functional as F
 
 
-def comma_float(f):
-    return str("{:.03f}".format(f)).replace(".", ",")
-
-
 def pad_normals(normals, window_size, mode="replicate"):
     """
     :param normals: (h, w, 3)

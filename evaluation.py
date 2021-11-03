@@ -6,7 +6,6 @@ from typing import List
 import cv2 as cv
 import kornia.geometry.epipolar
 import torch
-from utils import comma_float
 
 from scene_info import *
 
@@ -495,13 +494,28 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     return checks
 
 
-def evaluate_all(stats_map_all: dict, n_worst_examples=None):
+def evaluate_all(stats_map_all: dict):
     print("Stats for all difficulties:")
+    keys_list = list(stats_map_all.keys())
+
     angle_thresholds = [5, 10]
     for angle_threshold in angle_thresholds:
-        print("Group\tAcc.({}º)".format(angle_threshold))
-        for diff, stats_map in stats_map_all.items():
-            evaluate_percentage_correct(stats_map, diff, n_worst_examples=n_worst_examples, th_degrees=angle_threshold)
+        print("Diff for acc.({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in keys_list])))
+
+        for diff in range(100):
+            present = False
+            value_list = []
+            for key in keys_list:
+                if stats_map_all[key].__contains__(diff):
+                    present = True
+                    difficulty, perc = evaluate_percentage_correct(stats_map_all[key][diff], diff, th_degrees=angle_threshold)
+                    value_list.append("{:.3f}".format(perc))
+                else:
+                    value_list.append(None)
+            if present:
+                print("{}\t{}".format(diff, "\t".join(value_list)))
+            else:
+                break
 
 
 # def evaluate(stats_map: dict, scene_info: SceneInfo):
@@ -582,7 +596,6 @@ def evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=None, th
     filtered_len = len(filtered)
     all_len = len(stats_map.items())
     perc = filtered_len/all_len
-    print("{}\t{:.03f}".format(difficulty, perc))
     return difficulty, perc
 
 
@@ -800,42 +813,68 @@ def evaluate_matching_stats(stats_map):
 
     stats_local = {"all_keypoints": {}, "tentatives": {}, "inliers": {}, "inlier_ratio": {}}
 
-    for difficulty in matching_map_all:
+    keys_list = matching_map_all.keys()
 
-        matching_map = matching_map_all[difficulty]
+    for difficulty in range(100):
 
-        kps = 0
-        tentatives = 0
-        inliers = 0
-        for pair_name in matching_map:
-            kps = kps + matching_map[pair_name]["kps1"]
-            kps = kps + matching_map[pair_name]["kps2"]
-            tentatives = tentatives + matching_map[pair_name]["tentatives"]
-            inliers = inliers + matching_map[pair_name]["inliers"]
+        stats_local["all_keypoints"][difficulty] = []
+        stats_local["tentatives"][difficulty] = []
+        stats_local["inliers"][difficulty] = []
+        stats_local["inlier_ratio"][difficulty] = []
 
-        stats_local["all_keypoints"][difficulty] = kps / (2 * len(matching_map))
-        stats_local["tentatives"][difficulty] = tentatives / len(matching_map)
-        stats_local["inliers"][difficulty] = inliers / len(matching_map)
-        stats_local["inlier_ratio"][difficulty] = stats_local["inliers"][difficulty] / stats_local["tentatives"][difficulty]
+        present = False
+        for param_key in keys_list:
+            matching_map_per_key = matching_map_all[param_key]
 
-    print("difficulties: [{}]: ".format(", ".join([str(difficulty) for difficulty in matching_map_all])))
+            if matching_map_per_key.__contains__(difficulty):
+                present = True
+                matching_map = matching_map_per_key[difficulty]
+
+                kps = 0
+                tentatives = 0
+                inliers = 0
+                for pair_name in matching_map:
+                    kps = kps + matching_map[pair_name]["kps1"]
+                    kps = kps + matching_map[pair_name]["kps2"]
+                    tentatives = tentatives + matching_map[pair_name]["tentatives"]
+                    inliers = inliers + matching_map[pair_name]["inliers"]
+
+                all_value = kps / (2 * len(matching_map))
+                tentatives_value = tentatives / len(matching_map)
+                inliers_value = inliers / len(matching_map)
+                stats_local["all_keypoints"][difficulty].append("{}".format(all_value))
+                stats_local["tentatives"][difficulty].append("{}".format(tentatives))
+                stats_local["inliers"][difficulty].append("{}".format(inliers_value))
+                stats_local["inlier_ratio"][difficulty].append("{:.3f}".format(inliers_value / tentatives_value))
+            else:
+                stats_local["all_keypoints"][difficulty].append("--")
+                stats_local["tentatives"][difficulty].append("--")
+                stats_local["inliers"][difficulty].append("--")
+                stats_local["inlier_ratio"][difficulty].append("--")
+
+        if not present:
+            del stats_local["all_keypoints"][difficulty]
+            del stats_local["tentatives"][difficulty]
+            del stats_local["inliers"][difficulty]
+            del stats_local["inlier_ratio"][difficulty]
+            break
+
+    #print("difficulties: [{}]: ".format(", ".join([str(difficulty) for difficulty in matching_map_per_key])))
     for key in ["all_keypoints", "tentatives", "inliers", "inlier_ratio"]:
         print("{} across difficulties: ".format(key))
-        for difficulty in matching_map_all:
-            print("{}".format(comma_float(stats_local[key][difficulty])))
-
-        #
-        # print("processed: {} pairs".format(len(matching_map)))
-        # print("avg. kpts: {}".format(avg_kps))
-        # print("avg. tentatives: {}".format(avg_tentatives))
-        # print("avg. inliers: {}".format(avg_inliers))
+        print("\t".join(keys_list))
+        for difficulty in range(len(stats_local["all_keypoints"])):
+            print("{}".format("\t".join(stats_local[key][difficulty])))
 
 
 def evaluate_normals(stats_map):
 
-    normals_degrees = stats_map['normals_degrees']
-    valid_normals = stats_map['valid_normals']
-    normals = stats_map['normals']
+    normals_degrees = stats_map.get('normals_degrees', None)
+    valid_normals = stats_map.get('valid_normals', None)
+    # normals = stats_map.get('normals', None)
+    if normals_degrees is None or valid_normals is None:
+        print("normals will not be evaluated, probably all has been cached")
+        return
 
     def shared_pairs(keys):
 
@@ -873,7 +912,7 @@ def evaluate_normals(stats_map):
     # stats2_extra_keys = at_least_2_planes[key2] - shared_for_2
     # print("extra: {},\n {}".format(stats1_extra_keys, stats2_extra_keys))
 
-    for k in normals_degrees:
+    for param_key in normals_degrees:
         # out = False
         # if k.startswith("ms_None_1.0_25_0.8"):
         #     out = True
@@ -885,9 +924,9 @@ def evaluate_normals(stats_map):
         avg_l2_shared = 0.0
         avg_l1_shared = 0.0
         avg_l1_valid = 0.0
-        for img in normals_degrees[k]:
-            deg_list = normals_degrees[k][img]
-            if valid_normals[k][img] > 1:
+        for img in normals_degrees[param_key]:
+            deg_list = normals_degrees[param_key][img]
+            if valid_normals[param_key][img] > 1:
                 count_valid = count_valid + 1
                 avg_l1_valid = avg_l1_valid + math.fabs(90.0 - deg_list[0])
             if len(deg_list) > 0:
@@ -910,8 +949,8 @@ def evaluate_normals(stats_map):
         if count_shared > 0:
             avg_l2_shared = avg_l2_shared / count_shared
             avg_l1_shared = avg_l1_shared / count_shared
-        print("{} {:.3f} {} / {}".format(k, avg_l1, count, count_valid))
-        print("{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(k, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
+        print("{} {:.3f} {} / {}".format(param_key, avg_l1, count, count_valid))
+        print("{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
 
 
 if __name__ == "__main__":

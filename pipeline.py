@@ -78,7 +78,10 @@ class Pipeline:
     ransac_conf = 0.9999
     ransac_iters = 100000
 
-    config = get_default_cfg()
+    config = None
+    cache_map = None
+    stats_map = {}
+    stats = {}
 
     # actually unused
     show_save_normals = False
@@ -127,19 +130,19 @@ class Pipeline:
     connected_components_closing_size = None
     connected_components_flood_fill = False
 
-    stats = {}
+    def setup_descriptor(self):
+        feature_descriptor = self.config["feature_descriptor"]
+        n_features = self.config["n_features"]
+        use_hardnet = self.config["use_hardnet"]
 
-    @staticmethod
-    def get_descriptor(desc_name, n_features, use_hardnet):
-
-        if desc_name != "SIFT":
-            raise ValueError("'{}' unknown as a descriptor".format(desc_name))
+        if feature_descriptor != "SIFT":
+            raise ValueError("'{}' unknown as a descriptor".format(feature_descriptor))
 
         sift_descriptor = cv.SIFT_create(n_features)
         if use_hardnet:
-            return HardNetDescriptor(sift_descriptor)
+            self.feature_descriptor = HardNetDescriptor(sift_descriptor)
         else:
-            return sift_descriptor
+            self.feature_descriptor = sift_descriptor
 
     @staticmethod
     def configure(config_file_name: str, args):
@@ -153,9 +156,7 @@ class Pipeline:
         #     print()
 
         pipeline = Pipeline()
-        descriptor_name = "SIFT"
-        n_features = None
-        use_hardnet = False
+        config = CartesianConfig.get_default_cfg()
 
         with open(config_file_name) as f:
             for line in f:
@@ -219,12 +220,6 @@ class Pipeline:
                     pipeline.matching_limit = int(v)
                 elif k == "planes_based_matching":
                     pipeline.planes_based_matching = v.lower() == "true"
-                elif k == "use_hardnet":
-                    use_hardnet = v.lower() == "true"
-                elif k == "feature_descriptor":
-                    descriptor_name = v
-                elif k == "n_features":
-                    n_features = None if v.lower() == "none" else int(v)
                 elif k == "output_dir":
                     pipeline.output_dir = v
                 elif k == "show_input_img":
@@ -284,9 +279,7 @@ class Pipeline:
                 elif k == "connected_components_flood_fill":
                     pipeline.connected_components_flood_fill = v.lower() == "true"
                 else:
-                    parse_line(k, v, pipeline.config)
-
-        pipeline.feature_descriptor = Pipeline.get_descriptor(descriptor_name, n_features, use_hardnet)
+                    CartesianConfig.config_parse_line(k, v, config)
 
         pipeline.matching_difficulties = list(range(matching_difficulties_min, matching_difficulties_max))
 
@@ -297,7 +290,7 @@ class Pipeline:
 
         assert not pipeline.planes_based_matching or pipeline.rectify, "rectification must be on for planes_based_matching"
 
-        return pipeline
+        return pipeline, config
 
     def start(self):
         print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
@@ -305,6 +298,7 @@ class Pipeline:
 
         self.log()
         self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type, file_name_suffix=self.file_name_suffix)
+        self.setup_descriptor()
 
         scene_length = len(self.scene_info.img_pairs_lists)
         scene_length_range = range(0, scene_length)
@@ -318,7 +312,7 @@ class Pipeline:
 
     def log(self):
         print("Pipeline config:")
-        attr_list = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and attr not in ["stats"]]
+        attr_list = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and attr not in ["stats", "stats_map"]]
         for attr_name in attr_list:
             if attr_name in ["scene_info"]:
                 continue
@@ -328,14 +322,17 @@ class Pipeline:
         Config.log()
         Clustering.log()
 
-    def process_image(self, img_name):
+    def get_and_create_img_processing_dir(self):
+        img_processing_dir = "{}/imgs/{}".format(self.output_dir, self.cache_map[Property.cache_img_data])
+        if not os.path.exists(img_processing_dir):
+            Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
+        return img_processing_dir
 
-        if not self.stats.keys().__contains__("imgs_data"):
-            self.stats["imgs_data"] = {}
+    def process_image(self, img_name):
 
         Timer.start_check_point("processing img")
         print("Processing: {}".format(img_name))
-        img_processing_dir = "{}/imgs".format(self.output_dir)
+        img_processing_dir = self.get_and_create_img_processing_dir()
         Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
 
         img_file_path = self.scene_info.get_img_file_path(img_name)
@@ -411,7 +408,7 @@ class Pipeline:
                                                                                    device=self.device,
                                                                                    handle_antipodal_points=self.handle_antipodal_points)
             Timer.end_check_point("clustering")
-            self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, "", img_name)
+            self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.cache_any], img_name)
 
             show_or_save_clusters(normals,
                                   normal_indices,
@@ -605,7 +602,7 @@ class Pipeline:
         depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, height=None, width=None, device=torch.device('cpu'))
         print("depth_data device {}".format(depth_data.device))
 
-        img_processing_dir = "{}/imgs".format(self.output_dir)
+        img_processing_dir = self.get_and_create_img_processing_dir()
         sky_out_path = "{}/{}_sky_mask.jpg".format(img_processing_dir, img_name)
         # filter_mask is a numpy array
         sky_mask_np = self.get_nonsky_mask_possibly_cached(img_name, img, depth_data.shape[2:4])
@@ -815,17 +812,32 @@ class Pipeline:
 
         self.save_stats("normals")
 
-    def update_matching_stats(self, stats_struct: Stats, difficulty, img_pair_name):
-        self.update_stats_map(["matching", difficulty, img_pair_name, "kps1"], stats_struct.all_features_1)
-        self.update_stats_map(["matching", difficulty, img_pair_name, "kps2"], stats_struct.all_features_2)
-        self.update_stats_map(["matching", difficulty, img_pair_name, "tentatives"], stats_struct.tentative_matches)
-        self.update_stats_map(["matching", difficulty, img_pair_name, "inliers"], stats_struct.inliers)
+    def update_matching_stats(self, key, difficulty, img_pair_name, stats_struct: Stats):
+        self.update_stats_map(["matching", key, difficulty, img_pair_name, "kps1"], stats_struct.all_features_1)
+        self.update_stats_map(["matching", key, difficulty, img_pair_name, "kps2"], stats_struct.all_features_2)
+        self.update_stats_map(["matching", key, difficulty, img_pair_name, "tentatives"], stats_struct.tentative_matches)
+        self.update_stats_map(["matching", key, difficulty, img_pair_name, "inliers"], stats_struct.inliers)
+
+    def get_diff_stats_file(self, difficulty=None):
+        diff_str = "all" if difficulty is None else str(difficulty)
+        diff_stats_dir = "{}/stats/{}".format(self.output_dir, self.cache_map[Property.cache_any])
+        if not os.path.exists(diff_stats_dir):
+            Path(diff_stats_dir).mkdir(parents=True, exist_ok=True)
+        return "{}/stats_diff_{}.pkl".format(diff_stats_dir, diff_str)
+
+    def get_stats_key(self):
+        return self.cache_map[Property.cache_any]
+
+    def ensure_stats_key(self, map):
+        if not map.__contains__(self.get_stats_key()):
+            map[self.get_stats_key()] = {}
 
     def run_matching_pipeline(self):
 
         self.start()
 
-        stats_map = {}
+        self.ensure_stats_key(self.stats_map)
+
         already_processed = set()
 
         stats_counter = 0
@@ -939,7 +951,7 @@ class Pipeline:
                                   image_data[0].normals,
                                   image_data[1].normals,
                                   )
-                self.update_matching_stats(stats_struct, difficulty, "{}_{}".format(img_pair.img1, img_pair.img2))
+                self.update_matching_stats(self.cache_map[Property.cache_any], difficulty, "{}_{}".format(img_pair.img1, img_pair.img2), stats_struct)
 
                 processed_pairs = processed_pairs + 1
                 Timer.end_check_point("complete image pair matching")
@@ -948,22 +960,23 @@ class Pipeline:
                     evaluate_stats(self.stats)
 
             if len(stats_map_diff) > 0:
-                stats_map[difficulty] = stats_map_diff
-                stats_file_name = "{}/stats_diff_{}.pkl".format(self.output_dir, difficulty)
+                self.stats_map[self.get_stats_key()][difficulty] = stats_map_diff
+                stats_file_name = self.get_diff_stats_file(difficulty)
                 with open(stats_file_name, "wb") as f:
                     pickle.dump(stats_map_diff, f)
-                print("Stats for difficulty {}:".format(difficulty))
+                print("Stats for difficulty {} for {}:".format(difficulty, self.cache_map[Property.cache_any]))
                 print("Group\tAcc.(5º)")
-                evaluate_percentage_correct(stats_map_diff, difficulty, n_worst_examples=10, th_degrees=5)
+                difficulty, perc = evaluate_percentage_correct(stats_map_diff, difficulty, n_worst_examples=10, th_degrees=5)
+                print("{}\t{:.03f}".format(difficulty, perc))
 
-        all_stats_file_name = "{}/all.stats.pkl".format(self.output_dir)
+        all_stats_file_name = self.get_diff_stats_file()
         with open(all_stats_file_name, "wb") as f:
-            pickle.dump(stats_map, f)
+            pickle.dump(self.stats_map, f)
 
-        self.save_stats("matching")
+        self.save_stats("matching_after_{}".format(self.cache_map[Property.cache_any]))
         self.log()
         # These two are different approaches to stats
-        evaluate_all(stats_map, n_worst_examples=None)
+        evaluate_all(self.stats_map)
         evaluate_stats(self.stats)
 
     def save_stats(self, key=""):
@@ -994,8 +1007,12 @@ def main():
 
     Timer.start()
 
-    pipeline = Pipeline.configure("config.txt", args)
-    pipeline.run()
+    pipeline, config_map = Pipeline.configure("config.txt", args)
+    all_configs = CartesianConfig.get_configs(config_map)
+    for config, cache_map in all_configs:
+        pipeline.config = config
+        pipeline.cache_map = cache_map
+        pipeline.run()
 
     Timer.end()
 
