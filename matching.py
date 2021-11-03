@@ -570,6 +570,9 @@ def match_epipolar(img1, kps1, descs1, real_K_1,
     else:
         # NOTE previously default RANSAC params used here; no iters param
         E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, real_K_1, None, real_K_2, None, cv.RANSAC, prob=ransac_conf, threshold=ransac_th)
+        if E is None or inlier_mask is None:
+            print("WARNING: E:{} or inlier mask:{} are None".format(F, inlier_mask))
+            return None, None, None, None, None
 
     Timer.end_check_point("matching")
 
