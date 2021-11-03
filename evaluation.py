@@ -506,18 +506,26 @@ def evaluate_all(stats_map_all: dict):
 
     angle_thresholds = [5, 10]
     for angle_threshold in angle_thresholds:
-        print("Diff for acc.({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in keys_list])))
-
+        print("Accuracy ({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in keys_list])))
         for diff in all_diffs:
             value_list = []
             for key in keys_list:
                 if stats_map_all[key].__contains__(diff):
-                    present = True
                     difficulty, perc = evaluate_percentage_correct(stats_map_all[key][diff], diff, th_degrees=angle_threshold)
                     value_list.append("{:.3f}".format(perc))
                 else:
                     value_list.append("--")
             print("{}\t{}".format(diff, "\t".join(value_list)))
+
+    print("Counts\t{}".format("\t".join([str(k) for k in keys_list])))
+    for diff in all_diffs:
+        value_list = []
+        for key in keys_list:
+            if stats_map_all[key].__contains__(diff):
+                value_list.append(str(len(stats_map_all[key][diff])))
+            else:
+                value_list.append("0")
+        print("{}\t{}".format(diff, "\t".join(value_list)))
 
 
 # def evaluate(stats_map: dict, scene_info: SceneInfo):
@@ -820,19 +828,23 @@ def evaluate_matching_stats(stats_map):
 
     keys_list = matching_map_all.keys()
 
-    for difficulty in range(100):
+    all_diffs = set()
+    for key in keys_list:
+        all_diffs = all_diffs.union(set(matching_map_all[key].keys()))
+    all_diffs = list(all_diffs)
+    all_diffs.sort()
+
+    for difficulty in all_diffs:
 
         stats_local["all_keypoints"][difficulty] = []
         stats_local["tentatives"][difficulty] = []
         stats_local["inliers"][difficulty] = []
         stats_local["inlier_ratio"][difficulty] = []
 
-        present = False
         for param_key in keys_list:
             matching_map_per_key = matching_map_all[param_key]
 
             if matching_map_per_key.__contains__(difficulty):
-                present = True
                 matching_map = matching_map_per_key[difficulty]
 
                 kps = 0
@@ -857,12 +869,6 @@ def evaluate_matching_stats(stats_map):
                 stats_local["inliers"][difficulty].append("--")
                 stats_local["inlier_ratio"][difficulty].append("--")
 
-        if not present:
-            del stats_local["all_keypoints"][difficulty]
-            del stats_local["tentatives"][difficulty]
-            del stats_local["inliers"][difficulty]
-            del stats_local["inlier_ratio"][difficulty]
-            break
 
     #print("difficulties: [{}]: ".format(", ".join([str(difficulty) for difficulty in matching_map_per_key])))
     for key in ["all_keypoints", "tentatives", "inliers", "inlier_ratio"]:
