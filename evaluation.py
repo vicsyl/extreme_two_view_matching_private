@@ -498,12 +498,17 @@ def evaluate_all(stats_map_all: dict):
     print("Stats for all difficulties:")
     keys_list = list(stats_map_all.keys())
 
+    all_diffs = set()
+    for key in keys_list:
+        all_diffs = all_diffs.union(set(stats_map_all[key].keys()))
+    all_diffs = list(all_diffs)
+    all_diffs.sort()
+
     angle_thresholds = [5, 10]
     for angle_threshold in angle_thresholds:
         print("Diff for acc.({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in keys_list])))
 
-        for diff in range(100):
-            present = False
+        for diff in all_diffs:
             value_list = []
             for key in keys_list:
                 if stats_map_all[key].__contains__(diff):
@@ -512,10 +517,7 @@ def evaluate_all(stats_map_all: dict):
                     value_list.append("{:.3f}".format(perc))
                 else:
                     value_list.append(None)
-            if present:
-                print("{}\t{}".format(diff, "\t".join(value_list)))
-            else:
-                break
+            print("{}\t{}".format(diff, "\t".join(value_list)))
 
 
 # def evaluate(stats_map: dict, scene_info: SceneInfo):
@@ -845,9 +847,9 @@ def evaluate_matching_stats(stats_map):
                 all_value = kps / (2 * len(matching_map))
                 tentatives_value = tentatives / len(matching_map)
                 inliers_value = inliers / len(matching_map)
-                stats_local["all_keypoints"][difficulty].append("{}".format(all_value))
-                stats_local["tentatives"][difficulty].append("{}".format(tentatives))
-                stats_local["inliers"][difficulty].append("{}".format(inliers_value))
+                stats_local["all_keypoints"][difficulty].append("{:.3f}".format(all_value))
+                stats_local["tentatives"][difficulty].append("{:.3f}".format(tentatives))
+                stats_local["inliers"][difficulty].append("{:.3f}".format(inliers_value))
                 stats_local["inlier_ratio"][difficulty].append("{:.3f}".format(inliers_value / tentatives_value))
             else:
                 stats_local["all_keypoints"][difficulty].append("--")
