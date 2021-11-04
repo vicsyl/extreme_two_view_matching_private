@@ -107,7 +107,7 @@ fginn_spatial_th = [100, 200]
 ratio_th = [0.5, 0.6]
 
 # cartesian, one_non_default
-config_combination = one_non_default
+config_combination = max_one_non_default
 
 planes_based_matching = False
 rectify = True

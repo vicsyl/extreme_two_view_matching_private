@@ -96,7 +96,8 @@ class Property:
 class CartesianConfig:
 
     config_combination = "config_combination"
-    one_non_default = "one_non_default"
+    max_one_non_default = "max_one_non_default"
+    just_one_non_default = "just_one_non_default"
     cartesian = "cartesian"
 
     props_handlers = {
@@ -119,10 +120,10 @@ class CartesianConfig:
         if CartesianConfig.props_handlers.__contains__(key):
             CartesianConfig.props_handlers[key].parse_and_update(key, value, cfg_map)
         elif key == CartesianConfig.config_combination:
-            if value in [CartesianConfig.one_non_default, CartesianConfig.cartesian]:
+            if value in [CartesianConfig.max_one_non_default, CartesianConfig.just_one_non_default, CartesianConfig.cartesian]:
                 cfg_map[CartesianConfig.config_combination] = value
             else:
-                raise ValueError("execpected value of {} as {}".format(value, CartesianConfig.config_combination))
+                raise ValueError("unexpected value of {} as {}".format(value, CartesianConfig.config_combination))
         else:
             print("WARNING - unrecognized param: {}".format(key))
 
@@ -141,15 +142,18 @@ class CartesianConfig:
         }
 
     @staticmethod
-    def get_configs(cfg_map, cartesian=None):
+    def get_configs(cfg_map, config_combination=None):
 
         if not cfg_map.__contains__(Property.cartesian_values):
             return [(cfg_map.copy(), CartesianConfig.get_default_cache_keys())]
 
-        if cartesian is None:
+        if config_combination is None:
             if not cfg_map.__contains__(CartesianConfig.config_combination):
                 raise ValueError("combination type unknown")
-            cartesian = cfg_map[CartesianConfig.config_combination] == CartesianConfig.cartesian
+            config_combination = cfg_map[CartesianConfig.config_combination]
+
+        if config_combination not in [CartesianConfig.max_one_non_default, CartesianConfig.just_one_non_default, CartesianConfig.cartesian]:
+            raise ValueError("unexpected value of {} as {}".format(config_combination, CartesianConfig.config_combination))
 
         comb_list = list(cfg_map.get(Property.cartesian_values, {}).items())
         comb_list.sort(key=lambda k_v: CartesianConfig.props_handlers[k_v[0]].cache)
@@ -175,11 +179,13 @@ class CartesianConfig:
         done = False
         while not done:
 
-            if cartesian:
+            if config_combination == CartesianConfig.cartesian:
                 all_conf_cache_keys.append(get_new_config())
             else:
                 non_zeros = [c for (k, l, c) in comb_list if c > 0]
-                if len(non_zeros) < 2:
+                if config_combination == CartesianConfig.just_one_non_default and len(non_zeros) == 1:
+                    all_conf_cache_keys.append(get_new_config())
+                elif config_combination == CartesianConfig.max_one_non_default and len(non_zeros) < 2:
                     all_conf_cache_keys.append(get_new_config())
 
             index = 0
