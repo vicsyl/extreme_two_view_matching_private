@@ -1,6 +1,7 @@
 import argparse
 import math
 import pickle
+import traceback, sys
 from typing import List
 
 import cv2 as cv
@@ -141,6 +142,20 @@ def evaluate_R_t(R_gt, t_gt, R, t, q_gt=None):
     return err_q, err_t
 
 
+def evaulate_R_t_safe(dR, dt, R, t):
+
+    try:
+        err_q, err_t = evaluate_R_t(dR, dt, R, t)
+    except:
+        print("WARNING: evaulate_R_t_safe")
+        print(traceback.format_exc(), file=sys.stdout)
+
+        err_q = np.pi
+        err_t = np.pi / 2
+
+    return err_q, err_t
+
+
 def split_points(tentative_matches, kps1, kps2):
     src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
     dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1, 2)
@@ -156,18 +171,30 @@ def eval_essential_matrix(p1n, p2n, E, dR, dt):
 
     if E.size > 0:
         _, R, t, _ = cv.recoverPose(E, p1n, p2n)
-        #print("from E recovered R: \n {}".format(R))
-        try:
-            err_q, err_t = evaluate_R_t(dR, dt, R, t)
-        except:
-            err_q = np.pi
-            err_t = np.pi / 2
+        err_q, err_t = evaulate_R_t_safe(dR, dt, R, t)
 
     else:
         err_q = np.pi
         err_t = np.pi / 2
 
     return err_q, err_t
+
+
+def compare_R_to_GT(img_pair: ImagePairEntry, scene_info: SceneInfo, R):
+
+    img_entry_1: ImageEntry = scene_info.img_info_map[img_pair.img1]
+    T1 = img_entry_1.t
+    R1 = img_entry_1.R
+
+    img_entry_2: ImageEntry = scene_info.img_info_map[img_pair.img2]
+    T2 = img_entry_2.t
+    R2 = img_entry_2.R
+
+    dR = R2 @ R1.T
+    dt = T2 - dR @ T1
+
+    err_q, _ = evaulate_R_t_safe(dR, dt, R, dt)
+    return err_q
 
 
 def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2):
@@ -181,7 +208,7 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     R2 = img_entry_2.R
 
     dR = R2 @ R1.T
-    dT = T2 - dR @ T1
+    dt = T2 - dR @ T1
 
     K1 = scene_info.get_img_K(img_pair.img1)
     K2 = scene_info.get_img_K(img_pair.img2)
@@ -193,7 +220,7 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     # p1n = pts1
     # p2n = pts2
 
-    errors = eval_essential_matrix(p1n, p2n, E, dR, dT)
+    errors = eval_essential_matrix(p1n, p2n, E, dR, dt)
     errors_max = max(errors)
 
     #print("dR: {}".format(dR))
@@ -269,6 +296,22 @@ class Stats:
     E: np.ndarray
     normals1: np.ndarray
     normals2: np.ndarray
+
+    @staticmethod
+    def get_error_r_only_stats(error_R):
+        return Stats(inliers_against_gt=None,
+                     tentatives_1=None,
+                     tentatives_2=None,
+                     error_R=error_R,
+                     error_T=None,
+                     tentative_matches=None,
+                     inliers=None,
+                     all_features_1=None,
+                     all_features_2=None,
+                     E=None,
+                     normals1=None,
+                     normals2=None,
+                     )
 
     # legacy
     def make_brief(self):
@@ -504,13 +547,13 @@ def evaluate_all(stats_map_all: dict):
     all_diffs = list(all_diffs)
     all_diffs.sort()
 
-    angle_thresholds = [5, 10]
+    angle_thresholds = [5, 10, 20]
     for angle_threshold in angle_thresholds:
         print("Accuracy ({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in keys_list])))
         for diff in all_diffs:
             value_list = []
             for key in keys_list:
-                if stats_map_all[key].__contains__(diff):
+                if stats_map_all[key].__contains__(diff) and len(stats_map_all[key][diff]) > 0:
                     difficulty, perc = evaluate_percentage_correct(stats_map_all[key][diff], diff, th_degrees=angle_threshold)
                     value_list.append("{:.3f}".format(perc))
                 else:

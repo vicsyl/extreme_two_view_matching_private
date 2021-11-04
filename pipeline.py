@@ -1,7 +1,9 @@
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
 from hard_net_descriptor import HardNetDescriptor
+from normals_rotations import *
 
 import cv2 as cv
 import pickle
@@ -56,10 +58,23 @@ def ensure_keys(map, keys_list):
         map = map[keys_list[i]]
     return map
 
+
+def possibly_expand_normals(normals):
+    if len(normals.shape) == 1:
+        normals = np.expand_dims(normals, axis=0)
+    return normals
+
+
 @dataclass
 class Pipeline:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    stages = ["before_rectification", "before_matching", "final"]
+    stages_map = {v: i for i, v in enumerate(stages)}
+
+    def get_stage_number(self):
+        return self.stages_map[self.config["pipeline_final_step"]]
 
     mean_shift = "mean"
     handle_antipodal_points = True
@@ -408,7 +423,7 @@ class Pipeline:
                                                                                    device=self.device,
                                                                                    handle_antipodal_points=self.handle_antipodal_points)
             Timer.end_check_point("clustering")
-            self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.cache_any], img_name)
+            self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.all_combinations], img_name)
 
             show_or_save_clusters(normals,
                                   normal_indices,
@@ -453,21 +468,26 @@ class Pipeline:
                                     path=components_out_path,
                                     file_name=depth_data_file_name[:-4])
 
-            # get rectification
-            rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name)
-            kps, descs, unrectified_indices = get_rectified_keypoints(normals_clusters_repr,
-                                                 components_indices,
-                                                 valid_components_dict,
-                                                 img,
-                                                 K_for_rectification,
-                                                 descriptor=self.feature_descriptor,
-                                                 img_name=img_name,
-                                                 clip_angle=self.clip_angle,
-                                                 show=self.show_rectification,
-                                                 save=self.save_rectification,
-                                                 out_prefix=rectification_path_prefix,
-                                                 all_unrectified=self.all_unrectified
-                                                 )
+            if self.get_stage_number() > self.stages_map["before_rectification"]:
+
+                # get rectification
+                rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name)
+                kps, descs, unrectified_indices = get_rectified_keypoints(normals_clusters_repr,
+                                                     components_indices,
+                                                     valid_components_dict,
+                                                     img,
+                                                     K_for_rectification,
+                                                     descriptor=self.feature_descriptor,
+                                                     img_name=img_name,
+                                                     clip_angle=self.clip_angle,
+                                                     show=self.show_rectification,
+                                                     save=self.save_rectification,
+                                                     out_prefix=rectification_path_prefix,
+                                                     all_unrectified=self.all_unrectified
+                                                     )
+            else:
+
+                kps, descs, unrectified_indices = None, None, None
 
             img_data = ImageData(img=img,
                                  real_K=real_K,
@@ -820,23 +840,130 @@ class Pipeline:
 
     def get_diff_stats_file(self, difficulty=None):
         diff_str = "all" if difficulty is None else str(difficulty)
-        diff_stats_dir = "{}/stats/{}".format(self.output_dir, self.cache_map[Property.cache_any])
+        diff_stats_dir = "{}/stats/{}".format(self.output_dir, self.cache_map[Property.all_combinations])
         if not os.path.exists(diff_stats_dir):
             Path(diff_stats_dir).mkdir(parents=True, exist_ok=True)
         return "{}/stats_diff_{}.pkl".format(diff_stats_dir, diff_str)
 
     def get_stats_key(self):
-        return self.cache_map[Property.cache_any]
+        return self.cache_map[Property.all_combinations]
 
-    def ensure_stats_key(self, map):
-        if not map.__contains__(self.get_stats_key()):
-            map[self.get_stats_key()] = {}
+    def ensure_stats_key(self, map, suffix=""):
+        key = self.get_stats_key() + suffix
+        if not map.__contains__(key):
+            map[key] = {}
+
+    def do_matching(self, image_data, img_pair, matching_out_dir, stats_map_diff, difficulty):
+
+        if self.planes_based_matching:
+            E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_with_dominant_planes(
+                image_data[0],
+                image_data[1],
+                use_degensac=self.use_degensac,
+                find_fundamental=self.estimate_k,
+                img_pair=img_pair,
+                out_dir=matching_out_dir,
+                show=self.show_matching,
+                save=self.save_matching,
+                ratio_thresh=self.knn_ratio_threshold,
+                ransac_th=self.ransac_th,
+                ransac_conf=self.ransac_conf,
+                ransac_iters=self.ransac_iters
+            )
+
+        elif self.use_degensac:
+            E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
+                image_data[0].img,
+                image_data[0].key_points,
+                image_data[0].descriptions,
+                image_data[0].real_K,
+                image_data[1].img,
+                image_data[1].key_points,
+                image_data[1].descriptions,
+                image_data[1].real_K,
+                img_pair,
+                matching_out_dir,
+                show=self.show_matching,
+                save=self.save_matching,
+                ratio_thresh=self.knn_ratio_threshold,
+                ransac_th=self.ransac_th,
+                ransac_conf=self.ransac_conf,
+                ransac_iters=self.ransac_iters
+            )
+
+        else:
+            # NOTE using img_datax.real_K for a call to findE
+            E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
+                image_data[0].img,
+                image_data[0].key_points,
+                image_data[0].descriptions,
+                image_data[0].real_K,
+                image_data[1].img,
+                image_data[1].key_points,
+                image_data[1].descriptions,
+                image_data[1].real_K,
+                find_fundamental=self.estimate_k,
+                img_pair=img_pair,
+                out_dir=matching_out_dir,
+                show=self.show_matching,
+                save=self.save_matching,
+                ratio_thresh=self.knn_ratio_threshold,
+                ransac_th=self.ransac_th,
+                ransac_conf=self.ransac_conf,
+                ransac_iters=self.ransac_iters,
+                cfg=self.config,
+            )
+
+            if E is None:
+                # TODO test this
+                ValueError("E is None")
+
+        stats_struct = evaluate_matching(self.scene_info,
+                                         E,
+                                         image_data[0].key_points,
+                                         image_data[1].key_points,
+                                         tentative_matches,
+                                         inlier_mask,
+                                         img_pair,
+                                         stats_map_diff,
+                                         image_data[0].normals,
+                                         image_data[1].normals,
+                                         )
+
+        self.update_matching_stats(self.cache_map[Property.all_combinations], difficulty,
+                                   "{}_{}".format(img_pair.img1, img_pair.img2), stats_struct)
+
+    def estimate_rotation_via_normals(self, normals1, normals2, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5):
+
+        # get R
+        normals1 = possibly_expand_normals(normals1)
+        normals2 = possibly_expand_normals(normals2)
+        solutions = find_rotations(normals1, normals2)
+
+        first_err = compare_R_to_GT(img_pair, self.scene_info, solutions[0][0])
+        print("estimate_rotation_via_normals: first_err: {}".format(first_err))
+        stats_first = Stats.get_error_r_only_stats(first_err)
+        stats_map_diff_r1[pair_key] = stats_first
+
+        top_5_err = first_err
+        for solution in solutions[1:5]:
+            R = solution[0]
+            err_q = compare_R_to_GT(img_pair, self.scene_info, R)
+            if err_q < top_5_err:
+                top_5_err = err_q
+
+        print("estimate_rotation_via_normals: top_5_err: {}".format(top_5_err))
+        stats_top_5 = Stats.get_error_r_only_stats(top_5_err)
+        stats_map_diff_r5[pair_key] = stats_top_5
+
 
     def run_matching_pipeline(self):
 
         self.start()
 
         self.ensure_stats_key(self.stats_map)
+        self.ensure_stats_key(self.stats_map, suffix="_r1")
+        self.ensure_stats_key(self.stats_map, suffix="_r5")
 
         already_processed = set()
 
@@ -846,6 +973,8 @@ class Pipeline:
             print("Difficulty: {}".format(difficulty))
 
             stats_map_diff = {}
+            stats_map_diff_r1 = {}
+            stats_map_diff_r5 = {}
 
             processed_pairs = 0
             for img_pair in self.scene_info.img_pairs_lists[difficulty]:
@@ -883,80 +1012,10 @@ class Pipeline:
 
                     stats_counter = stats_counter + 1
 
-                    if self.planes_based_matching:
-                        E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_with_dominant_planes(
-                            image_data[0],
-                            image_data[1],
-                            use_degensac=self.use_degensac,
-                            find_fundamental=self.estimate_k,
-                            img_pair=img_pair,
-                            out_dir=matching_out_dir,
-                            show=self.show_matching,
-                            save=self.save_matching,
-                            ratio_thresh=self.knn_ratio_threshold,
-                            ransac_th=self.ransac_th,
-                            ransac_conf=self.ransac_conf,
-                            ransac_iters=self.ransac_iters
-                        )
+                    self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5)
 
-                    elif self.use_degensac:
-                        E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
-                            image_data[0].img,
-                            image_data[0].key_points,
-                            image_data[0].descriptions,
-                            image_data[0].real_K,
-                            image_data[1].img,
-                            image_data[1].key_points,
-                            image_data[1].descriptions,
-                            image_data[1].real_K,
-                            img_pair,
-                            matching_out_dir,
-                            show=self.show_matching,
-                            save=self.save_matching,
-                            ratio_thresh=self.knn_ratio_threshold,
-                            ransac_th=self.ransac_th,
-                            ransac_conf=self.ransac_conf,
-                            ransac_iters=self.ransac_iters
-                        )
-
-                    else:
-                        # NOTE using img_datax.real_K for a call to findE
-                        E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
-                            image_data[0].img,
-                            image_data[0].key_points,
-                            image_data[0].descriptions,
-                            image_data[0].real_K,
-                            image_data[1].img,
-                            image_data[1].key_points,
-                            image_data[1].descriptions,
-                            image_data[1].real_K,
-                            find_fundamental=self.estimate_k,
-                            img_pair=img_pair,
-                            out_dir=matching_out_dir,
-                            show=self.show_matching,
-                            save=self.save_matching,
-                            ratio_thresh=self.knn_ratio_threshold,
-                            ransac_th=self.ransac_th,
-                            ransac_conf=self.ransac_conf,
-                            ransac_iters=self.ransac_iters,
-                            cfg=self.config,
-                        )
-
-                        if E is None:
-                            continue
-
-                    stats_struct = evaluate_matching(self.scene_info,
-                                      E,
-                                      image_data[0].key_points,
-                                      image_data[1].key_points,
-                                      tentative_matches,
-                                      inlier_mask,
-                                      img_pair,
-                                      stats_map_diff,
-                                      image_data[0].normals,
-                                      image_data[1].normals,
-                                      )
-                    self.update_matching_stats(self.cache_map[Property.cache_any], difficulty, "{}_{}".format(img_pair.img1, img_pair.img2), stats_struct)
+                    if self.get_stage_number() >= self.stages_map["final"]:
+                        self.do_matching(image_data, img_pair, matching_out_dir, stats_map_diff, difficulty)
 
                     processed_pairs = processed_pairs + 1
 
@@ -969,21 +1028,19 @@ class Pipeline:
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats)
 
-            if len(stats_map_diff) > 0:
-                self.stats_map[self.get_stats_key()][difficulty] = stats_map_diff
-                stats_file_name = self.get_diff_stats_file(difficulty)
-                with open(stats_file_name, "wb") as f:
-                    pickle.dump(stats_map_diff, f)
-                print("Stats for difficulty {} for {}:".format(difficulty, self.cache_map[Property.cache_any]))
-                print("Group\tAcc.(5º)")
-                difficulty, perc = evaluate_percentage_correct(stats_map_diff, difficulty, n_worst_examples=10, th_degrees=5)
-                print("{}\t{:.03f}".format(difficulty, perc))
+            self.stats_map[self.get_stats_key()][difficulty] = stats_map_diff
+            self.stats_map[self.get_stats_key() + "_r1"][difficulty] = stats_map_diff_r1
+            self.stats_map[self.get_stats_key() + "_r5"][difficulty] = stats_map_diff_r5
+            stats_file_name = self.get_diff_stats_file(difficulty)
+            with open(stats_file_name, "wb") as f:
+                pickle.dump(stats_map_diff, f)
+            evaluate_all(self.stats_map)
 
         all_stats_file_name = self.get_diff_stats_file()
         with open(all_stats_file_name, "wb") as f:
             pickle.dump(self.stats_map, f)
 
-        self.save_stats("matching_after_{}".format(self.cache_map[Property.cache_any]))
+        self.save_stats("matching_after_{}".format(self.cache_map[Property.all_combinations]))
         self.log()
         # These two are different approaches to stats
         evaluate_all(self.stats_map)

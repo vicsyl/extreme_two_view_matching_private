@@ -44,19 +44,23 @@ class Property:
     cache_normals = 0
     cache_clusters = 1
     cache_img_data = 2
-    cache_any = 3
+    all_combinations = 3
 
-    def __init__(self, type, default, option=False, cache=cache_img_data):
-        self.type = type
+    def __init__(self, _type, default, option=False, cache=cache_img_data, list_allowed=True, allowed_values=None):
+        self.type = _type
         self.default = default
         self.option = option
         self.cache = cache
+        self.list_allowed = list_allowed
+        self.allowed_values = allowed_values
 
     def parse_and_update(self, key, value, config):
 
         assert key != Property.cartesian_values
 
         if Property.is_list(value):
+            if not self.list_allowed:
+                raise ValueError("List allowed. Value: {}".format(value))
             raw_list = Property.parse_list(value[1:-1])
             if not config.__contains__(Property.cartesian_values):
                 config[Property.cartesian_values] = {}
@@ -79,6 +83,13 @@ class Property:
             return int(value)
         elif self.type == "list":
             return Property.parse_list(value)
+        elif self.type == "enum":
+            if value not in self.allowed_values:
+                raise ValueError("value '{}' not allowed - expected one on [{}]".format(value, ", ".join([str(i) for i in self.allowed_values])))
+            return value
+        else:
+            raise ValueError("unknown type: {}".format(self.type))
+
 
     @staticmethod
     def parse_list(list_str: str):
@@ -108,6 +119,7 @@ class CartesianConfig:
         "feature_descriptor": Property("string", "SIFT", cache=Property.cache_img_data),
         "n_features": Property("int", None, option=True, cache=Property.cache_img_data),
         "use_hardnet": Property("bool", False, cache=Property.cache_img_data),
+        "pipeline_final_step": Property("enum", default="final", cache=Property.all_combinations, list_allowed=False, allowed_values=["final", "before_matching", "before_rectification"]),
     }
 
     @staticmethod
@@ -138,7 +150,7 @@ class CartesianConfig:
             Property.cache_normals: "",
             Property.cache_clusters: "",
             Property.cache_img_data: "",
-            Property.cache_any: "",
+            Property.all_combinations: "",
         }
 
     @staticmethod
@@ -172,7 +184,7 @@ class CartesianConfig:
                 new_cfg[key] = value
                 key_v_str = "{}_{}".format(key, value)
                 cache = CartesianConfig.props_handlers[key].cache
-                for cache_level in range(cache, Property.cache_any + 1):
+                for cache_level in range(cache, Property.all_combinations + 1):
                     cache_keys[cache_level] = key_v_str if len(cache_keys[cache_level]) == 0 else "{}_{}".format(cache_keys[cache_level], key_v_str)
             return new_cfg, cache_keys
 
