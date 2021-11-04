@@ -850,113 +850,120 @@ class Pipeline:
             processed_pairs = 0
             for img_pair in self.scene_info.img_pairs_lists[difficulty]:
 
-                key = SceneInfo.get_key(img_pair.img1, img_pair.img2)
+                pair_key = SceneInfo.get_key(img_pair.img1, img_pair.img2)
                 if self.matching_pairs is not None:
-                    if key not in self.matching_pairs or key in already_processed:
+                    if pair_key not in self.matching_pairs or pair_key in already_processed:
                         continue
                     else:
-                        already_processed.add(key)
+                        already_processed.add(pair_key)
 
                 if self.matching_pairs is None and self.matching_limit is not None and processed_pairs >= self.matching_limit:
                     print("Reached matching limit of {} for difficulty {}".format(self.matching_limit, difficulty))
                     break
 
                 Timer.start_check_point("complete image pair matching")
-                print("Will be matching pair {}".format(key))
+                print("Will be matching pair {}".format(pair_key))
 
-                matching_out_dir = "{}/matching".format(self.output_dir)
-                Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
-
-                # I might not need normals yet
-                # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
-
-                image_data = []
                 try:
-                    for img in [img_pair.img1, img_pair.img2]:
-                        image_data.append(self.process_image(img))
-                except:
-                    print("{}_{} couldn't be processed, skipping the matching pair".format(img_pair.img1, img_pair.img1))
-                    print(traceback.format_exc(), file=sys.stderr)
-                    continue
 
-                stats_counter = stats_counter + 1
+                    matching_out_dir = "{}/matching".format(self.output_dir)
+                    Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
 
-                if self.planes_based_matching:
-                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_with_dominant_planes(
-                        image_data[0],
-                        image_data[1],
-                        use_degensac=self.use_degensac,
-                        find_fundamental=self.estimate_k,
-                        img_pair=img_pair,
-                        out_dir=matching_out_dir,
-                        show=self.show_matching,
-                        save=self.save_matching,
-                        ratio_thresh=self.knn_ratio_threshold,
-                        ransac_th=self.ransac_th,
-                        ransac_conf=self.ransac_conf,
-                        ransac_iters=self.ransac_iters
-                    )
+                    # I might not need normals yet
+                    # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
 
-                elif self.use_degensac:
-                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
-                        image_data[0].img,
-                        image_data[0].key_points,
-                        image_data[0].descriptions,
-                        image_data[0].real_K,
-                        image_data[1].img,
-                        image_data[1].key_points,
-                        image_data[1].descriptions,
-                        image_data[1].real_K,
-                        img_pair,
-                        matching_out_dir,
-                        show=self.show_matching,
-                        save=self.save_matching,
-                        ratio_thresh=self.knn_ratio_threshold,
-                        ransac_th=self.ransac_th,
-                        ransac_conf=self.ransac_conf,
-                        ransac_iters=self.ransac_iters
-                    )
-
-                else:
-                    # NOTE using img_datax.real_K for a call to findE
-                    E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
-                        image_data[0].img,
-                        image_data[0].key_points,
-                        image_data[0].descriptions,
-                        image_data[0].real_K,
-                        image_data[1].img,
-                        image_data[1].key_points,
-                        image_data[1].descriptions,
-                        image_data[1].real_K,
-                        find_fundamental=self.estimate_k,
-                        img_pair=img_pair,
-                        out_dir=matching_out_dir,
-                        show=self.show_matching,
-                        save=self.save_matching,
-                        ratio_thresh=self.knn_ratio_threshold,
-                        ransac_th=self.ransac_th,
-                        ransac_conf=self.ransac_conf,
-                        ransac_iters=self.ransac_iters,
-                        cfg=self.config,
-                    )
-
-                    if E is None:
+                    image_data = []
+                    try:
+                        for img in [img_pair.img1, img_pair.img2]:
+                            image_data.append(self.process_image(img))
+                    except:
+                        print("(processing image) {}_{} couldn't be processed, skipping the matching pair".format(img_pair.img1, img_pair.img1))
+                        print(traceback.format_exc(), file=sys.stdout)
                         continue
 
-                stats_struct = evaluate_matching(self.scene_info,
-                                  E,
-                                  image_data[0].key_points,
-                                  image_data[1].key_points,
-                                  tentative_matches,
-                                  inlier_mask,
-                                  img_pair,
-                                  stats_map_diff,
-                                  image_data[0].normals,
-                                  image_data[1].normals,
-                                  )
-                self.update_matching_stats(self.cache_map[Property.cache_any], difficulty, "{}_{}".format(img_pair.img1, img_pair.img2), stats_struct)
+                    stats_counter = stats_counter + 1
 
-                processed_pairs = processed_pairs + 1
+                    if self.planes_based_matching:
+                        E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_with_dominant_planes(
+                            image_data[0],
+                            image_data[1],
+                            use_degensac=self.use_degensac,
+                            find_fundamental=self.estimate_k,
+                            img_pair=img_pair,
+                            out_dir=matching_out_dir,
+                            show=self.show_matching,
+                            save=self.save_matching,
+                            ratio_thresh=self.knn_ratio_threshold,
+                            ransac_th=self.ransac_th,
+                            ransac_conf=self.ransac_conf,
+                            ransac_iters=self.ransac_iters
+                        )
+
+                    elif self.use_degensac:
+                        E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
+                            image_data[0].img,
+                            image_data[0].key_points,
+                            image_data[0].descriptions,
+                            image_data[0].real_K,
+                            image_data[1].img,
+                            image_data[1].key_points,
+                            image_data[1].descriptions,
+                            image_data[1].real_K,
+                            img_pair,
+                            matching_out_dir,
+                            show=self.show_matching,
+                            save=self.save_matching,
+                            ratio_thresh=self.knn_ratio_threshold,
+                            ransac_th=self.ransac_th,
+                            ransac_conf=self.ransac_conf,
+                            ransac_iters=self.ransac_iters
+                        )
+
+                    else:
+                        # NOTE using img_datax.real_K for a call to findE
+                        E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
+                            image_data[0].img,
+                            image_data[0].key_points,
+                            image_data[0].descriptions,
+                            image_data[0].real_K,
+                            image_data[1].img,
+                            image_data[1].key_points,
+                            image_data[1].descriptions,
+                            image_data[1].real_K,
+                            find_fundamental=self.estimate_k,
+                            img_pair=img_pair,
+                            out_dir=matching_out_dir,
+                            show=self.show_matching,
+                            save=self.save_matching,
+                            ratio_thresh=self.knn_ratio_threshold,
+                            ransac_th=self.ransac_th,
+                            ransac_conf=self.ransac_conf,
+                            ransac_iters=self.ransac_iters,
+                            cfg=self.config,
+                        )
+
+                        if E is None:
+                            continue
+
+                    stats_struct = evaluate_matching(self.scene_info,
+                                      E,
+                                      image_data[0].key_points,
+                                      image_data[1].key_points,
+                                      tentative_matches,
+                                      inlier_mask,
+                                      img_pair,
+                                      stats_map_diff,
+                                      image_data[0].normals,
+                                      image_data[1].normals,
+                                      )
+                    self.update_matching_stats(self.cache_map[Property.cache_any], difficulty, "{}_{}".format(img_pair.img1, img_pair.img2), stats_struct)
+
+                    processed_pairs = processed_pairs + 1
+
+                except:
+                    print("(matching) {} couldn't be processed, skipping the matching pair".format(pair_key))
+                    print(traceback.format_exc(), file=sys.stdout)
+
                 Timer.end_check_point("complete image pair matching")
 
                 if stats_counter % 10 == 0:

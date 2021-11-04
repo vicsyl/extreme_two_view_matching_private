@@ -564,7 +564,7 @@ def match_epipolar(img1, kps1, descs1, real_K_1,
         F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.USAC_MAGSAC, ransacReprojThreshold=ransac_th, confidence=ransac_conf, maxIters=ransac_iters)
         if F is None or inlier_mask is None:
             print("WARNING: F:{} or inlier mask:{} are None".format(F, inlier_mask))
-            return None, None, None, None, None
+            raise ValueError("None")
         print("F:\n{}".format(F))
         E = real_K_2.T @ F @ real_K_1
     else:
@@ -572,7 +572,7 @@ def match_epipolar(img1, kps1, descs1, real_K_1,
         E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, real_K_1, None, real_K_2, None, cv.RANSAC, prob=ransac_conf, threshold=ransac_th)
         if E is None or inlier_mask is None:
             print("WARNING: E:{} or inlier mask:{} are None".format(E, inlier_mask))
-            return None, None, None, None, None
+            raise ValueError("None")
 
     Timer.end_check_point("matching")
 
