@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 """
-DISCLAIMER: logic taken from https://github.com/kornia/kornia-examples/blob/master/MKD_TFeat_descriptors_in_kornia.ipynb
+DISCLAIMER: taken from https://github.com/kornia/kornia-examples/blob/master/MKD_TFeat_descriptors_in_kornia.ipynb
 """
 
 

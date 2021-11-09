@@ -196,3 +196,48 @@ def get_local_descriptors(img, cv2_sift_kpts, kornia_descriptor):
 descs1 = get_local_descriptors(img1, kps1, descriptor)
 ```
 
+# notes from 11/5/2021
+
+
+## experiments
+
+* made the pipeline more flexible 
+* tried Hardnet, n features (SIFT_create), fginn
+  * not ready but doesn't seem to show major improvement
+  * Hardnet not ready
+  * fginn (1st geometrically inconsistent nearest neighbor ratio)
+    * params for 
+      * num_nn = 2, fginn_spatial_th = 100, ratio_th = 0.5
+      * try these: num_nn = 2, fginn_spatial_th = 10/15, ratio_th = 0.85
+    * exceptions for fginn
+      * too few tentatives, 5 inliers => multiple E? E is 3x6 ? (multiple Es)
+  * n_features = 8000 slightly better in medium difficulties (how does it even work?)
+* tried fginn with all unrectified kpts
+  * change params / observe some metrics (correspondence between unrectified (on some patches) and rectified )
+    
+## rotation estimation from normals 
+
+* code 
+* estimation performance 
+* TBD
+  * rectify half way through
+  * constraints
+  * look closely at the estimation performance
+* theory
+  * continous function on compact set -> attains minimum 
+  * how many local minima are there (more of them may be interesting)  
+
+
+## what's next
+
+* continue working on rotation estimation from normals
+* parameters for fginn
+* observe new metrics?
+* old stuff (bilinear filtering, recomputing the normal of the patch, etc...) 
+
+## minutes 
+
+* n_features = None probably OK, other params: edge threshold for SIFT.... higher value is more permissible x contrast threshold the other way around
+* try these: num_nn = 2, fginn_spatial_th = 10/15, ratio_th = 0.85
+* rarely I can get multiple Es (multiple E? E is 3x6 ? (multiple Es))
+

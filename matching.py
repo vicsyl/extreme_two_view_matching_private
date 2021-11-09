@@ -164,11 +164,11 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, cfg, out_dir=No
     assert descs2 is not None and len(descs2) != 0
 
     if fginn:
-        k = 10 + num_nn # TODO why?
+        k = 10 + num_nn
         knn_matches = matcher.knnMatch(descs1, descs2, k=k)
         tentative_matches = filter_fginn_matches(knn_matches, descs1, descs2, num_nn, cfg)
     else:
-        k = 2   # max(2, num_nn + 1) # TODO resolve
+        k = 2
         tentative_matches = get_cross_checked_tentatives(matcher, descs1, descs2, ratio_thresh, k=k)
 
     if show or save:

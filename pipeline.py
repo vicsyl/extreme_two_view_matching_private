@@ -938,9 +938,10 @@ class Pipeline:
         # get R
         normals1 = possibly_expand_normals(normals1)
         normals2 = possibly_expand_normals(normals2)
-        solutions = find_rotations(normals1, normals2)
+        solutions = find_sorted_rotations(normals1, normals2)
 
-        first_err = compare_R_to_GT(img_pair, self.scene_info, solutions[0][0])
+        R_first = solutions[0][0]
+        first_err = compare_R_to_GT(img_pair, self.scene_info, R_first)
         print("estimate_rotation_via_normals: first_err: {}".format(first_err))
         stats_first = Stats.get_error_r_only_stats(first_err)
         stats_map_diff_r1[pair_key] = stats_first
