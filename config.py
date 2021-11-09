@@ -120,6 +120,9 @@ class CartesianConfig:
         "n_features": Property("int", None, option=True, cache=Property.cache_img_data),
         "use_hardnet": Property("bool", False, cache=Property.cache_img_data),
         "pipeline_final_step": Property("enum", default="final", cache=Property.all_combinations, list_allowed=False, allowed_values=["final", "before_matching", "before_rectification"]),
+        "recify_by_fixed_rotation": Property("bool", default=False, cache=Property.all_combinations),
+        "recify_by_0_around_z": Property("bool", default=False, cache=Property.all_combinations),
+        "recify_by_GT": Property("bool", default=False, cache=Property.all_combinations),
     }
 
     @staticmethod

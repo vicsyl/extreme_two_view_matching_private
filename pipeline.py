@@ -5,6 +5,7 @@ from datetime import datetime
 from hard_net_descriptor import HardNetDescriptor
 from normals_rotations import *
 
+import kornia.geometry as KG
 import cv2 as cv
 import pickle
 import traceback
@@ -337,11 +338,37 @@ class Pipeline:
         Config.log()
         Clustering.log()
 
+    def get_img_processing_dir(self):
+        return "{}/imgs/{}".format(self.output_dir, self.cache_map[Property.cache_img_data])
+
     def get_and_create_img_processing_dir(self):
-        img_processing_dir = "{}/imgs/{}".format(self.output_dir, self.cache_map[Property.cache_img_data])
+        img_processing_dir = self.get_img_processing_dir()
         if not os.path.exists(img_processing_dir):
             Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
         return img_processing_dir
+
+    def get_cached_image_data_or_none(self, img_name, img, real_K):
+        img_processing_dir = self.get_and_create_img_processing_dir()
+        img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
+        if self.use_cached_img_data and os.path.isfile(img_data_path):
+            Timer.start_check_point("reading img processing data")
+            with open(img_data_path, "rb") as f:
+                print("img data for {} already computed, reading: {}".format(img_name, img_data_path))
+                img_serialized_data: ImageSerializedData = pickle.load(f)
+            Timer.end_check_point("reading img processing data")
+            return ImageData.from_serialized_data(img=img,
+                                                  real_K=real_K,
+                                                  img_serialized_data=img_serialized_data)
+        else:
+            return None
+
+    @staticmethod
+    def save_img_data(img_data, img_data_path, img_name):
+        Timer.start_check_point("saving img data")
+        with open(img_data_path, "wb") as f:
+            print("img data for {} saving into: {}".format(img_name, img_data_path))
+            pickle.dump(img_data.to_serialized_data(), f)
+        Timer.end_check_point("saving img data")
 
     def process_image(self, img_name):
 
@@ -374,11 +401,19 @@ class Pipeline:
             assert abs(real_K[0, 2] * 2 - orig_width) < 0.5
             assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
 
+        img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
+
         if not self.rectify:
+
+            Timer.end_check_point("processing img without rectification")
+
+            cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
+            if cached_img_data is not None:
+                return cached_img_data
+
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
-            Timer.end_check_point("processing img")
-            return ImageData(img=img,
+            img_data = ImageData(img=img,
                              real_K=real_K,
                              key_points=kps,
                              descriptions=descs,
@@ -386,18 +421,16 @@ class Pipeline:
                              components_indices=None,
                              valid_components_dict=None)
 
+            Pipeline.save_img_data(img_data, img_data_path, img_name)
+
+            Timer.end_check_point("processing img without rectification")
+            return img_data
+
         else:
 
-            img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
-            if self.use_cached_img_data and os.path.isfile(img_data_path):
-                Timer.start_check_point("reading img processing data")
-                with open(img_data_path, "rb") as f:
-                    print("img data for {} already computed, reading: {}".format(img_name, img_data_path))
-                    img_serialized_data: ImageSerializedData = pickle.load(f)
-                Timer.end_check_point("reading img processing data")
-                return ImageData.from_serialized_data(img=img,
-                                                      real_K=real_K,
-                                                      img_serialized_data=img_serialized_data)
+            cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
+            if cached_img_data is not None:
+                return cached_img_data
 
             Timer.start_check_point("processing img from scratch")
 
@@ -468,7 +501,11 @@ class Pipeline:
                                     path=components_out_path,
                                     file_name=depth_data_file_name[:-4])
 
-            if self.get_stage_number() > self.stages_map["before_rectification"]:
+            if self.config["recify_by_fixed_rotation"] or self.get_stage_number() <= self.stages_map["before_rectification"]:
+
+                kps, descs = None, None
+
+            else:
 
                 # get rectification
                 rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name)
@@ -485,9 +522,6 @@ class Pipeline:
                                                      out_prefix=rectification_path_prefix,
                                                      all_unrectified=self.all_unrectified
                                                      )
-            else:
-
-                kps, descs, unrectified_indices = None, None, None
 
             img_data = ImageData(img=img,
                                  real_K=real_K,
@@ -499,13 +533,8 @@ class Pipeline:
 
             Timer.end_check_point("processing img from scratch")
 
-            Timer.start_check_point("saving img data")
-            with open(img_data_path, "wb") as f:
-                print("img data for {} saving into: {}".format(img_name, img_data_path))
-                pickle.dump(img_data.to_serialized_data(), f)
-            Timer.end_check_point("saving img data")
+            Pipeline.save_img_data(img_data, img_data_path, img_name)
 
-            Timer.end_check_point("processing img")
             return img_data
 
     def get_nonsky_mask_possibly_cached(self, img_name, np_image, h_w):
@@ -933,23 +962,31 @@ class Pipeline:
         self.update_matching_stats(self.cache_map[Property.all_combinations], difficulty,
                                    "{}_{}".format(img_pair.img1, img_pair.img2), stats_struct)
 
-    def estimate_rotation_via_normals(self, normals1, normals2, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5):
+    def estimate_rotation_via_normals(self, normals1, normals2, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5, zero_around_z):
 
         # get R
         normals1 = possibly_expand_normals(normals1)
         normals2 = possibly_expand_normals(normals2)
-        solutions = find_sorted_rotations(normals1, normals2)
+        solutions = find_sorted_rotations(normals1, normals2, zero_around_z)
 
-        R_first = solutions[0][0]
-        first_err = compare_R_to_GT(img_pair, self.scene_info, R_first)
-        print("estimate_rotation_via_normals: first_err: {}".format(first_err))
+        r_vec_first = solutions[0].rotation_vector
+        r_matrix_first = get_rotation_matrix_safe(r_vec_first)
+        first_err = compare_R_to_GT(img_pair, self.scene_info, r_matrix_first)
+        GT_err = compare_R_to_GT(img_pair, self.scene_info, np.eye(3))
+        GT_mat, _ = get_GT_R_t(img_pair, self.scene_info)
+        GT_vec = KG.rotation_matrix_to_angle_axis(torch.from_numpy(GT_mat)[None]).detach().cpu().numpy()[0]
+        print("estimate_rotation_via_normals: I error against GT: {}".format(GT_err))
+        print("estimate_rotation_via_normals: error against GT: {}".format(first_err))
+        print("estimate_rotation_via_normals: objective function value: {}".format(solutions[0].objective_fnc))
+        print("estimate_rotation_via_normals: rotation vector GT: {}".format(GT_vec))
+        print("estimate_rotation_via_normals: rotation vector: {}".format(solutions[0].rotation_vector))
         stats_first = Stats.get_error_r_only_stats(first_err)
         stats_map_diff_r1[pair_key] = stats_first
 
         top_5_err = first_err
         for solution in solutions[1:5]:
-            R = solution[0]
-            err_q = compare_R_to_GT(img_pair, self.scene_info, R)
+            r = get_rotation_matrix_safe(solution.rotation_vector)
+            err_q = compare_R_to_GT(img_pair, self.scene_info, r)
             if err_q < top_5_err:
                 top_5_err = err_q
 
@@ -957,14 +994,42 @@ class Pipeline:
         stats_top_5 = Stats.get_error_r_only_stats(top_5_err)
         stats_map_diff_r5[pair_key] = stats_top_5
 
+        return r_vec_first
+
+    def rectify_by_fixed_rotation_update(self, img_data, r, img_name):
+
+        if self.estimate_k:
+            raise NotImplemented("img_data.real_K != K_for_rectification")
+
+        # get rectification
+        rectification_path_prefix = "{}/{}".format(self.get_img_processing_dir(), img_name)
+        kps, descs, _ = get_rectified_keypoints(img_data.normals,
+                                                img_data.components_indices,
+                                                img_data.valid_components_dict,
+                                                img_data.img,
+                                                img_data.real_K,  # K_for_rectification,
+                                                descriptor=self.feature_descriptor,
+                                                img_name=img_name,
+                                                fixed_rotation=r,
+                                                clip_angle=self.clip_angle,
+                                                show=self.show_rectification,
+                                                save=self.save_rectification,
+                                                out_prefix=rectification_path_prefix,
+                                                all_unrectified=self.all_unrectified
+                                                )
+
+        img_data.key_points = kps
+        img_data.descriptions = descs
+        return img_data
 
     def run_matching_pipeline(self):
 
         self.start()
 
         self.ensure_stats_key(self.stats_map)
-        self.ensure_stats_key(self.stats_map, suffix="_r1")
-        self.ensure_stats_key(self.stats_map, suffix="_r5")
+        # TODO remove these
+        # self.ensure_stats_key(self.stats_map, suffix="_r1")
+        # self.ensure_stats_key(self.stats_map, suffix="_r5")
 
         already_processed = set()
 
@@ -976,6 +1041,10 @@ class Pipeline:
             stats_map_diff = {}
             stats_map_diff_r1 = {}
             stats_map_diff_r5 = {}
+            self.stats_map[self.get_stats_key()][difficulty] = stats_map_diff
+            # TODO remove these
+            # self.stats_map[self.get_stats_key() + "_r1"][difficulty] = stats_map_diff_r1
+            # self.stats_map[self.get_stats_key() + "_r5"][difficulty] = stats_map_diff_r5
 
             processed_pairs = 0
             for img_pair in self.scene_info.img_pairs_lists[difficulty]:
@@ -993,6 +1062,7 @@ class Pipeline:
 
                 Timer.start_check_point("complete image pair matching")
                 print("Will be matching pair {}".format(pair_key))
+                stats_counter = stats_counter + 1
 
                 try:
 
@@ -1011,9 +1081,27 @@ class Pipeline:
                         print(traceback.format_exc(), file=sys.stdout)
                         continue
 
-                    stats_counter = stats_counter + 1
+                    zero_around_z = self.config["recify_by_0_around_z"]
+                    estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5, zero_around_z)
 
-                    self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5)
+                    if self.config["recify_by_fixed_rotation"]:
+
+                        if self.config["recify_by_GT"]:
+                            GT_R, _ = get_GT_R_t(img_pair, self.scene_info)
+                            r_vec_full = KG.rotation_matrix_to_angle_axis(torch.from_numpy(GT_R)[None]).detach().cpu().numpy()[0]
+                        else:
+                            r_vec_full = estimated_r_vec
+
+                        for idx, image_data_item in enumerate(image_data):
+                            if idx == 0:
+                                r_vec = r_vec_full / 2
+                                img_name = img_pair.img1
+                            else:
+                                r_vec = -r_vec_full / 2
+                                img_name = img_pair.img2
+
+                            r = get_rotation_matrix_safe(r_vec)
+                            self.rectify_by_fixed_rotation_update(image_data_item, r, img_name)
 
                     if self.get_stage_number() >= self.stages_map["final"]:
                         self.do_matching(image_data, img_pair, matching_out_dir, stats_map_diff, difficulty)
@@ -1028,14 +1116,11 @@ class Pipeline:
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats)
+                evaluate_all(self.stats_map)
 
-            self.stats_map[self.get_stats_key()][difficulty] = stats_map_diff
-            self.stats_map[self.get_stats_key() + "_r1"][difficulty] = stats_map_diff_r1
-            self.stats_map[self.get_stats_key() + "_r5"][difficulty] = stats_map_diff_r5
             stats_file_name = self.get_diff_stats_file(difficulty)
             with open(stats_file_name, "wb") as f:
                 pickle.dump(stats_map_diff, f)
-            evaluate_all(self.stats_map)
 
         all_stats_file_name = self.get_diff_stats_file()
         with open(all_stats_file_name, "wb") as f:

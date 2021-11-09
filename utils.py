@@ -25,6 +25,16 @@ def pad_normals(normals, window_size, mode="replicate"):
     return normals
 
 
+def get_rotation_matrix_safe(r):
+    r_norm = np.linalg.norm(r)
+    if r_norm == 0.0:
+        R = np.eye(3)
+    else:
+        r = r / r_norm
+        R = get_rotation_matrix(r, r_norm)
+    return R
+
+
 def get_rotation_matrix(unit_rotation_vector, theta):
 
     # Rodrigues formula

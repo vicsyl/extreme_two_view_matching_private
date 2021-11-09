@@ -180,7 +180,7 @@ def eval_essential_matrix(p1n, p2n, E, dR, dt):
     return err_q, err_t
 
 
-def compare_R_to_GT(img_pair: ImagePairEntry, scene_info: SceneInfo, R):
+def get_GT_R_t(img_pair: ImagePairEntry, scene_info: SceneInfo):
 
     img_entry_1: ImageEntry = scene_info.img_info_map[img_pair.img1]
     T1 = img_entry_1.t
@@ -193,7 +193,12 @@ def compare_R_to_GT(img_pair: ImagePairEntry, scene_info: SceneInfo, R):
     dR = R2 @ R1.T
     dt = T2 - dR @ T1
 
-    err_q, _ = evaulate_R_t_safe(dR, dt, R, dt)
+    return dR, dt
+
+
+def compare_R_to_GT(img_pair: ImagePairEntry, scene_info: SceneInfo, r):
+    dR, dt = get_GT_R_t(img_pair, scene_info)
+    err_q, _ = evaulate_R_t_safe(dR, dt, r, dt)
     return err_q
 
 

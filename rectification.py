@@ -140,6 +140,7 @@ def get_rectified_keypoints(normals,
                             K,
                             descriptor,
                             img_name,
+                            fixed_rotation=None,
                             clip_angle=None,
                             show=False,
                             save=False,
@@ -160,7 +161,10 @@ def get_rectified_keypoints(normals,
         normal_index = valid_components_dict[component_index]
         normal = normals[normal_index]
 
-        R = get_rectification_rotation(normal, rotation_factor)
+        if fixed_rotation is None:
+            R = get_rectification_rotation(normal, rotation_factor)
+        else:
+            R = fixed_rotation
 
         T, bounding_box = get_perspective_transform(img, R, K, K_inv, components_indices, component_index, clip_angle)
 
