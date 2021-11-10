@@ -1082,8 +1082,9 @@ class Pipeline:
                         print(traceback.format_exc(), file=sys.stdout)
                         continue
 
-                    zero_around_z = self.config["recify_by_0_around_z"]
-                    estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5, zero_around_z)
+                    if self.rectify:
+                        zero_around_z = self.config["recify_by_0_around_z"]
+                        estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5, zero_around_z)
 
                     if self.config["recify_by_fixed_rotation"]:
 
