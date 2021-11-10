@@ -156,7 +156,7 @@ class Pipeline:
 
         sift_descriptor = cv.SIFT_create(n_features)
         if use_hardnet:
-            self.feature_descriptor = HardNetDescriptor(sift_descriptor)
+            self.feature_descriptor = HardNetDescriptor(sift_descriptor, device=self.device)
         else:
             self.feature_descriptor = sift_descriptor
 
