@@ -11,9 +11,14 @@ DISCLAIMER: taken from https://github.com/kornia/kornia-examples/blob/master/MKD
 
 class HardNetDescriptor:
 
-    def __init__(self, sift_descriptor):
+    def __init__(self, sift_descriptor, device: torch.device=torch.device('cpu')):
         self.sift_descriptor = sift_descriptor
         self.hardnet = KF.HardNet(True)
+        self.device = device
+        if self.device == torch.device('cuda'):
+            self.hardnet.cuda()
+        else:
+            self.hardnet.cpu()
 
     def detectAndCompute(self, img, mask):
         # NOTE this is just how it was called before
@@ -30,7 +35,7 @@ class HardNetDescriptor:
         with torch.no_grad():
             self.hardnet.eval()
             timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.)
-            lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts)
+            lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
             patches = KF.extract_patches_from_pyramid(timg, lafs, 32)
             B, N, CH, H, W = patches.size()
             # Descriptor accepts standard tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape

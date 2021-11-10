@@ -975,6 +975,7 @@ class Pipeline:
         GT_err = compare_R_to_GT(img_pair, self.scene_info, np.eye(3))
         GT_mat, _ = get_GT_R_t(img_pair, self.scene_info)
         GT_vec = KG.rotation_matrix_to_angle_axis(torch.from_numpy(GT_mat)[None]).detach().cpu().numpy()[0]
+        print("normals counts: ({}, {})".format(normals1.shape[0], normals2.shape[0]))
         print("estimate_rotation_via_normals: I error against GT: {}".format(GT_err))
         print("estimate_rotation_via_normals: error against GT: {}".format(first_err))
         print("estimate_rotation_via_normals: objective function value: {}".format(solutions[0].objective_fnc))
