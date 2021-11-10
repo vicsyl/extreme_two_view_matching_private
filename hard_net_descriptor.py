@@ -34,7 +34,7 @@ class HardNetDescriptor:
         # We will not train anything, so let's save time and memory by no_grad()
         with torch.no_grad():
             self.hardnet.eval()
-            timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.)
+            timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.).to(self.device)
             lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
             patches = KF.extract_patches_from_pyramid(timg, lafs, 32)
             B, N, CH, H, W = patches.size()
