@@ -370,7 +370,7 @@ class Pipeline:
             pickle.dump(img_data.to_serialized_data(), f)
         Timer.end_check_point("saving img data")
 
-    def process_image(self, img_name):
+    def process_image(self, img_name, order):
 
         Timer.start_check_point("processing img")
         print("Processing: {}".format(img_name))
@@ -507,6 +507,11 @@ class Pipeline:
 
             else:
 
+                if order == 0:
+                    rotation_factor = self.config["rotation_alpha1"]
+                else:
+                    rotation_factor = self.config["rotation_alpha2"]
+
                 # get rectification
                 rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name)
                 kps, descs, unrectified_indices = get_rectified_keypoints(normals_clusters_repr,
@@ -520,6 +525,7 @@ class Pipeline:
                                                      show=self.show_rectification,
                                                      save=self.save_rectification,
                                                      out_prefix=rectification_path_prefix,
+                                                     rotation_factor=rotation_factor,
                                                      all_unrectified=self.all_unrectified
                                                      )
 
@@ -761,8 +767,8 @@ class Pipeline:
         self.start()
 
         file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
-        for depth_data_file_name in file_names:
-            self.process_image(depth_data_file_name[:-4])
+        for idx, depth_data_file_name in enumerate(file_names):
+            self.process_image(depth_data_file_name[:-4], idx)
 
         self.save_stats("sequential")
 
@@ -1007,7 +1013,7 @@ class Pipeline:
                                                 img_data.real_K,  # K_for_rectification,
                                                 descriptor=self.feature_descriptor,
                                                 img_name=img_name,
-                                                fixed_rotation=r,
+                                                fixed_rotation_vector=r,
                                                 clip_angle=self.clip_angle,
                                                 show=self.show_rectification,
                                                 save=self.save_rectification,
@@ -1062,8 +1068,8 @@ class Pipeline:
 
                     image_data = []
                     try:
-                        for img in [img_pair.img1, img_pair.img2]:
-                            image_data.append(self.process_image(img))
+                        for idx, img in enumerate([img_pair.img1, img_pair.img2]):
+                            image_data.append(self.process_image(img, idx))
                     except:
                         print("(processing image) {}_{} couldn't be processed, skipping the matching pair".format(img_pair.img1, img_pair.img1))
                         print(traceback.format_exc(), file=sys.stdout)
@@ -1089,8 +1095,7 @@ class Pipeline:
                                 r_vec = -r_vec_full / 2
                                 img_name = img_pair.img2
 
-                            r = get_rotation_matrix_safe(r_vec)
-                            self.rectify_by_fixed_rotation_update(image_data_item, r, img_name)
+                            self.rectify_by_fixed_rotation_update(image_data_item, r_vec, img_name)
 
                     if self.get_stage_number() >= self.stages_map["final"]:
                         self.do_matching(image_data, img_pair, matching_out_dir, stats_map_diff, difficulty)

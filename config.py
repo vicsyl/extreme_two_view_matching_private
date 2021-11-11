@@ -123,6 +123,8 @@ class CartesianConfig:
         "recify_by_fixed_rotation": Property("bool", default=False, cache=Property.all_combinations),
         "recify_by_0_around_z": Property("bool", default=False, cache=Property.all_combinations),
         "recify_by_GT": Property("bool", default=False, cache=Property.all_combinations),
+        "rotation_alpha1": Property("float", default=1.0, cache=Property.cache_img_data, list_allowed=True),
+        "rotation_alpha2": Property("float", default=1.0, cache=Property.cache_img_data, list_allowed=True),
     }
 
     @staticmethod
