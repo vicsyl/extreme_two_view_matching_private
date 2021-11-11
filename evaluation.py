@@ -526,7 +526,7 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     return checks
 
 
-def evaluate_all_matching_stats(stats_map_all: dict):
+def evaluate_all_matching_stats(stats_map_all: dict, n_examples=10, special_diff=None):
     print("Stats for all difficulties:")
     keys_list = list(stats_map_all.keys())
 
@@ -558,6 +558,13 @@ def evaluate_all_matching_stats(stats_map_all: dict):
             else:
                 value_list.append("0")
         print("{}\t{}".format(diff, "\t".join(value_list)))
+
+    for diff in all_diffs:
+        if special_diff is not None and special_diff != diff:
+            continue
+        for key in keys_list:
+            if stats_map_all[key].__contains__(diff): # and len(stats_map_all[key][diff]) > 0:
+                print_significant_instances(stats_map_all[key][diff], key, diff, n_examples=n_examples)
 
 
 # def evaluate(stats_map: dict, scene_info: SceneInfo):
@@ -622,16 +629,18 @@ def evaluate_all_matching_stats(stats_map_all: dict):
 #
 #
 
-def evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=None, th_degrees=5):
-    sorted_by_err_R = list(sorted(stats_map.items(), key=lambda key_value: -key_value[1].error_R))
+def print_significant_instances(stats_map, difficulty, key, n_examples=10):
 
-    if n_worst_examples is not None:
-        print("{} worst examples for diff={}".format(n_worst_examples, difficulty))
-        for k, v in sorted_by_err_R[:n_worst_examples]:
-            print("{}: {}".format(k, v.error_R))
-        print("{} best examples for diff={}".format(n_worst_examples, difficulty))
-        for k, v in sorted_by_err_R[-n_worst_examples:]:
-            print("{}: {}".format(k, v.error_R))
+    sorted_by_err_R = list(sorted(stats_map.items(), key=lambda key_value: -key_value[1].error_R))
+    print("{} worst examples for {} for diff={}".format(n_examples, key, difficulty))
+    for k, v in sorted_by_err_R[:n_examples]:
+        print("{}: {}".format(k, v.error_R))
+    print("{} best examples for {} for diff={}".format(n_examples, key, difficulty))
+    for k, v in sorted_by_err_R[-n_examples:]:
+        print("{}: {}".format(k, v.error_R))
+
+
+def evaluate_percentage_correct(stats_map, difficulty, th_degrees=5):
 
     rad_th = th_degrees * math.pi / 180
     filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
@@ -702,7 +711,8 @@ def evaluate_percentage_correct_from_file(file_name, difficulty, n_worst_example
     with open(file_name, "rb") as f:
         stats_map = pickle.load(f)
 
-    return evaluate_percentage_correct(stats_map, difficulty, n_worst_examples=n_worst_examples, th_degrees=th_degrees)
+    print_significant_instances(stats_map, difficulty, key="default", n_worst_examples=n_worst_examples)
+    return evaluate_percentage_correct(stats_map, difficulty, th_degrees=th_degrees)
 
 
 def evaluate_percentage_correct_from_files(file_name1, file_name2, difficulty, n_worst_examples=None, th_degrees=5):

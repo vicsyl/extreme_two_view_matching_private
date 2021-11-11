@@ -1110,7 +1110,7 @@ class Pipeline:
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats)
-                evaluate_all_matching_stats(self.stats_map)
+                evaluate_all_matching_stats(self.stats_map, n_examples=30, special_diff=difficulty)
 
                 Timer.log_stats()
 
@@ -1125,7 +1125,7 @@ class Pipeline:
         self.save_stats("matching_after_{}".format(self.cache_map[Property.all_combinations]))
         self.log()
         # These two are different approaches to stats
-        evaluate_all_matching_stats(self.stats_map)
+        evaluate_all_matching_stats(self.stats_map, n_examples=30)
         evaluate_stats(self.stats)
 
     def save_stats(self, key=""):
