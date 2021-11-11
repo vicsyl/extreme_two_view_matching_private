@@ -271,7 +271,7 @@ class Timer:
             Timer.stats_times[label] += duration
 
     @staticmethod
-    def end():
+    def log_stats():
         end = time.time()
         print("Time elapsed from start: {:.4f}., ".format(end - Timer.start_time))
         print("Statistics: ")

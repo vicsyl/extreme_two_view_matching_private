@@ -181,4 +181,4 @@ if __name__ == "__main__":
     interesting_dirs = ["frame_0000000145_2"]
     find_and_show_clusters("work/scene1/normals/simple_diff_mask_sigma_5", limit=1, interesting_dirs=interesting_dirs)
 
-    Timer.end()
+    Timer.log_stats()

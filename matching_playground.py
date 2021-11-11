@@ -527,7 +527,7 @@ def play_main():
     #"original_dataset/scene1/images", limit = 20,
     rectify_iterate_play(scene_info, files_to_match=interesting_files)
 
-    Timer.end()
+    Timer.log_stats()
 
 
 if __name__ == "__main__":

@@ -839,8 +839,8 @@ class Pipeline:
                     self.compute_img_normals(img, img_name, prefix_full, use_normals_cache=False)
                     if i % 10 == 0:
                         self.save_stats("normals_{}".format(i))
-                    evaluate_normals(self.stats)
-                    Timer.end()
+                    evaluate_normals_stats(self.stats)
+                    Timer.log_stats()
 
         self.save_stats("normals")
 
@@ -856,8 +856,8 @@ class Pipeline:
             self.compute_img_normals(img, img_name)
             if i % 10 == 0:
                 self.save_stats("normals_{}".format(i))
-            evaluate_normals(self.stats)
-            Timer.end()
+            evaluate_normals_stats(self.stats)
+            Timer.log_stats()
 
         self.save_stats("normals")
 
@@ -962,7 +962,7 @@ class Pipeline:
         self.update_matching_stats(self.cache_map[Property.all_combinations], difficulty,
                                    "{}_{}".format(img_pair.img1, img_pair.img2), stats_struct)
 
-    def estimate_rotation_via_normals(self, normals1, normals2, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5, zero_around_z):
+    def estimate_rotation_via_normals(self, normals1, normals2, img_pair, pair_key, zero_around_z):
 
         # get R
         normals1 = possibly_expand_normals(normals1)
@@ -981,8 +981,6 @@ class Pipeline:
         print("estimate_rotation_via_normals: objective function value: {}".format(solutions[0].objective_fnc))
         print("estimate_rotation_via_normals: rotation vector GT: {}".format(GT_vec))
         print("estimate_rotation_via_normals: rotation vector: {}".format(solutions[0].rotation_vector))
-        stats_first = Stats.get_error_r_only_stats(first_err)
-        stats_map_diff_r1[pair_key] = stats_first
 
         top_5_err = first_err
         for solution in solutions[1:5]:
@@ -992,8 +990,6 @@ class Pipeline:
                 top_5_err = err_q
 
         print("estimate_rotation_via_normals: top_5_err: {}".format(top_5_err))
-        stats_top_5 = Stats.get_error_r_only_stats(top_5_err)
-        stats_map_diff_r5[pair_key] = stats_top_5
 
         return r_vec_first
 
@@ -1028,10 +1024,6 @@ class Pipeline:
         self.start()
 
         self.ensure_stats_key(self.stats_map)
-        # TODO remove these
-        # self.ensure_stats_key(self.stats_map, suffix="_r1")
-        # self.ensure_stats_key(self.stats_map, suffix="_r5")
-
         already_processed = set()
 
         stats_counter = 0
@@ -1040,12 +1032,7 @@ class Pipeline:
             print("Difficulty: {}".format(difficulty))
 
             stats_map_diff = {}
-            stats_map_diff_r1 = {}
-            stats_map_diff_r5 = {}
             self.stats_map[self.get_stats_key()][difficulty] = stats_map_diff
-            # TODO remove these
-            # self.stats_map[self.get_stats_key() + "_r1"][difficulty] = stats_map_diff_r1
-            # self.stats_map[self.get_stats_key() + "_r5"][difficulty] = stats_map_diff_r5
 
             processed_pairs = 0
             for img_pair in self.scene_info.img_pairs_lists[difficulty]:
@@ -1084,7 +1071,7 @@ class Pipeline:
 
                     if self.rectify:
                         zero_around_z = self.config["recify_by_0_around_z"]
-                        estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, stats_map_diff_r1, stats_map_diff_r5, zero_around_z)
+                        estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
 
                     if self.config["recify_by_fixed_rotation"]:
 
@@ -1118,7 +1105,9 @@ class Pipeline:
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats)
-                evaluate_all(self.stats_map)
+                evaluate_all_matching_stats(self.stats_map)
+
+                Timer.log_stats()
 
             stats_file_name = self.get_diff_stats_file(difficulty)
             with open(stats_file_name, "wb") as f:
@@ -1131,7 +1120,7 @@ class Pipeline:
         self.save_stats("matching_after_{}".format(self.cache_map[Property.all_combinations]))
         self.log()
         # These two are different approaches to stats
-        evaluate_all(self.stats_map)
+        evaluate_all_matching_stats(self.stats_map)
         evaluate_stats(self.stats)
 
     def save_stats(self, key=""):
@@ -1169,7 +1158,7 @@ def main():
         pipeline.cache_map = cache_map
         pipeline.run()
 
-    Timer.end()
+    Timer.log_stats()
 
 
 if __name__ == "__main__":

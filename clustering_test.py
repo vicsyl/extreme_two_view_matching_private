@@ -214,7 +214,7 @@ def main():
                                  filter_mask=filter_mask)
 
 
-    Timer.end()
+    Timer.log_stats()
 
 
 def points():
@@ -255,7 +255,7 @@ def visualize_normals(impl, old_impl=False):
                         impl=impl,
                         old_impl=old_impl)
 
-    Timer.end()
+    Timer.log_stats()
 
 
 if __name__ == "__main__":

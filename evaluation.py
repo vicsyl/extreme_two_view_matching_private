@@ -302,22 +302,6 @@ class Stats:
     normals1: np.ndarray
     normals2: np.ndarray
 
-    @staticmethod
-    def get_error_r_only_stats(error_R):
-        return Stats(inliers_against_gt=None,
-                     tentatives_1=None,
-                     tentatives_2=None,
-                     error_R=error_R,
-                     error_T=None,
-                     tentative_matches=None,
-                     inliers=None,
-                     all_features_1=None,
-                     all_features_2=None,
-                     E=None,
-                     normals1=None,
-                     normals2=None,
-                     )
-
     # legacy
     def make_brief(self):
         self.src_pts_inliers = None
@@ -542,7 +526,7 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     return checks
 
 
-def evaluate_all(stats_map_all: dict):
+def evaluate_all_matching_stats(stats_map_all: dict):
     print("Stats for all difficulties:")
     keys_list = list(stats_map_all.keys())
 
@@ -861,7 +845,7 @@ def evaluate_file(scene_name, file_name):
 #     print("Time elapsed: {}".format(end - start))
 
 def evaluate_stats(stats_map):
-    evaluate_normals(stats_map)
+    evaluate_normals_stats(stats_map)
     evaluate_matching_stats(stats_map)
 
 
@@ -908,7 +892,7 @@ def evaluate_matching_stats(stats_map):
                 tentatives_value = tentatives / len(matching_map)
                 inliers_value = inliers / len(matching_map)
                 stats_local["all_keypoints"][difficulty].append("{:.3f}".format(all_value))
-                stats_local["tentatives"][difficulty].append("{:.3f}".format(tentatives))
+                stats_local["tentatives"][difficulty].append("{:.3f}".format(tentatives_value))
                 stats_local["inliers"][difficulty].append("{:.3f}".format(inliers_value))
                 stats_local["inlier_ratio"][difficulty].append("{:.3f}".format(inliers_value / tentatives_value))
             else:
@@ -926,7 +910,7 @@ def evaluate_matching_stats(stats_map):
             print("{}".format("\t".join(stats_local[key][difficulty])))
 
 
-def evaluate_normals(stats_map):
+def evaluate_normals_stats(stats_map):
 
     normals_degrees = stats_map.get('normals_degrees', None)
     valid_normals = stats_map.get('valid_normals', None)

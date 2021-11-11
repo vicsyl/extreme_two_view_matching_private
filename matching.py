@@ -688,7 +688,7 @@ def main():
     difficulties = [1]
     img_correspondences(scene_info, "with_rectification_foo", sift_descriptor, normals_dir, difficulties, rectify=True, limit=limit, override_existing=False)
 
-    Timer.end()
+    Timer.log_stats()
 
 
 if __name__ == "__main__":

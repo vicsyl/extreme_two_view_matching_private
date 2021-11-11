@@ -440,7 +440,7 @@ def play_main():
 
     #play_iterate(scene_info, "original_dataset/scene1/images", limit=20, interesting_files=interesting_files)
 
-    Timer.end()
+    Timer.log_stats()
 
 
 interests = [
@@ -519,4 +519,4 @@ if __name__ == "__main__":
 
     show_rectifications(scene_info, "work/scene1/normals/svd", "original_dataset/scene1/images", limit=1, interesting_dirs=interesting_dirs)
 
-    Timer.end()
+    Timer.log_stats()

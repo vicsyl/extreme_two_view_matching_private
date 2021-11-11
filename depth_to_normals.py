@@ -514,7 +514,7 @@ def main():
 
     compute_normals_all(scene_info, file_names, input_directory, output_parent_dir=output_parent_dir, skip_existing=False, impl=impl)
 
-    Timer.end()
+    Timer.log_stats()
 
 
 if __name__ == "__main__":
