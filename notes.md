@@ -224,7 +224,7 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
   * constraints
   * look closely at the estimation performance
 * theory
-  * continous function on compact set -> attains minimum 
+  * continuous function on compact set -> attains minimum 
   * how many local minima are there (more of them may be interesting)  
 
 
@@ -241,3 +241,86 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * try these: num_nn = 2, fginn_spatial_th = 10/15, ratio_th = 0.85
 * rarely I can get multiple Es (multiple E? E is 3x6 ? (multiple Es))
 
+
+# notes from 11/12/2021
+
+## experiments
+
+* fginn with better params with all keypoints (sent in the email), still worse than the baseline
+  * check the inlier ratio vs. number of tentatives
+  * how many keypoints added / increase in the # of keypoints    
+  * keypoints analysis
+    *  patch / unrectified tentatives(/inliers) correspondence
+    *  how many inliers wrt GT 
+    *  how does a kpt improve the correspondence when rectified / shadows / is shadowed by unrectified correspondence
+  * how the fginn works 
+    * ( UPDATE: no diff in center of gravity of (xdescs)) - UPDATE: it just removes some matches from near location 
+    * why should it work in this use case (?)
+    
+* hardnet
+  * CUDA: fast (recomputed without rectification), BUT sometimes out of memory
+     * memory leak? - probably not  
+     * may even dynamically programmatically change CUDA core(?) - https://kornia.readthedocs.io/en/latest/utils.html#kornia.utils.batched_forward
+  * !why do the results make sense actually? (x brisk (opencv) x superpoint()) - 
+    https://github.com/magicleap/SuperPointPretrainedNetwork , 
+    https://github.com/ubc-vision/image-matching-benchmark-baselines
+    https://github.com/ubc-vision/image-matching-benchmark-baselines/blob/master/run_superpoint.sh
+    https://github.com/ubc-vision/image-matching-benchmark-baselines/blob/master/third_party/superpoint_forked/superpoint.py#L550
+    
+  * should I compare with our old pipeline (with hardnet), then? - ?the (slight) improvement in estimation brings big improvement with hardnet?
+
+* rotations
+  
+  * kept the parametrization via rotation vector
+    * I watch the objective function
+    * minor problems with the numerical minimizers though (global minima, rot_v + 2.pi.rot_v / |||rot_v||)
+    * I can check with approaches using GT for now 
+
+  a) by dR: rotate by 1/2 of estimated dR (or GT dR / or dR|z=0)
+    * performance is basically the same as without rectification - !! double check
+    * GT - very straight-forward, should it work? - does it mean the approach is just fundamentally worse than the normalization by orthonormal projection?
+      * having GT - if I rotate the image, do I have just scaling correspondences (per corresponding planes)?   
+  
+  b) by alpha * rectification rotation
+    * not very convincing either
+    * results interesting though (asymmetry wrt alpha1/alpha2)  
+  
+  * lots of possibilities (R|z=0 R|y, R|min=0), relative rotation <-> orthogonality to z, etc.
+    * repeating patterns problem (R|y)
+    * will try to analyze some metrics on the kpts data  
+  
+## what's next 
+
+* rotations 
+  * more experiments / analysis
+  * why doesn't the rotation via GT dR / 2 work?
+    * normals estimation (-> GT) -> rectification: the last step (the highest level) of the method
+  * many possibilities
+    * meta idea -> estimated GT and reiterate (i.e. I now know the plane correspondences)
+* asift (compared to hard net / or combined with(?))
+* ! another idea: jupyter notebook  
+* old stuff
+
+## questions
+
+* the numbers from the original paper: with their own CNN? They achieve almost 100% on first 2 difficulties(!) - ASK (to all authors)!! - on the entire dataset 
+* numbers with hardnet almost the same (somewhere better, somewhere worse) 
+
+## Action items
+
+* Hardnet
+  * CUDA + memory: https://kornia.readthedocs.io/en/latest/utils.html#kornia.utils.batched_forward
+  * run with the previous (worse version) of the pipeline
+  * results conf. brisk (opencv) x superpoint - try these 
+    * SuperPoint 
+      * https://github.com/magicleap/SuperPointPretrainedNetwork 
+      * https://github.com/ubc-vision/image-matching-benchmark-baselines
+      * https://github.com/ubc-vision/image-matching-benchmark-baselines/blob/master/run_superpoint.sh
+      * https://github.com/ubc-vision/image-matching-benchmark-baselines/blob/master/third_party/superpoint_forked/superpoint.py#L550
+* rotation by GT/2 
+  * ! double check
+* try to analyze the perf of the alpha rotation on different pairs
+* metrics.... what happens in general
+* !new idea - see the email
+* the numbers from the original paper they achieve almost 100% on first 2 difficulties - even without rectification (!) (scene1 / the entire dataset) 
+  * ASK (to all authors)!!  
