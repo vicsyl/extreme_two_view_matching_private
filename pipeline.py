@@ -11,6 +11,11 @@ import pickle
 import traceback
 import sys
 
+import sys
+sys.path.append("./superpoint_forked")
+
+from superpoint import SuperPointDescriptor
+
 import numpy as np
 import torch
 import argparse
@@ -152,14 +157,16 @@ class Pipeline:
         use_hardnet = self.config["use_hardnet"]
 
         if feature_descriptor == "SIFT":
-            low_level_descriptor = cv.SIFT_create(n_features)
+            feature_descriptor = cv.SIFT_create(n_features)
         elif feature_descriptor == "BRISK":
-            low_level_descriptor = cv.BRISK_create(n_features)
+            feature_descriptor = cv.BRISK_create(n_features)
+        elif feature_descriptor == "SUPERPOINT":
+            feature_descriptor = SuperPointDescriptor(path="./superpoint_forked/superpoint_v1.pth", device=self.device)
 
         if use_hardnet:
-            self.feature_descriptor = HardNetDescriptor(low_level_descriptor, device=self.device)
+            self.feature_descriptor = HardNetDescriptor(feature_descriptor, device=self.device)
         else:
-            self.feature_descriptor = low_level_descriptor
+            self.feature_descriptor = feature_descriptor
 
     @staticmethod
     def configure(config_file_name: str, args):

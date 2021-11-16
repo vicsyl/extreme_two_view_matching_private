@@ -116,7 +116,7 @@ class CartesianConfig:
         "num_nn": Property("int", 2, cache=Property.cache_img_data),
         "fginn_spatial_th": Property("int", 100, cache=Property.cache_img_data),
         "ratio_th": Property("float", 0.5, cache=Property.cache_img_data),
-        "feature_descriptor": Property("enum", default="SIFT", cache=Property.cache_img_data, allowed_values=["SIFT", "BRISK"]),
+        "feature_descriptor": Property("enum", default="SIFT", cache=Property.cache_img_data, allowed_values=["SIFT", "BRISK", "SUPERPOINT"]),
         "n_features": Property("int", None, option=True, cache=Property.cache_img_data),
         "use_hardnet": Property("bool", False, cache=Property.cache_img_data),
         "pipeline_final_step": Property("enum", default="final", cache=Property.all_combinations, list_allowed=False, allowed_values=["final", "before_matching", "before_rectification"]),

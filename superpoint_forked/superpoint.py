@@ -308,10 +308,13 @@ class SuperPointFrontend(object):
 
 class SuperPointDescriptor:
 
-    def __init__(self, device: torch.device=torch.device('cpu')):
+    def __init__(self, path=None, device: torch.device = torch.device('cpu')):
         self.device = device
+        if path is None:
+            path = 'superpoint_v1.pth'
+
         self.sp_frontend = SuperPointFrontend(
-            weights_path='superpoint_v1.pth',
+            weights_path=path,
             # 1, 2, 3
             nms_dist=4,
             # 0.015
@@ -327,7 +330,8 @@ class SuperPointDescriptor:
             self.sp_frontend.net.eval()
             pts, desc, heatmap = self.sp_frontend.run(img)
             pts = pts.T[:, :2]
-            return pts, desc
+            pts = [cv2.KeyPoint(pt[0], pt[1], 1) for pt in pts]
+            return pts, desc.T
 
 
 def test():
@@ -339,6 +343,7 @@ def test():
     plt.show(block=False)
 
     pts, desc = SuperPointDescriptor().detectAndCompute(img, mask=None)
+    pts = np.array([pt for pt in pts])
     print('Processing image: found {} points'.format(pts.shape[0]))
 
     # Compute superpoint "manually"
