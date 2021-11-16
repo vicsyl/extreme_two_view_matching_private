@@ -44,31 +44,22 @@
 # Code forked by E. Trulls from:
 # https://github.com/MagicLeapResearch/SuperPointPretrainedNetwork
 # with minimal changes. Includes options to resize images to a fixed size.
+# Code then forked by Vaclav Vavra from:
+# https://github.com/ubc-vision/image-matching-benchmark-baselines/blob/master/third_party/superpoint_forked/superpoint.py
+# with minimal changes.
 
-import argparse
-import glob
+
 import numpy as np
-import os
-from time import time
-import json
 
 import cv2
 import torch
 
 import h5py
-from IPython import embed
-from imageio import imread, imwrite
+import matplotlib.pyplot as plt
 
 # Stub to warn about opencv version.
 if int(cv2.__version__[0]) < 3:  # pragma: no cover
     print('Warning: OpenCV 3 is not installed')
-
-# Jet colormap for visualization.
-myjet = np.array(
-    [[0., 0., 0.5], [0., 0., 0.99910873], [0., 0.37843137, 1.],
-     [0., 0.83333333, 1.], [0.30044276, 1., 0.66729918],
-     [0.66729918, 1., 0.30044276], [1., 0.90123457, 0.], [1., 0.48002905, 0.],
-     [0.99910873, 0.07334786, 0.], [0.5, 0., 0.]])
 
 
 def save_h5(dict_to_save, filename):
@@ -315,279 +306,82 @@ class SuperPointFrontend(object):
         return pts, desc, heatmap
 
 
-class VideoStreamer(object):
-    """ Class to help process image streams. Three types of possible inputs:"
-    1.) USB Webcam.
-    2.) A directory of images (files in directory matching 'img_glob').
-    3.) A video file, such as an .mp4 or .avi file.
-    """
+class SuperPointDescriptor:
 
-    def __init__(self, basedir, camid, height, width, skip, img_glob,
-                 resize_to):
-        self.cap = []
-        self.camera = False
-        self.video_file = False
-        self.listing = []
-        self.sizer = [height, width]
-        self.resize_to = resize_to
-        self.i = 0
-        self.skip = skip
-        self.maxlen = 1000000
+    def __init__(self, device: torch.device=torch.device('cpu')):
+        self.device = device
+        self.sp_frontend = SuperPointFrontend(
+            weights_path='superpoint_v1.pth',
+            # 1, 2, 3
+            nms_dist=4,
+            # 0.015
+            conf_thresh=0.0001,
+            nn_thresh=0.7,
+            cuda=device == torch.device('cuda'))
 
-        # If the "basedir" string is the word camera, then use a webcam.
-        if basedir == "camera/" or basedir == "camera":
-            print('==> Processing Webcam Input.')
-            self.cap = cv2.VideoCapture(camid)
-            self.listing = range(0, self.maxlen)
-            self.camera = True
-        else:
-            # Try to open as a video.
-            self.cap = cv2.VideoCapture(basedir)
-            lastbit = basedir[-4:len(basedir)]
-            if (type(self.cap) == list or
-                    not self.cap.isOpened()) and (lastbit == '.mp4'):
-                raise IOError('Cannot open movie file')
-            elif type(self.cap) != list and self.cap.isOpened() and (
-                    lastbit != '.txt'):
-                print('==> Processing Video Input.')
-                num_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                self.listing = range(0, num_frames)
-                self.listing = self.listing[::self.skip]
-                self.camera = True
-                self.video_file = True
-                self.maxlen = len(self.listing)
-            else:
-                print('==> Processing Image Directory Input.')
-                search = os.path.join(basedir, img_glob)
-                self.listing = glob.glob(search)
-                self.listing.sort()
-                self.listing = self.listing[::self.skip]
-                self.maxlen = len(self.listing)
-                if self.maxlen == 0:
-                    raise IOError(
-                        'No images were found (maybe bad \'--img_glob\' parameter?)'
-                    )
+    def detectAndCompute(self, img, mask):
+        # NOTE this is just how it was called before
+        assert mask is None
+        img = np.float32(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)) / 255.0
+        with torch.no_grad():
+            self.sp_frontend.net.eval()
+            pts, desc, heatmap = self.sp_frontend.run(img)
+            pts = pts.T[:, :2]
+            return pts, desc
 
-    def read_image(self, impath, img_size):
-        """ Read image as grayscale and resize to img_size.
-    Inputs
-      impath: Path to input image.
-      img_size: (W, H) tuple specifying resize size.
-    Returns
-      grayim: float32 numpy array sized H x W with values in range [0, 1].
-    """
-        grayim = cv2.imread(impath, 0)
-        if grayim is None:
-            raise Exception('Error reading image %s' % impath)
 
-        # Image is resized with opencv
-        interp = cv2.INTER_CUBIC
-        if img_size == 0:
-            factor = [1, 1]
-        elif isinstance(img_size, (list, tuple)):
-            factor = (grayim.shape[1] / img_size[1],
-                      grayim.shape[0] / img_size[0])
-            grayim = cv2.resize(
-                grayim, (img_size[1], img_size[0]), interpolation=interp)
-        else:
-            [h, w] = grayim.shape
-            if h > w:
-                new_w, new_h = int(w * img_size / h), int(img_size)
-            else:
-                new_w, new_h = int(img_size), int(h * img_size / w)
-            grayim = cv2.resize(grayim, (new_w, new_h), interpolation=interp)
-            factor = (w / new_w, h / new_h)
-        grayim = (grayim.astype('float32') / 255.)
-        return grayim, factor
+def test():
 
-    def next_frame(self):
-        """ Return the next frame, and increment internal counter.
-    Returns
-       image: Next H x W image.
-       status: True or False depending whether image was loaded.
-    """
-        if self.i == self.maxlen:
-            return (None, False, False)
-        if self.camera:
-            raise RuntimeError("Deprecated")
-            ret, input_image = self.cap.read()
-            if ret is False:
-                print(
-                    'VideoStreamer: Cannot get image from camera (maybe bad --camid?)'
-                )
-                return (None, False, False)
-            if self.video_file:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.listing[self.i])
-            input_image = cv2.resize(
-                input_image, (self.sizer[1], self.sizer[0]),
-                interpolation=cv2.INTER_AREA)
-            input_image = cv2.resize(
-                input_image, (self.sizer[1], self.sizer[0]),
-                interpolation=cv2.inter_area)
-            input_image = cv2.cvtColor(input_image, cv2.COLOR_RGB2GRAY)
-            input_image = input_image.astype('float') / 255.0
-        else:
-            image_file = self.listing[self.i]
-            # input_image = self.read_image(image_file, self.sizer)
-            input_image, factor = self.read_image(image_file, self.resize_to)
-        # Increment internal counter.
-        self.i = self.i + 1
-        input_image = input_image.astype('float32')
-        return (input_image, True, factor)
+    img = cv2.imread("../original_dataset/scene1/images/frame_0000000010_3.jpg", None)
+    plt.figure()
+    plt.title("random image")
+    plt.imshow(img)
+    plt.show(block=False)
+
+    pts, desc = SuperPointDescriptor().detectAndCompute(img, mask=None)
+    print('Processing image: found {} points'.format(pts.shape[0]))
+
+    # Compute superpoint "manually"
+    # Points are ordered: [x, y]
+
+    fe = SuperPointFrontend(
+        weights_path='superpoint_v1.pth',
+        # 1, 2, 3
+        nms_dist=4,
+        # 0.015
+        conf_thresh=0.0001,
+        nn_thresh=0.7,
+        cuda=False)
+
+    img_gray = np.float32(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)) / 255.0
+    with torch.no_grad():
+        fe.net.eval()
+        pts, desc, heatmap = fe.run(img_gray)
+        print('Processing image: found {} points'.format(pts.shape[-1]))
+
+    # Scores should be sorted
+    assert(all(pts[2, :-1] - pts[2, 1:] >= 0))
+
+    pts = pts.T[:, :2]
+
+    # factor = [1.0, 1.0]
+    #
+    # # Undo the scaling
+    # pts = np.array([[(p[0] + .5) * factor[0] - .5,
+    #                  (p[1] + .5) * factor[1] - .5, p[2]]
+    #                 for p in pts.T])
+
+    # draw image
+    for _p in pts:
+        cv2.circle(img, (int(_p[0]), int(_p[1])), 2, [255, 255, 0])
+
+    plt.figure()
+    plt.title("random image - kpts")
+    plt.imshow(img)
+    plt.show(block=False)
+
+    print('Done!')
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--sequences_folder",
-        default=os.path.join('..', 'imw-2020'),
-        help="path to config file",
-        type=str)
-    parser.add_argument(
-        '--img_glob',
-        type=str,
-        default='*.jpg',
-        help='Glob match if directory of images is specified '
-        '(default: \'*.jpg\').')
-    parser.add_argument(
-        '--nms_dist',
-        type=int,
-        default=4,
-        help='Non Maximum Suppression (NMS) distance (default: 4).')
-    parser.add_argument(
-        '--conf_thresh',
-        type=float,
-        default=0.015,
-        help='Detector confidence threshold (default: 0.015).')
-    parser.add_argument(
-        '--resize_image_to',
-        type=float,
-        default=0,
-        help='Resize the largest image dimension to this value (default: 0, '
-        'does nothing).')
-    parser.add_argument(
-        '--cuda',
-        action='store_true',
-        help='Use cuda GPU to speed up network processing speed (default: False)'
-    )
-    parser.add_argument(
-        "--save_path",
-        default=os.path.join('..', 'benchmark-features'),
-        type=str,
-        help='Path to store the features')
-    parser.add_argument(
-        "--method_name", default='superpoint_default', type=str)
-    parser.add_argument(
-        '--num_kp',
-        type=int,
-        default=0,
-        help='Number of keypoints to save (0 to keep all)')
-    parser.add_argument(
-        "--subset",
-        default='both',
-        type=str,
-        help='Options: "val", "test", "both", "spc-fix"')
-
-    opt, unparsed = parser.parse_known_args()
-    print(opt)
-
-    if opt.subset not in ['val', 'test', 'both', 'spc-fix']:
-        raise ValueError('Unknown value for --subset')
-    seqs = []
-    if opt.subset == 'spc-fix':
-        seqs += ['st_pauls_cathedral']
-    else:
-        if opt.subset in ['val', 'both']:
-            with open(os.path.join('data', 'val.json')) as f:
-                seqs += json.load(f)
-        if opt.subset in ['test', 'both']:
-            with open(os.path.join('data', 'test.json')) as f:
-                seqs += json.load(f)
-    print('Processing the following scenes: {}'.format(seqs))
-
-    print('Saving descriptors to folder: {}'.format(opt.method_name))
-
-    print('==> Loading pre-trained network.')
-    # This class runs the SuperPoint network and processes its outputs.
-    fe = SuperPointFrontend(
-        weights_path=os.path.join('third_party', 'superpoint_ml_repo',
-                                  'superpoint_v1.pth'),
-        nms_dist=opt.nms_dist,
-        conf_thresh=opt.conf_thresh,
-        nn_thresh=0.7,
-        cuda=opt.cuda)
-    print('==> Successfully loaded pre-trained network.')
-
-    # Font parameters for visualizaton.
-    font = cv2.FONT_HERSHEY_DUPLEX
-    font_clr = (255, 255, 255)
-    font_pt = (4, 12)
-    font_sc = 0.4
-
-    for seq in seqs:
-        print('Processing "{}"'.format(seq))
-        count = 0
-        vs = VideoStreamer(
-            os.path.join(opt.sequences_folder, seq), None, None, None, 1,
-            opt.img_glob, opt.resize_image_to)
-        start = time()
-
-        start1 = time()
-        seq_keypoints = {}
-        seq_descriptors = {}
-        seq_scores = {}
-        while True:
-            # Get a new image.
-            img, status, factor = vs.next_frame()
-            if status is False:
-                print('Failed or over!')
-                break
-
-            key = vs.listing[count].split("/")[-1].split('.')[0]
-
-            # Compute superpoint
-            # Points are ordered: [x, y]
-            pts, desc, heatmap = fe.run(img)
-            print('Processing image "{}": found {} points'.format(
-                key, pts.shape[-1]))
-
-            # Undo the scaling
-            pts = np.array([[(p[0] + .5) * factor[0] - .5,
-                             (p[1] + .5) * factor[1] - .5, p[2]]
-                            for p in pts.T])
-
-            # Scores should be sorted
-            assert(all(pts[:-1, 2] - pts[1:, 2] >= 0))
-
-            # Crop
-            if opt.num_kp > 0:
-                pts = pts[:opt.num_kp, :]
-                desc = desc.T[:opt.num_kp, :]
-
-            seq_keypoints[key] = pts[:, :2]
-            seq_descriptors[key] = desc
-            seq_scores[key] = pts[:, 2]
-
-            # draw image
-            # im = imread(vs.listing[count])
-            # for _p in pts:
-            #     cv2.circle(im, (int(_p[0]), int(_p[1])), 2, [255, 255, 0])
-            # imwrite('{}/{}/{}-debug.jpg'.format(opt.write_dir, seq, key),
-            #         im)
-
-            count += 1
-
-        end1 = time()
-        print('Processed "{}" ({} images) in {:0.02f} sec.'.format(
-            seq, count, end1 - start1))
-        print('Average number of keypoints: {}'.format(
-            np.mean([v.shape[0] for v in seq_keypoints.values()])))
-
-        cur_path = os.path.join(opt.save_path, opt.method_name, seq)
-        if not os.path.exists(cur_path):
-            os.makedirs(cur_path)
-        save_h5(seq_descriptors, os.path.join(cur_path, 'descriptors.h5'))
-        save_h5(seq_keypoints, os.path.join(cur_path, 'keypoints.h5'))
-        save_h5(seq_scores, os.path.join(cur_path, 'scores.h5'))
-
-    print('Done!')
+    test()
