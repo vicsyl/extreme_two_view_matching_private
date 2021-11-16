@@ -1,5 +1,6 @@
 import kornia as K
 import kornia.feature as KF
+from kornia.utils import batched_forward
 from kornia_moons.feature import *
 import numpy as np
 import torch
@@ -37,8 +38,13 @@ class HardNetDescriptor:
             timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.).to(self.device)
             lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
             patches = KF.extract_patches_from_pyramid(timg, lafs, 32)
+
             B, N, CH, H, W = patches.size()
+            patches = patches.view(B * N, CH, H, W)
+
             # Descriptor accepts standard tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
             # So we need to reshape a bit :)
-            descs = self.hardnet(patches.view(B * N, CH, H, W)).view(B * N, -1)
+            # descs = self.hardnet(patches).view(B * N, -1)
+            descs = batched_forward(self.hardnet, patches, self.device, 128).view(B * N, -1)
+
         return descs.detach().cpu().numpy()

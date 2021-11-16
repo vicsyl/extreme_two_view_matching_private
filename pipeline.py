@@ -151,14 +151,15 @@ class Pipeline:
         n_features = self.config["n_features"]
         use_hardnet = self.config["use_hardnet"]
 
-        if feature_descriptor != "SIFT":
-            raise ValueError("'{}' unknown as a descriptor".format(feature_descriptor))
+        if feature_descriptor == "SIFT":
+            low_level_descriptor = cv.SIFT_create(n_features)
+        elif feature_descriptor == "BRISK":
+            low_level_descriptor = cv.BRISK_create(n_features)
 
-        sift_descriptor = cv.SIFT_create(n_features)
         if use_hardnet:
-            self.feature_descriptor = HardNetDescriptor(sift_descriptor, device=self.device)
+            self.feature_descriptor = HardNetDescriptor(low_level_descriptor, device=self.device)
         else:
-            self.feature_descriptor = sift_descriptor
+            self.feature_descriptor = low_level_descriptor
 
     @staticmethod
     def configure(config_file_name: str, args):
