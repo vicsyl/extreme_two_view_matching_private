@@ -2,11 +2,13 @@ import argparse
 import math
 import pickle
 import traceback, sys
+import kornia.geometry as KG
 from typing import List
 
 import cv2 as cv
 import kornia.geometry.epipolar
 import torch
+from utils import get_rot_vec_deg
 
 from scene_info import *
 
@@ -177,7 +179,7 @@ def eval_essential_matrix(p1n, p2n, E, dR, dt):
         err_q = np.pi
         err_t = np.pi / 2
 
-    return err_q, err_t
+    return err_q, err_t, R
 
 
 def get_GT_R_t(img_pair: ImagePairEntry, scene_info: SceneInfo):
@@ -225,14 +227,16 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     # p1n = pts1
     # p2n = pts2
 
-    errors = eval_essential_matrix(p1n, p2n, E, dR, dt)
-    errors_max = max(errors)
+    err_q, err_t, r_gt = eval_essential_matrix(p1n, p2n, E, dR, dt)
 
-    #print("dR: {}".format(dR))
-    print("errors (R, T): {}".format(errors))
-    #print("max error: {}".format(errors_max))
+    rot_vec_deg_gt = get_rot_vec_deg(r_gt)
+    rot_vec_deg_est = get_rot_vec_deg(dR)
 
-    return errors
+    print("rotation vector(GT): {}".format(rot_vec_deg_gt))
+    print("rotation vector(est): {}".format(rot_vec_deg_est))
+    print("errors (R, T): {}".format((err_q, err_t)))
+
+    return err_q, err_t
 
 
 # a HACK that enables pickling of cv2.KeyPoint - see
@@ -711,7 +715,7 @@ def evaluate_percentage_correct_from_file(file_name, difficulty, n_worst_example
     with open(file_name, "rb") as f:
         stats_map = pickle.load(f)
 
-    print_significant_instances(stats_map, difficulty, key="default", n_worst_examples=n_worst_examples)
+    print_significant_instances(stats_map, difficulty, key="default", n_examples=n_worst_examples)
     return evaluate_percentage_correct(stats_map, difficulty, th_degrees=th_degrees)
 
 
@@ -1006,7 +1010,7 @@ def evaluate_normals_stats(stats_map):
         print("{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
 
 
-if __name__ == "__main__":
+def old_main():
 
     print("Started")
 
@@ -1057,3 +1061,34 @@ if __name__ == "__main__":
         print("Diff     Perc.")
         for diff, perc in diff_percs:
             print("{}    {}".format(diff, perc))
+
+
+def main():
+    file_name = "work/stats_diff_all.pkl"
+    file_name = "work/stats_superpoint_all.pkl"
+    file_name = "./work/stats_matching_baseline.pkl"
+
+    with open(file_name, "rb") as f:
+        stats_map = pickle.load(f)
+
+    keys_list = stats_map.keys()
+
+    all_diffs = set()
+    for key in keys_list:
+        all_diffs = all_diffs.union(set(stats_map[key].keys()))
+    all_diffs = list(all_diffs)
+    all_diffs.sort()
+
+    for key in keys_list:
+        for diff in all_diffs:
+            if stats_map[key].__contains__(diff):
+                print("key: {}, diff: {}".format(key, diff))
+                sorted_by_err_R = list(sorted(stats_map[key][diff].items(), key=lambda key_value: -key_value[1].error_R))
+                err_R_only_list = list(map(lambda kv: (kv[0], kv[1].error_R * 180 / math.pi), sorted_by_err_R))
+                count = len(err_R_only_list)
+                for i, err_R in enumerate(err_R_only_list):
+                    print("{}: {:.03f}: {:.03f} = {}/{}".format(err_R[0], err_R[1], float(count-i) / count, count-i, count))
+
+
+if __name__ == "__main__":
+    main()

@@ -6,6 +6,12 @@ import time
 import cv2 as cv
 from resize import upsample_bilinear
 import torch.nn.functional as F
+import kornia.geometry as KG
+
+
+def get_rot_vec_deg(np_r):
+    rot_vec = KG.rotation_matrix_to_angle_axis(torch.from_numpy(np_r)[None])[0].numpy()
+    return np.rad2deg(rot_vec)
 
 
 def pad_normals(normals, window_size, mode="replicate"):
