@@ -23,6 +23,7 @@ from img_utils import show_or_close
 from evaluation import *
 from sky_filter import get_nonsky_mask
 from clustering import Clustering
+from hard_net_descriptor import HardNetDescriptor
 
 import matplotlib.pyplot as plt
 
@@ -88,8 +89,10 @@ class Pipeline:
     @staticmethod
     def configure(config_file_name: str, args):
 
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         feature_descriptors_str_map = {
             "SIFT": cv.SIFT_create(),
+            "HARDNET": HardNetDescriptor(sift_descriptor=cv.SIFT_create(), device=device)
         }
 
         pipeline = Pipeline()
