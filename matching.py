@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from connected_components import get_connected_components
-from utils import Timer, merge_keys_for_same_value
+from utils import Timer, merge_keys_for_same_value, get_normals_stats, split_points
 from config import Config
 from evaluation import ImageData
 import itertools
@@ -64,12 +64,6 @@ def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
     return img_out
 
 
-def split_points(tentative_matches, kps1, kps2):
-    src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
-    dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1, 2)
-    return src_pts, dst_pts
-
-
 def rich_split_points(tentative_matches, kps1, dsc1, kps2, dsc2):
 
     src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
@@ -88,6 +82,7 @@ def get_cross_checked_tentatives(matcher, descs1, descs2, ratio_threshold, k):
     knn_matches = matcher.knnMatch(descs1, descs2, k=k)
     # For cross-check - TODO does is work for flann?
     matches2 = matcher.match(descs2, descs1)
+
     tentative_matches = []
     # TODO what about this?
     # if len(matches) < 10:
@@ -546,8 +541,8 @@ def show_save_matching(img1,
         show_or_close(show)
 
 
-def match_epipolar(img1, kps1, descs1, real_K_1,
-                   img2, kps2, descs2, real_K_2,
+def match_epipolar(img_data1,
+                   img_data2,
                    find_fundamental, img_pair, out_dir, show, save, ratio_thresh,
                    ransac_th, ransac_conf, ransac_iters, cfg):
 
@@ -555,9 +550,30 @@ def match_epipolar(img1, kps1, descs1, real_K_1,
 
     save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
-    tentative_matches = find_correspondences(img1, kps1, descs1, img2, kps2, descs2, cfg, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
+    tentative_matches = find_correspondences(img_data1.img,
+                                             img_data1.key_points,
+                                             img_data1.descriptions,
+                                             img_data2.img,
+                                             img_data2.key_points,
+                                             img_data2.descriptions,
+                                             cfg, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
 
-    src_pts, dst_pts = split_points(tentative_matches, kps1, kps2)
+    src_pts, dst_pts = split_points(tentative_matches, img_data1.key_points, img_data2.key_points)
+    stats, unique, counts = get_normals_stats([img_data1, img_data2], src_pts, dst_pts)
+    print("Matching stats after find_correspondences:")
+    print("unique 1/2, counts:\n{}".format(np.vstack((unique.T, counts)).T))
+    check1 = np.logical_or(stats[:, 0] != 0, stats[:, 1] != 1)
+    check2 = np.logical_or(stats[:, 0] != 1, stats[:, 1] != 0)
+    check = np.logical_and(check1, check2)
+    flter = False
+    if flter:
+        src_pts = src_pts[check, :]
+        dst_pts = dst_pts[check, :]
+        tentative_matches = [t for i, t in enumerate(tentative_matches) if check[i]]
+
+    _, unique, counts = get_normals_stats([img_data1, img_data2], src_pts, dst_pts)
+    print("Matching stats after filtering:")
+    print("unique 1/2, counts:\n{}".format(np.vstack((unique.T, counts)).T))
 
     # TODO threshold and prob params left to default values
     if find_fundamental:
@@ -566,20 +582,20 @@ def match_epipolar(img1, kps1, descs1, real_K_1,
             print("WARNING: F:{} or inlier mask:{} are None".format(F, inlier_mask))
             raise ValueError("None")
         print("F:\n{}".format(F))
-        E = real_K_2.T @ F @ real_K_1
+        E = img_data2.real_K.T @ F @ img_data1.real_K
     else:
         # NOTE previously default RANSAC params used here; no iters param
-        E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, real_K_1, None, real_K_2, None, cv.RANSAC, prob=ransac_conf, threshold=ransac_th)
+        E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, img_data1.real_K, None, img_data2.real_K, None, cv.RANSAC, prob=ransac_conf, threshold=ransac_th)
         if E is None or inlier_mask is None:
             print("WARNING: E:{} or inlier mask:{} are None".format(E, inlier_mask))
             raise ValueError("None")
 
     Timer.end_check_point("matching")
 
-    show_save_matching(img1,
-                       kps1,
-                       img2,
-                       kps2,
+    show_save_matching(img_data1.img,
+                       img_data1.key_points,
+                       img_data2.img,
+                       img_data2.key_points,
                        tentative_matches,
                        inlier_mask,
                        out_dir,

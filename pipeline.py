@@ -937,14 +937,7 @@ class Pipeline:
         else:
             # NOTE using img_datax.real_K for a call to findE
             E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
-                image_data[0].img,
-                image_data[0].key_points,
-                image_data[0].descriptions,
-                image_data[0].real_K,
-                image_data[1].img,
-                image_data[1].key_points,
-                image_data[1].descriptions,
-                image_data[1].real_K,
+                image_data[0], image_data[1],
                 find_fundamental=self.estimate_k,
                 img_pair=img_pair,
                 out_dir=matching_out_dir,
@@ -963,14 +956,12 @@ class Pipeline:
 
         stats_struct = evaluate_matching(self.scene_info,
                                          E,
-                                         image_data[0].key_points,
-                                         image_data[1].key_points,
+                                         image_data,
                                          tentative_matches,
                                          inlier_mask,
                                          img_pair,
                                          stats_map_diff,
-                                         image_data[0].normals,
-                                         image_data[1].normals,
+                                         ransac_th=self.ransac_th
                                          )
 
         self.update_matching_stats(self.cache_map[Property.all_combinations], difficulty,

@@ -9,6 +9,33 @@ import torch.nn.functional as F
 import kornia.geometry as KG
 
 
+def split_points(tentative_matches, kps1, kps2):
+    src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
+    dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1, 2)
+    return src_pts, dst_pts
+
+
+def get_normals_stats(img_data_list, src_tentatives_2d, dst_tentatives_2d, mask=None):
+
+    def get_kpts_normals(components_indices, valid_components_dict, kpts_2d):
+        kpts_ints = np.round(kpts_2d).astype(np.int)
+        keypoints_components = components_indices[kpts_ints[:, 1], kpts_ints[:, 0]]
+        keypoints_normals = np.array([valid_components_dict.get(component, -1) for component in keypoints_components])
+        return keypoints_normals
+
+    src_kpts_normals = get_kpts_normals(img_data_list[0].components_indices, img_data_list[0].valid_components_dict, src_tentatives_2d)
+    dst_kpts_normals = get_kpts_normals(img_data_list[1].components_indices, img_data_list[1].valid_components_dict, dst_tentatives_2d)
+
+    if mask is not None:
+        src_kpts_normals = src_kpts_normals[mask]
+        dst_kpts_normals = dst_kpts_normals[mask]
+
+    stats = np.vstack((src_kpts_normals, dst_kpts_normals))
+    unique, counts = np.unique(stats, axis=1, return_counts=True)
+    unique = unique.T
+    return stats.T, unique, counts
+
+
 def get_rot_vec_deg(np_r):
     rot_vec = KG.rotation_matrix_to_angle_axis(torch.from_numpy(np_r)[None])[0].numpy()
     return np.rad2deg(rot_vec)

@@ -6,9 +6,9 @@ import kornia.geometry as KG
 from typing import List
 
 import cv2 as cv
-import kornia.geometry.epipolar
+import numpy as np
 import torch
-from utils import get_rot_vec_deg
+from utils import get_rot_vec_deg, get_normals_stats, split_points
 
 from scene_info import *
 
@@ -158,12 +158,6 @@ def evaulate_R_t_safe(dR, dt, R, t):
     return err_q, err_t
 
 
-def split_points(tentative_matches, kps1, kps2):
-    src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
-    dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1, 2)
-    return src_pts, dst_pts
-
-
 def eval_essential_matrix(p1n, p2n, E, dR, dt):
     if len(p1n) != len(p2n):
         raise RuntimeError('Size mismatch in the keypoint lists')
@@ -227,10 +221,10 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     # p1n = pts1
     # p2n = pts2
 
-    err_q, err_t, r_gt = eval_essential_matrix(p1n, p2n, E, dR, dt)
+    err_q, err_t, dr_est = eval_essential_matrix(p1n, p2n, E, dR, dt)
 
-    rot_vec_deg_gt = get_rot_vec_deg(r_gt)
-    rot_vec_deg_est = get_rot_vec_deg(dR)
+    rot_vec_deg_est = get_rot_vec_deg(dr_est)
+    rot_vec_deg_gt = get_rot_vec_deg(dR)
 
     print("rotation vector(GT): {}".format(rot_vec_deg_gt))
     print("rotation vector(est): {}".format(rot_vec_deg_est))
@@ -318,40 +312,52 @@ class Stats:
 
 def evaluate_matching(scene_info,
                       E,
-                      kps1,
-                      kps2,
+                      img_data,
                       tentative_matches,
                       inlier_mask,
                       img_pair,
                       stats_map,
-                      normals1,
-                      normals2):
+                      ransac_th,
+                      ):
 
     print("Image pair: {} <-> {}:".format(img_pair.img1, img_pair.img2))
     print("Number of inliers: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
     print("Number of outliers: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
 
-    src_tentatives_2d, dst_tentatives_2d = split_points(tentative_matches, kps1, kps2)
+    src_tentatives_2d, dst_tentatives_2d = split_points(tentative_matches, img_data[0].key_points, img_data[1].key_points)
     src_pts_inliers = src_tentatives_2d[inlier_mask[:, 0] == [1]]
     dst_pts_inliers = dst_tentatives_2d[inlier_mask[:, 0] == [1]]
 
     error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
-    inliers_against_gt = evaluate_tentatives_agains_ground_truth(scene_info, img_pair, src_tentatives_2d, dst_tentatives_2d, [0.5, 1, 2], E)
+    _, unique, counts = get_normals_stats(img_data, src_tentatives_2d, dst_tentatives_2d)
+    print("Matching stats in evaluation:")
+    print("unique 1/2, counts:\n{}".format(np.vstack((unique.T, counts)).T))
 
-    stats = Stats(inliers_against_gt=inliers_against_gt,
+    count_sampson_gt, \
+    count_symmetrical_gt, \
+    count_sampson_estimated, \
+    count_symmetrical_estimated = evaluate_tentatives_agains_ground_truth(scene_info,
+                                                                          img_pair,
+                                                                          img_data,
+                                                                          src_tentatives_2d,
+                                                                          dst_tentatives_2d,
+                                                                          [ransac_th, 0.1, 0.5, 1, 3],
+                                                                          E, inliers)
+
+    stats = Stats(inliers_against_gt=count_symmetrical_gt,
                   tentatives_1=src_tentatives_2d,
                   tentatives_2=dst_tentatives_2d,
                   error_R=error_R,
                   error_T=error_T,
                   tentative_matches=len(tentative_matches),
                   inliers=inliers,
-                  all_features_1=len(kps1),
-                  all_features_2=len(kps2),
+                  all_features_1=len(img_data[0].key_points),
+                  all_features_2=len(img_data[1].key_points),
                   E=E,
-                  normals1=normals1,
-                  normals2=normals2,
+                  normals1=img_data[0].normals,
+                  normals2=img_data[1].normals,
                   )
 
     key = "{}_{}".format(img_pair.img1, img_pair.img2)
@@ -458,14 +464,18 @@ def vector_product_matrix(vec: np.ndarray):
     return np.array([
         [    0.0, -vec[2],  vec[1]],
         [ vec[2],     0.0, -vec[0]],
-        [-vec[1],  vec[0],       0],
+        [-vec[1],  vec[0],     0.0],
     ])
 
 
-def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: ImagePairEntry, src_tentatives_2d, dst_tentatives_2d, thresholds, computed_E):
-
-    # input: img pair -> imgs -> T1/2, R1/2 -> ground truth F
-    # input: tentatives (src, dst)
+def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo,
+                                            img_pair: ImagePairEntry,
+                                            img_data,
+                                            src_tentatives_2d,
+                                            dst_tentatives_2d,
+                                            thresholds,
+                                            est_E,
+                                            inliers_from_ransac):
 
     def get_T_R_K_inv(img_key):
         img_entry: ImageEntry = scene_info.img_info_map[img_key]
@@ -487,47 +497,47 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo, img_pair: Ima
     dst_tentative_h[:, 2] = 1.0
 
     F_ground_truth = K2_inv.T @ R2 @ vector_product_matrix(T2 - T1) @ R1.T @ K1_inv
-    F_x1 = F_ground_truth @ src_tentative_h.T
+    F_ground_truth = torch.from_numpy(F_ground_truth).unsqueeze(0)
 
-    F_x1_h = F_x1 / F_x1[2]
-
-    x2_F_x1 = dst_tentative_h[:, 0] * F_x1[0] + dst_tentative_h[:, 1] * F_x1[1] + dst_tentative_h[:, 2] * F_x1[2]
-    x2_F_x1_h = dst_tentative_h[:, 0] * F_x1_h[0] + dst_tentative_h[:, 1] * F_x1_h[1] + dst_tentative_h[:, 2] * F_x1_h[2]
-
-    # this works but Idk if it's better than the two lines above
-    # x2_F_x1_check0 = dst_tentative_h.T * F_x1
-    # x2_F_x1_check1 = np.sum(x2_F_x1_check0, axis=0)
-
-    # try kornia or cv check (symmetric epipolar distance)
-    # double check if dst_tentative_h/src_tentative_h
-
-    x2_F = dst_tentative_h @ F_ground_truth
-    x2_F_h = (x2_F.T / x2_F[:, 2].T).T
-
-    samson_factor = 1 / np.sqrt(np.linalg.norm(F_x1 * F_x1, axis=0) ** 2 + np.linalg.norm(x2_F * x2_F, axis=1) ** 2)
-    x2_F_x1 = x2_F_x1 * samson_factor
-
-    F_torch = torch.from_numpy(F_ground_truth).unsqueeze(0)
     src_pts_torch = torch.from_numpy(src_tentatives_2d).type(torch.DoubleTensor)
     dst_pts_torch = torch.from_numpy(dst_tentatives_2d).type(torch.DoubleTensor)
-    kornia_dst = kornia.geometry.epipolar.sampson_epipolar_distance(src_pts_torch, dst_pts_torch, F_torch)
 
-    computed_F = kornia.geometry.fundamental_from_essential(torch.from_numpy(computed_E), torch.from_numpy(K1), torch.from_numpy(K2))
+    kornia_sampson_gt = KG.epipolar.sampson_epipolar_distance(src_pts_torch, dst_pts_torch, F_ground_truth).numpy()
+    kornia_symmetrical_gt = KG.epipolar.symmetrical_epipolar_distance(src_pts_torch, dst_pts_torch, F_ground_truth).numpy()
+
+    computed_F = KG.fundamental_from_essential(torch.from_numpy(est_E), torch.from_numpy(K1), torch.from_numpy(K2))
     computed_F = computed_F.unsqueeze(0)
-    kornia_dst_computed = kornia.geometry.epipolar.sampson_epipolar_distance(src_pts_torch, dst_pts_torch, computed_F)
 
-    checks = np.zeros(len(thresholds), dtype=int)
-    checks2 = np.zeros(len(thresholds), dtype=int)
-    checks3 = np.zeros(len(thresholds), dtype=int)
+    kornia_sampson_estimated = KG.epipolar.sampson_epipolar_distance(src_pts_torch, dst_pts_torch, computed_F).numpy()
+    kornia_symmetrical_estimated = KG.epipolar.symmetrical_epipolar_distance(src_pts_torch, dst_pts_torch, computed_F).numpy()
+
+    count_sampson_gt = np.zeros(len(thresholds), dtype=int)
+    count_symmetrical_gt = np.zeros(len(thresholds), dtype=int)
+    count_sampson_estimated = np.zeros(len(thresholds), dtype=int)
+    count_symmetrical_estimated = np.zeros(len(thresholds), dtype=int)
+
+    print("Matching stats in inliers:")
+    def evaluate_metric(metric, th, label):
+        mask = (np.abs(metric) < th)[0]
+        _, unique, counts = get_normals_stats(img_data, src_tentatives_2d, dst_tentatives_2d, mask)
+        print("{} < {}:".format(label, th))
+        print("unique 1/2, counts:\n{}".format(np.vstack((unique.T, counts)).T))
+        return np.sum(mask)
+
     for i in range(len(thresholds)):
-        checks[i] = np.sum(np.abs(x2_F_x1) < thresholds[i])
-        checks2[i] = np.sum(np.abs(kornia_dst.numpy()) < thresholds[i])
-        checks3[i] = np.sum(np.abs(kornia_dst_computed.numpy()) < thresholds[i])
+        count_sampson_gt[i] = evaluate_metric(kornia_sampson_gt, thresholds[i], "sampson gt")
+        count_symmetrical_gt[i] = evaluate_metric(kornia_symmetrical_gt, thresholds[i], "symmetrical gt")
+        count_sampson_estimated[i] = evaluate_metric(kornia_sampson_estimated, thresholds[i], "sampson estimated")
+        count_symmetrical_estimated[i] = evaluate_metric(kornia_symmetrical_estimated, thresholds[i], "symmetrical estimated")
 
-    print("checks1:{}".format(checks))
-    print("checks2:{}".format(checks2))
+    print("inliers from ransac: {}".format(inliers_from_ransac))
+    print("thresholds for inliers: {}".format(thresholds))
+    print("inliers against GT - sampson:{}".format(count_sampson_gt))
+    print("inliers against GT - symmetrical:{}".format(count_symmetrical_gt))
+    print("inliers against estimated E/F - sampson:{}".format(count_sampson_estimated))
+    print("inliers against estimated E/F - symmetrical:{}".format(count_symmetrical_estimated))
 
-    return checks
+    return count_sampson_gt, count_symmetrical_gt, count_sampson_estimated, count_symmetrical_estimated
 
 
 def evaluate_all_matching_stats(stats_map_all: dict, n_examples=10, special_diff=None):
