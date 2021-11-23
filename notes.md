@@ -324,3 +324,81 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * !new idea - see the email
 * the numbers from the original paper they achieve almost 100% on first 2 difficulties - even without rectification (!) (scene1 / the entire dataset) 
   * ASK (to all authors)!!  
+
+# notes from 11/19/2021
+
+* no answer from authors of the original paper ;-( 
+
+## experiments
+
+* BRISK and SuperPoint (retained the copyright notice)
+  * rectified SuperPoint better
+  * otherwise, it corresponds with original observations  
+* HardNet on old version (batching fixed the problem with CUDA)
+  * new version a little better
+  * actually back-ported (this time easy), but in the future I think I should just set the params to original values  
+
+## AffNet 
+
+* the main idea: 
+  * AffNet affine info (+depth) -> rectify, detect again
+    * as apposed to Rodriquez approach 
+      * a) only parts of the image are rectified (just by one transformation per each part)
+      * b) depth info can be used 
+    * the expected outcome: faster (computations time for not needed transforms saved), more accurate (assuming the rectification transform can be more accurately estimated)
+    * the accuracies in the paper are IMHO all close to 100% and the main contribution seems to be the speed up (e.g. compared to ASIFT)
+* notes:
+  * in-place description recomputation  
+    * even for different normals at each kpt the rectification (memory, time) could be saved
+    * even though AffNet works with affine transforms, the descs are computed by another subpart (CNN) - most likely the recomputation is not possible here 
+  * I am skeptical, because 
+    * a) AffNet kpts may be too sparse - maybe not
+    * b) the normals estimation based on Affnet would generally need to improve on the estimation base on the depth
+    * c) AffNet gives the normalizing affine map - may not be to fronto-parallel and may be different from a feature to feature...   
+    + let's first compare the normal estimates based on AffNet and megadepth - normals/clusters..
+    
+
+## Investigation
+
+* observed metrics (plane <-> plane correspondence)
+  * use less restrictive thresholds (not 0.5 pixels)
+
+* many inliers
+  * most of the errors for diff (0, 1)
+  * seems to depend on
+    * CUDA/vs. CPU(!!) - non-determinism, BUT it seems quite reproducible given the setting
+    * version of the library 
+    * differs from computation to computation (I didn't see it)      
+    * better result on version 1 may not mean anything (may fail on other)
+  * seems to be low-hanging fruit (admittedly for rather easy difficulties only)     
+  * why does it go wrong (repeating patterns?) - many inliers wrt. GT AND wrt the incorrectly estimated dR 
+  * prefiltering matches on corresponding planes seem not to work (not too many matches to be filtered out, the problem can appear after the filtering)  
+  * use the parallax (induced by the estimated plane should be ~ 0) / otherwise use the depth
+
+* not many inliers
+  * still many keypoints - will try the filtering before the ratio filtering
+  * parallax 
+  * ransac vs. plane correspondence
+    * cannot try ((1, 2), (1, 1)), only ((1, 2), (1, 2)) or ((1, 1), (1, 1))
+      * 1/8 of possibilities with 1/2 kpts  
+    * deep inside ransac? - NO: run RANSAC multiple times
+
+* generally diff (sigma) & diff (rho) may be used as in AdaLam 
+  * needs to be homography and not affine
+  * needs to cope with the unknown scale  
+
+* would like to see what happens with all_rectified = True (the kpts will clash)
+
+
+## what's next 
+
+* more experiments around the rectification and matching
+* some things may be done/needed on the lower level - hopefully it won't break the existing observations
+* when would it be the time to wrap it up? What should I do in terms of the computations 
+  * (other scenes, other DSs, more combinations of params, new kpts detectors, etc..)
+
+## Action items
+
+* AffNet
+* filtering based on the plane correspondences 
+  * tentatives, RANSAC

@@ -951,7 +951,6 @@ class Pipeline:
             )
 
             if E is None:
-                # TODO test this
                 ValueError("E is None")
 
         stats_struct = evaluate_matching(self.scene_info,

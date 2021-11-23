@@ -8,7 +8,7 @@ from typing import List
 import cv2 as cv
 import numpy as np
 import torch
-from utils import get_rot_vec_deg, get_normals_stats, split_points
+from utils import *
 
 from scene_info import *
 
@@ -331,9 +331,10 @@ def evaluate_matching(scene_info,
     error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
-    _, unique, counts = get_normals_stats(img_data, src_tentatives_2d, dst_tentatives_2d)
-    print("Matching stats in evaluation:")
-    print("unique 1/2, counts:\n{}".format(np.vstack((unique.T, counts)).T))
+    if is_rectified_condition(img_data[0]):
+        _, unique, counts = get_normals_stats(img_data, src_tentatives_2d, dst_tentatives_2d)
+        print("Matching stats in evaluation:")
+        print("unique plane correspondence counts of tentatives:\n{}".format(np.vstack((unique.T, counts)).T))
 
     count_sampson_gt, \
     count_symmetrical_gt, \
@@ -519,9 +520,10 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo,
     print("Matching stats in inliers:")
     def evaluate_metric(metric, th, label):
         mask = (np.abs(metric) < th)[0]
-        _, unique, counts = get_normals_stats(img_data, src_tentatives_2d, dst_tentatives_2d, mask)
-        print("{} < {}:".format(label, th))
-        print("unique 1/2, counts:\n{}".format(np.vstack((unique.T, counts)).T))
+        if is_rectified_condition(img_data[0]):
+            _, unique, counts = get_normals_stats(img_data, src_tentatives_2d, dst_tentatives_2d, mask)
+            print("{} < {}:".format(label, th))
+            print("unique plane correspondence counts:\n{}".format(np.vstack((unique.T, counts)).T))
         return np.sum(mask)
 
     for i in range(len(thresholds)):
@@ -1073,13 +1075,20 @@ def old_main():
             print("{}    {}".format(diff, perc))
 
 
-def main():
+def quantil_stats():
     file_name = "work/stats_diff_all.pkl"
     file_name = "work/stats_superpoint_all.pkl"
-    file_name = "./work/stats_matching_baseline.pkl"
+    file_name = "./work/stats_matching_baseline.pkl"; just_root = False
+    #file_name = "./work/all_stats_old_baseline.pkl"; just_root = True
 
     with open(file_name, "rb") as f:
         stats_map = pickle.load(f)
+        print("data loaded from: {}".format(file_name))
+
+    if just_root:
+        stats_map_new = {}
+        stats_map_new["default"] = stats_map
+        stats_map = stats_map_new
 
     keys_list = stats_map.keys()
 
@@ -1094,11 +1103,13 @@ def main():
             if stats_map[key].__contains__(diff):
                 print("key: {}, diff: {}".format(key, diff))
                 sorted_by_err_R = list(sorted(stats_map[key][diff].items(), key=lambda key_value: -key_value[1].error_R))
-                err_R_only_list = list(map(lambda kv: (kv[0], kv[1].error_R * 180 / math.pi), sorted_by_err_R))
+                err_R_only_list = list(map(lambda kv: (kv[0], kv[1].error_R * 180 / math.pi, kv[1]), sorted_by_err_R))
                 count = len(err_R_only_list)
                 for i, err_R in enumerate(err_R_only_list):
-                    print("{}: {:.03f}: {:.03f} = {}/{}".format(err_R[0], err_R[1], float(count-i) / count, count-i, count))
+                    o = err_R[2]
+                    rich_info = "{:.03f} = {}/{} inliers/tents, all_kps: ({},{}), normals:({},{})".format(o.inliers/o.tentative_matches, o.inliers, o.tentative_matches, o.all_features_1, o.all_features_2, len(o.normals1), len(o.normals2))
+                    print("{}: {:.03f}: {:.03f} = {}/{} \t {}".format(err_R[0], err_R[1], float(count-i) / count, count-i, count, rich_info))
 
 
 if __name__ == "__main__":
-    main()
+    quantil_stats()

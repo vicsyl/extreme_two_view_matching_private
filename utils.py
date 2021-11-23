@@ -1,3 +1,4 @@
+import itertools
 import torch
 import numpy as np
 import os
@@ -9,6 +10,10 @@ import torch.nn.functional as F
 import kornia.geometry as KG
 
 
+def is_rectified_condition(img_data):
+    return img_data.valid_components_dict is not None
+
+
 def split_points(tentative_matches, kps1, kps2):
     src_pts = np.float32([kps1[m.queryIdx].pt for m in tentative_matches]).reshape(-1, 2)
     dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentative_matches]).reshape(-1, 2)
@@ -16,12 +21,6 @@ def split_points(tentative_matches, kps1, kps2):
 
 
 def get_normals_stats(img_data_list, src_tentatives_2d, dst_tentatives_2d, mask=None):
-
-    def get_kpts_normals(components_indices, valid_components_dict, kpts_2d):
-        kpts_ints = np.round(kpts_2d).astype(np.int)
-        keypoints_components = components_indices[kpts_ints[:, 1], kpts_ints[:, 0]]
-        keypoints_normals = np.array([valid_components_dict.get(component, -1) for component in keypoints_components])
-        return keypoints_normals
 
     src_kpts_normals = get_kpts_normals(img_data_list[0].components_indices, img_data_list[0].valid_components_dict, src_tentatives_2d)
     dst_kpts_normals = get_kpts_normals(img_data_list[1].components_indices, img_data_list[1].valid_components_dict, dst_tentatives_2d)
@@ -34,6 +33,69 @@ def get_normals_stats(img_data_list, src_tentatives_2d, dst_tentatives_2d, mask=
     unique, counts = np.unique(stats, axis=1, return_counts=True)
     unique = unique.T
     return stats.T, unique, counts
+
+
+def get_filter(stats, unique, counts, src_normals: int, dst_normals: int):
+
+    mp = {}
+    for i, unq_key in enumerate(unique):
+        if unq_key[0] != -1 and unq_key[1] != -1:
+            mp[(unq_key[0], unq_key[1])] = counts[i]
+
+    swap = src_normals > dst_normals
+    if swap:
+        permutation_items = range(src_normals)
+        perm_length = dst_normals
+    else:
+        permutation_items = range(dst_normals)
+        perm_length = src_normals
+
+    all_counts = []
+    max_count = None
+    max_src_i = max_dst_i = None
+
+    for cur_permutation in itertools.permutations(permutation_items, perm_length):
+        cur_c = 0
+        if swap:
+            src_indices = list(cur_permutation)
+            dst_indices = list(range(perm_length))
+        else:
+            src_indices = list(range(perm_length))
+            dst_indices = list(cur_permutation)
+
+        for i in range(len(src_indices)):
+            c = mp.get((src_indices[i], dst_indices[i]), 0)
+            cur_c += c
+
+        all_counts.append(cur_c)
+        if max_count is None or cur_c > max_count:
+            max_src_i = src_indices
+            max_dst_i = dst_indices
+            max_count = cur_c
+
+    # print("all counts: {}".format(all_counts))
+    # print("max_src_i: {}".format(max_src_i))
+    # print("max_dst_i: {}".format(max_dst_i))
+
+    max_set = set()
+    for i in range(len(max_src_i)):
+        max_set.add((max_src_i[i], max_dst_i[i]))
+
+    return max_set #, stats, fltr
+
+
+def get_kpts_normals(components_indices, valid_components_dict, kpts_2d):
+
+    kpts_2d = np.array(kpts_2d)
+
+    kpts_ints = np.round(kpts_2d).astype(np.int)
+
+    np.clip(kpts_ints[:, 0], 0, components_indices.shape[1] - 1, out=kpts_ints[:, 0])
+    np.clip(kpts_ints[:, 1], 0, components_indices.shape[0] - 1, out=kpts_ints[:, 1])
+
+    keypoints_components = components_indices[kpts_ints[:, 1], kpts_ints[:, 0]]
+    keypoints_normals = np.array([valid_components_dict.get(component, -1) for component in keypoints_components])
+    return keypoints_normals
 
 
 def get_rot_vec_deg(np_r):

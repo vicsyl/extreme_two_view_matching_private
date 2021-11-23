@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from connected_components import get_connected_components
-from utils import Timer, merge_keys_for_same_value, get_normals_stats, split_points
+from utils import *
 from config import Config
 from evaluation import ImageData
 import itertools
@@ -77,21 +77,75 @@ def rich_split_points(tentative_matches, kps1, dsc1, kps2, dsc2):
     return src_pts, src_kps, src_dsc, dst_pts, dst_kps, dst_dsc
 
 
-def get_cross_checked_tentatives(matcher, descs1, descs2, ratio_threshold, k):
+def get_cross_checked_tentatives(matcher, img_data1, img_data2, ratio_threshold):
 
-    knn_matches = matcher.knnMatch(descs1, descs2, k=k)
+    knn_matches = matcher.knnMatch(img_data1.descriptions, img_data2.descriptions, k=2)
     # For cross-check - TODO does is work for flann?
-    matches2 = matcher.match(descs2, descs1)
+    matches2 = matcher.match(img_data2.descriptions, img_data1.descriptions)
 
     tentative_matches = []
-    # TODO what about this?
-    # if len(matches) < 10:
-    #     return None, [], []
     for m, n in knn_matches:
         if matches2[m.trainIdx].trainIdx != m.queryIdx:
             continue
         if m.distance < ratio_threshold * n.distance: # ratio_threshold was 0.85
             tentative_matches.append(m)
+
+    filter_on_planes_during_correspondence = False
+    if is_rectified_condition(img_data1) and filter_on_planes_during_correspondence:
+        tentative_matches = filter_during_correspondence(matcher, tentative_matches, matches2, img_data1, img_data2, ratio_threshold)
+    return tentative_matches
+
+
+def filter_during_correspondence(matcher, tentative_matches, all_matches_reversed, img_data1, img_data2, ratio_threshold):
+
+    src_pts, dst_pts = split_points(tentative_matches, img_data1.key_points, img_data2.key_points)
+
+    stats, unique, counts = get_normals_stats([img_data1, img_data2], src_pts, dst_pts)
+    print("Matching stats in get_cross_checked_tentatives:")
+    print("unique plane correspondence counts:\n{}".format(np.vstack((unique.T, counts)).T))
+
+    max_set = get_filter(stats, unique, counts, img_data1.normals.shape[0], img_data2.normals.shape[0])
+
+    all_src_pts = np.float32([img_data1.key_points[m.trainIdx].pt for m in all_matches_reversed]).reshape(-1, 2)
+    all_dst_pts = np.float32([img_data2.key_points[m.queryIdx].pt for m in all_matches_reversed]).reshape(-1, 2)
+    all_matches_stats, all_uniques, all_counts = get_normals_stats([img_data1, img_data2], all_src_pts, all_dst_pts)
+    print("Matching stats of all matches in get_cross_checked_tentatives before filtering:")
+    print("unique plane correspondence counts:\n{}".format(np.vstack((all_uniques.T, all_counts)).T))
+
+    new_cross_adds = 0
+    new_adds = 0
+    unchecked_adds = 0
+    tentative_matches = []
+
+    knn_matches = matcher.knnMatch(img_data1.descriptions, img_data2.descriptions, k=3)
+
+    for knn_match in knn_matches:
+        for match_idx, match in enumerate(knn_match):
+            key = tuple(all_matches_stats[match.trainIdx, :])
+            if key[0] != -1 and key[1] != -1 and not max_set.__contains__(key):
+                continue
+            if all_matches_reversed[match.trainIdx].trainIdx != match.queryIdx:
+                break
+            elif match_idx > 0:
+                new_cross_adds += 1
+            if match_idx < 2:
+                if match.distance < ratio_threshold * knn_match[match_idx + 1].distance:  # ratio_threshold was 0.85
+                    tentative_matches.append(match)
+                    if match_idx > 0:
+                        new_adds += 1
+                    break
+            else:
+                unchecked_adds += 1
+                tentative_matches.append(match)
+                break
+
+    print(
+        "stats: new_cross_adds: {}, new_adds: {}, unchecked_adds: {}".format(new_cross_adds, new_adds, unchecked_adds))
+    src_pts, dst_pts = split_points(tentative_matches, img_data1.key_points, img_data2.key_points)
+
+    stats, unique, counts = get_normals_stats([img_data1, img_data2], src_pts, dst_pts)
+    print("Matching stats in get_cross_checked_tentatives after filtering:")
+    print("unique plane correspondence counts:\n{}".format(np.vstack((unique.T, counts)).T))
 
     return tentative_matches
 
@@ -140,7 +194,9 @@ def filter_fginn_matches(matches, desc1, desc2, num_nn, cfg):
     return valid_matches
 
 
-def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, cfg, out_dir=None, save_suffix=None, ratio_thresh=None, show=True, save=True):
+def find_correspondences(img_data1,
+                         img_data2,
+                         cfg, out_dir=None, save_suffix=None, ratio_thresh=None, show=True, save=True):
 
     fginn = cfg["fginn"]
     num_nn = cfg["num_nn"]
@@ -155,20 +211,19 @@ def find_correspondences(img1, kps1, descs1, img2, kps2, descs2, cfg, out_dir=No
     else:
         matcher = cv.BFMatcher(crossCheck=crossCheck)
 
-    assert descs1 is not None and len(descs1) != 0
-    assert descs2 is not None and len(descs2) != 0
+    assert img_data1.descriptions is not None and len(img_data1.descriptions) != 0
+    assert img_data2.descriptions is not None and len(img_data2.descriptions) != 0
 
     if fginn:
         k = 10 + num_nn
-        knn_matches = matcher.knnMatch(descs1, descs2, k=k)
-        tentative_matches = filter_fginn_matches(knn_matches, descs1, descs2, num_nn, cfg)
+        knn_matches = matcher.knnMatch(img_data1.descriptions, img_data2.descriptions, k=k)
+        tentative_matches = filter_fginn_matches(knn_matches, img_data1.descriptions, img_data2.descriptions, num_nn, cfg)
     else:
-        k = 2
-        tentative_matches = get_cross_checked_tentatives(matcher, descs1, descs2, ratio_thresh, k=k)
+        tentative_matches = get_cross_checked_tentatives(matcher, img_data1, img_data2, ratio_thresh)
 
     if show or save:
         tentative_matches_in_singleton_list = [[m] for m in tentative_matches]
-        img3 = cv.drawMatchesKnn(img1, kps1, img2, kps2, tentative_matches_in_singleton_list, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        img3 = cv.drawMatchesKnn(img_data1.img, img_data1.key_points, img_data2.img, img_data2.key_points, tentative_matches_in_singleton_list, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
         fig, ax = plt.subplots(figsize=(10, 10))
         ax.set_aspect("auto")
         plt.title("{} tentative matches".format(len(tentative_matches)))
@@ -550,30 +605,30 @@ def match_epipolar(img_data1,
 
     save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
 
-    tentative_matches = find_correspondences(img_data1.img,
-                                             img_data1.key_points,
-                                             img_data1.descriptions,
-                                             img_data2.img,
-                                             img_data2.key_points,
-                                             img_data2.descriptions,
+    tentative_matches = find_correspondences(img_data1,
+                                             img_data2,
                                              cfg, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
 
     src_pts, dst_pts = split_points(tentative_matches, img_data1.key_points, img_data2.key_points)
-    stats, unique, counts = get_normals_stats([img_data1, img_data2], src_pts, dst_pts)
-    print("Matching stats after find_correspondences:")
-    print("unique 1/2, counts:\n{}".format(np.vstack((unique.T, counts)).T))
-    check1 = np.logical_or(stats[:, 0] != 0, stats[:, 1] != 1)
-    check2 = np.logical_or(stats[:, 0] != 1, stats[:, 1] != 0)
-    check = np.logical_and(check1, check2)
-    flter = False
-    if flter:
-        src_pts = src_pts[check, :]
-        dst_pts = dst_pts[check, :]
-        tentative_matches = [t for i, t in enumerate(tentative_matches) if check[i]]
 
-    _, unique, counts = get_normals_stats([img_data1, img_data2], src_pts, dst_pts)
-    print("Matching stats after filtering:")
-    print("unique 1/2, counts:\n{}".format(np.vstack((unique.T, counts)).T))
+    # NOTE the logging part is in evaluation.evaluate_matching
+    # if is_rectified_condition(img_data1):
+        # stats, unique, counts = get_normals_stats([img_data1, img_data2], src_pts, dst_pts)
+        # print("Matching stats after find_correspondences:")
+        # print("unique plane correspondence counts of tentatives:\n{}".format(np.vstack((unique.T, counts)).T))
+        # TODO filter based on utils.get_filter
+        # check1 = np.logical_or(stats[:, 0] != 0, stats[:, 1] != 1)
+        # check2 = np.logical_or(stats[:, 0] != 1, stats[:, 1] != 0)
+        # check = np.logical_and(check1, check2)
+        # flter = False
+        # if flter:
+        #     src_pts = src_pts[check, :]
+        #     dst_pts = dst_pts[check, :]
+        #     tentative_matches = [t for i, t in enumerate(tentative_matches) if check[i]]
+        #
+        #     _, unique, counts = get_normals_stats([img_data1, img_data2], src_pts, dst_pts)
+        #     print("Matching stats after filtering:")
+        #     print("unique plane correspondence counts of tentatives:\n{}".format(np.vstack((unique.T, counts)).T))
 
     # TODO threshold and prob params left to default values
     if find_fundamental:
