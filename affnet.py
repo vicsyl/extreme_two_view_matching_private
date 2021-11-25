@@ -1,3 +1,7 @@
+import math
+from matplotlib.patches import Circle
+from matplotlib.collections import PatchCollection
+
 import pickle
 import os
 import cv2 as cv
@@ -155,7 +159,7 @@ def get_rotation_matrices(unit_rotation_vectors, thetas):
 def get_rectification_rotations(normals):
 
     # now the normals will be "from" me, "inside" the surfaces
-    normals = -normals
+    normals = -torch.from_numpy(normals)[None]
 
     z = torch.tensor([[[0.0, 0.0, 1.0]]]).expand(-1, normals.shape[1], -1)
     print()
@@ -232,21 +236,44 @@ def prepare_pipeline():
     return pipeline
 
 
-def get_kpts_normals(normals, laffs_no_scale):
+# def get_kpts_normals(normals, laffs_no_scale):
+#
+#     Timer.start_check_point("get_kpts_normals")
+#
+#     coords = laffs_no_scale[0, :, :, 2]
+#     coords = torch.round(coords)
+#     torch.clamp(coords[:, 0], 0, normals.shape[1] - 1, out=coords[:, 0])
+#     torch.clamp(coords[:, 1], 0, normals.shape[0] - 1, out=coords[:, 1])
+#     coords = coords.to(torch.long)
+#
+#     normals_kpts = normals[coords[:, 1], coords[:, 0]]
+#
+#     Timer.end_check_point("get_kpts_normals")
+#
+#     return normals_kpts
+#
+#
 
-    Timer.start_check_point("get_kpts_normals")
+
+# NOTE : basically version of utils.get_kpts_normals, but for torch!!!
+def get_kpts_normals_indices(components_indices, valid_components_dict, laffs_no_scale):
+
+    Timer.start_check_point("get_kpts_normals_indices")
 
     coords = laffs_no_scale[0, :, :, 2]
     coords = torch.round(coords)
-    torch.clamp(coords[:, 0], 0, normals.shape[1] - 1, out=coords[:, 0])
-    torch.clamp(coords[:, 1], 0, normals.shape[0] - 1, out=coords[:, 1])
+    torch.clamp(coords[:, 0], 0, components_indices.shape[1] - 1, out=coords[:, 0])
+    torch.clamp(coords[:, 1], 0, components_indices.shape[0] - 1, out=coords[:, 1])
     coords = coords.to(torch.long)
 
-    normals_kpts = normals[coords[:, 1], coords[:, 0]]
+    component_indices = components_indices[coords[:, 1], coords[:, 0]]
+    normals_indices = torch.ones_like(coords[:, 0]) * -1
+    for valid_component in valid_components_dict:
+        normals_indices[component_indices == valid_component] = valid_components_dict[valid_component]
 
-    Timer.end_check_point("get_kpts_normals")
+    Timer.end_check_point("get_kpts_normals_indices")
 
-    return normals_kpts
+    return normals_indices[None]
 
 
 def decompose_lin_maps(l_maps, asserts=True):
@@ -346,16 +373,72 @@ def decompose_lin_maps(l_maps, asserts=True):
 #     # assert math.fabs(det - 1.0) < 0.0001
 #     # return R
 
-def get_normal_vec_from_decomposition(ts, phis):
-    Timer.start_check_point("get_normal_vec_from_decomposition")
-    sin_theta = torch.sqrt(ts ** 2 - 1) / ts
-    xs = torch.cos(phis) * sin_theta
-    ys = torch.sin(phis) * sin_theta
-    zs = torch.sqrt(1 - xs ** 2 - ys ** 2)
-    norms_from_lafs = torch.cat((xs.unsqueeze(2), ys.unsqueeze(2), zs.unsqueeze(2)), 2)
+# def get_normal_vec_from_decomposition(ts, phis):
+#     Timer.start_check_point("get_normal_vec_from_decomposition")
+#     sin_theta = torch.sqrt(ts ** 2 - 1) / ts
+#     xs = torch.cos(phis) * sin_theta
+#     ys = torch.sin(phis) * sin_theta
+#     zs = torch.sqrt(1 - xs ** 2 - ys ** 2)
+#     norms_from_lafs = torch.cat((xs.unsqueeze(2), ys.unsqueeze(2), zs.unsqueeze(2)), 2)
+#
+#     Timer.end_check_point("get_normal_vec_from_decomposition")
+#     return norms_from_lafs
 
-    Timer.end_check_point("get_normal_vec_from_decomposition")
-    return norms_from_lafs
+
+def get_laffs_no_scale_p_cached(img_file_path, img_name, descriptor):
+    cache_laffs_fn = "work/laffs_no_scale.pt"
+    if os.path.exists(cache_laffs_fn):
+        Timer.start_check_point("laffs_no_scale cache read")
+        laffs_no_scale = torch.load(cache_laffs_fn)
+        Timer.end_check_point("laffs_no_scale cache read")
+    else:
+        Timer.start_check_point("laffs_no_scale computation")
+        _, _, laffs_no_scale = get_lafs(img_file_path, descriptor, img_name)
+        Timer.end_check_point("laffs_no_scale computation")
+        Timer.start_check_point("laffs_no_scale saving")
+        torch.save(laffs_no_scale, cache_laffs_fn)
+        Timer.end_check_point("laffs_no_scale saving")
+    return laffs_no_scale
+
+
+def draw(radius, ts, phis, color, size, ax):
+
+    # upper bound on radii
+    log_radius = math.log(radius)
+    print("foo draw: r = {}\n ts = {} \n phis = {} \n style = {}".format(log_radius, ts[:100], phis[:100], color))
+
+    ts_logs = torch.log(ts)
+    xs = torch.cos(phis) * ts_logs
+    ys = torch.sin(phis) * ts_logs
+
+    ax.plot(xs, ys, 'o', color=color, markersize=size)
+
+
+def prepare_plot(radius: float, ax):
+
+    log_radius = math.log(radius)
+
+    ax.set_aspect(1.0)
+
+    ax.set_xlim((-2*log_radius, 2*log_radius))
+    ax.set_ylim((-2*log_radius, 2*log_radius))
+
+    circle = Circle((0, 0), log_radius, color='r', fill=False)
+    ax.add_artist(circle)
+
+
+# TODO export somehow?
+def get_normals(normals, K):
+
+    Hs = get_rectification_homographies(normals, K)
+    Hs_as_affine = Hs[:, :, :2, :2]
+    det_Hs = torch.det(Hs_as_affine).sqrt().unsqueeze(2).unsqueeze(3)
+    Hs_as_affine = Hs_as_affine / det_Hs
+
+    # TODO CONTINUE asserts=False did not work on the whole set of normals (index 3081)
+    _, _, ts_h, phis_h = decompose_lin_maps(Hs_as_affine, asserts=True)
+
+    return ts_h, phis_h
 
 
 def main():
@@ -373,53 +456,83 @@ def main():
     dfl = ["frame_0000000070_2"]
     for idx, img_name in enumerate(dfl):
         img_file_path = pipeline.scene_info.get_img_file_path(img_name)
-        # TODO no scale will probably not work
 
-        cache_laffs_fn = "work/laffs_no_scale.pt"
-        if os.path.exists(cache_laffs_fn):
-            Timer.start_check_point("laffs_no_scale cache read")
-            laffs_no_scale = torch.load(cache_laffs_fn)
-            Timer.end_check_point("laffs_no_scale cache read")
-        else:
-            Timer.start_check_point("laffs_no_scale computation")
-            _, _, laffs_no_scale = get_lafs(img_file_path, hardnet, img_name)
-            Timer.end_check_point("laffs_no_scale computation")
-            Timer.start_check_point("laffs_no_scale saving")
-            torch.save(laffs_no_scale, cache_laffs_fn)
-            Timer.end_check_point("laffs_no_scale saving")
-
-        lambdas, psis, ts, phis = decompose_lin_maps(laffs_no_scale[:, :, :, :2])
-        # norms_from_lafs = get_normal_vec_from_decomposition(ts, phis)
+        laffs_no_scale = get_laffs_no_scale_p_cached(img_file_path, img_name, hardnet)
+        _, _, ts, phis = decompose_lin_maps(laffs_no_scale[:, :, :, :2])
 
         img_data = pipeline.process_image(img_name, idx % 2)[0]
+        kpts_normals_indices = get_kpts_normals_indices(img_data.components_indices, img_data.valid_components_dict, laffs_no_scale)
 
         K = pipeline.scene_info.get_img_K(img_name)
+        ts_h, phis_h = get_normals(img_data.normals, K)
 
+        exp_r = 1.7
+         # -1 for invalid/no normal #AGAIN the ambiguity of whether 1 normal is (3,) it (1,3)
+        assert len(img_data.normals.shape) == 2
+        for i in range(img_data.normals.shape[0]):
 
-        Hs = get_rectification_homographies(img_data.normals, K)
-        Hs_as_affine = Hs[:, :, :2, :2]
-        det_Hs = torch.det(Hs_as_affine).sqrt().unsqueeze(2).unsqueeze(3)
-        Hs_as_affine = Hs_as_affine / det_Hs
+            fig, ax = plt.subplots()
+            plt.title("{} - {}th normal".format(img_name, i))
+            prepare_plot(exp_r, ax)
 
-        # CONTINUE (index 3081) - asserts=True
-        lambdas_h, phis_h, ts_h, psis_h = decompose_lin_maps(Hs_as_affine, asserts=False)
+            ts_normal, phis_normal = ts_h[:, i], phis_h[:, i]
+            draw(exp_r, ts_normal, phis_normal, "black", 5, ax)
 
-        # compare
-        # diffs = laffs_no_scale[:, :, :, :2] - Hs_as_affine
-        # print()
+            mask = kpts_normals_indices == i
+            ts_affnet, phis_affnet = ts[mask], phis[mask]
+            draw(exp_r, ts_affnet, phis_affnet, "b", 0.5, ax)
 
-    # CONTINUE:
-    #   IMPORTANT: a) get_kpts_normals(normals, laffs_no_scale).unsqueeze(dim=0) -> get_kpts_normals_representatives!!!!
-    #   IMPORTANT: b) compare sets of affines (original or inverses) within one plane
-    #   IMPORTANT: c) compare sets of affines' decomposition (original or inverses) within one plane
-    #             -  basically the idea in Rodriquez is to ignore the tail of the distribution (cluster)
-
-    # (background - get_normal_vec_from_decomposition(ts, phis) is most likely wrong - at least because of the missing calibration
-    # get_normal_vec_from_decomposition - probably doesn't work as expected - implement 5,6 from affine_decomposition.pdf
-
+            plt.show()
 
     Timer.log_stats()
 
 
+def draw_test():
+
+    radius = 1.7
+    ts = torch.tensor([1.1319, 1.1319, 1.2136, 1.0592, 1.1286, 1.1663, 1.2231, 1.2231, 1.1127,
+                 1.0755, 1.0778, 1.2580, 1.0351, 1.2732, 1.2732, 1.2206, 1.1509, 1.0904,
+                 1.0982, 1.0432, 1.3149, 1.0875, 1.0457, 1.0357, 1.1554, 1.2691, 1.2691,
+                 1.0834, 1.0124, 1.0124, 1.1793, 1.2422, 1.0970, 1.2479, 1.2478, 1.0951,
+                 1.1189, 1.0922, 1.0922, 1.0861, 1.2390, 1.0681, 1.0788, 1.1042, 1.2036,
+                 1.1800, 1.1800, 1.1368, 1.1368, 1.2107, 1.1130, 1.0565, 1.1601, 1.1735,
+                 1.1735, 1.0962, 1.1921, 1.0994, 1.0994, 1.2375, 1.1585, 1.0956, 1.0956,
+                 1.0915, 1.2143, 1.1329, 1.0327, 1.2184, 1.2300, 1.3192, 1.0538, 1.0538,
+                 1.1630, 1.1138, 1.1916, 1.0691, 1.0681, 1.0289, 1.0809, 1.1317, 1.0821,
+                 1.0266, 1.0524, 1.1183, 1.2366, 1.1436, 1.2093, 1.2093, 1.1545, 1.0598,
+                 1.0598, 1.1063, 1.1583, 1.1583, 1.0944, 1.1603, 1.2142, 1.2142, 1.0572,
+                 1.1491])
+    phis = torch.tensor([0.1547, 0.1547, 1.4570, 1.7965, 0.2988, 0.0480, 1.3214, 1.3214, 0.7572,
+                   0.2797, 1.0581, 1.5154, 2.9855, 0.1490, 0.1490, 0.5565, 0.1747, 0.4184,
+                   0.8013, 2.0616, 0.2092, 1.0492, 0.5837, 2.8053, 0.6010, 3.1406, 3.1407,
+                   1.0849, 1.4009, 1.4009, 1.5825, 0.3531, 0.3736, 0.2089, 0.2089, 1.0472,
+                   0.8741, 1.0096, 1.0096, 3.0395, 0.3065, 1.6334, 1.3562, 1.2099, 0.3060,
+                   0.6847, 0.6847, 0.8206, 0.8206, 0.1486, 1.1090, 3.0709, 1.2815, 0.2579,
+                   0.2579, 0.8093, 0.1903, 0.5502, 0.5502, 0.4062, 1.2590, 1.3575, 1.3575,
+                   1.3447, 0.5134, 0.2113, 0.3479, 1.1235, 3.0801, 0.2207, 0.8382, 0.8382,
+                   0.2779, 0.2045, 1.3080, 2.6112, 0.3788, 0.7550, 1.2412, 0.6423, 3.0673,
+                   2.3306, 1.7669, 1.3823, 0.8896, 0.2179, 0.4288, 0.4288, 0.9286, 0.5084,
+                   0.5084, 0.7006, 0.4556, 0.4556, 1.4091, 0.2774, 1.0528, 1.0528, 1.0057,
+                   0.5571])
+
+    # plt.figure()
+    fig, ax = plt.subplots()
+    plt.title("img foo - 1st normal")
+    prepare_plot(radius, ax)
+    draw(radius, ts, phis, "b", 1, ax)
+    plt.show()
+
+
 if __name__ == "__main__":
     main()
+    #draw_test()
+
+# CONTINUE:
+#   IMPORTANT: a) get_kpts_normals(normals, laffs_no_scale).unsqueeze(dim=0) -> get_kpts_normals_representatives!!!!
+#   IMPORTANT: b) compare sets of affines (original or inverses) within one plane
+#   IMPORTANT: c) compare sets of affines' decomposition (original or inverses) within one plane
+#             -  basically the idea in Rodriquez is to ignore the tail of the distribution (cluster)
+
+# (background - get_normal_vec_from_decomposition(ts, phis) is most likely wrong - at least because of the missing calibration
+# get_normal_vec_from_decomposition - probably doesn't work as expected - implement 5,6 from affine_decomposition.pdf
+
