@@ -535,6 +535,7 @@ def plot_space_of_tilts(label, img_name, valid_component, normal_index, exp_r, p
     # draw(exp_r, ts_affnet, phis_affnet, "b", 0.5, ax)
     # draw(exp_r, ts_mean_affnet, phis_mean_affnet, "r", 3, ax)
     # TODO save
+    plt.show()
 
 
 def main():
@@ -548,8 +549,8 @@ def main():
 
     pipeline = prepare_pipeline()
 
-    # dfl = ["frame_0000000070_2", "frame_0000001525_1", "frame_0000001865_1"]
-    dfl = ["frame_0000000070_2"]
+    dfl = ["frame_0000000070_2", "frame_0000001525_1", "frame_0000001865_1"]
+    #dfl = ["frame_0000000070_2"]
     for idx, img_name in enumerate(dfl):
         img_file_path = pipeline.scene_info.get_img_file_path(img_name)
 
@@ -585,37 +586,11 @@ def main():
             ts_mean_affnet = torch.mean(ts_affnet)
             phis_mean_affnet = torch.mean(phis_affnet)
 
-            # fig, ax = plt.subplots()
-            # plt.title("{} - {}th component -> {}th normal".format(img_name, valid_component, normal_index))
-            # prepare_plot(exp_r, ax)
-            # draw(exp_r, ts_normal, phis_normal, "black", 5, ax)
-            # draw(exp_r, ts_affnet, phis_affnet, "b", 0.5, ax)
-            # draw(exp_r, ts_mean_affnet, phis_mean_affnet, "r", 3, ax)
-
             plot_space_of_tilts("unrectified", img_name, valid_component, normal_index, exp_r, [
                 PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
                 PointsStyle(ts=ts_affnet, phis=phis_affnet, color="b", size=0.5),
                 PointsStyle(ts=ts_mean_affnet, phis=phis_mean_affnet, color="r", size=3)
             ], save_dir=None)
-
-
-            # h, w = img.shape[:2]
-            # lin_maps = compose_lin_maps(ts_mean_affnet, phis_mean_affnet)
-            # aff_maps = torch.zeros_like(1, 2, 3)
-            # aff_maps[:, :2, :2] = lin_maps
-            # #TODO again improve the tranlation computation here
-            # aff_maps[:, 0, 2] = h/2
-            # aff_maps[:, 1, 2] = w/2
-            #
-            # corner_pts = torch.tensor([[0, 0],
-            #                            [0, h],
-            #                            [w, h],
-            #                            [w, 0]], dtype=torch.float)[None]
-            # H = KR.geometry.convert_affinematrix_to_homography(aff_maps)
-            # corner_pts_new = KR.geometry.transform_points(H, corner_pts)
-            # new_w = int((corner_pts_new[0, :, 0].max() - corner_pts_new[0, :, 0].min()).item())
-            # new_h = int((corner_pts_new[0, :, 1].max() - corner_pts_new[0, :, 1].min()).item())
-            # t_img = KR.image_to_tensor(img, False).float() / 255.
 
             aff_maps, new_h, new_w, t_img = get_aff_map(img, ts_mean_affnet, phis_mean_affnet)
 
@@ -631,16 +606,16 @@ def main():
 
             kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
             kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
-            kpt_s_back = torch.round(kpt_s_back).to(torch.long)
-            #(kpt_s_back[:, 0, 0].to(torch.long) <= img.shape[0]) & (kpt_s_back[:, 0, 0].to(torch.long) < 0)
-            mask = (kpt_s_back[:, 0, 0] < img.shape[0]) & (kpt_s_back[:, 0, 0] >= 0) & (kpt_s_back[:, 1, 0] < img.shape[1]) & (kpt_s_back[:, 1, 0] >= 0)
+            kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
+            ##(kpt_s_back[:, 0, 0].to(torch.long) <= img.shape[0]) & (kpt_s_back[:, 0, 0].to(torch.long) < 0)
+            mask = (kpt_s_back_int[:, 0, 0] < img.shape[0]) & (kpt_s_back_int[:, 0, 0] >= 0) & (kpt_s_back_int[:, 1, 0] < img.shape[1]) & (kpt_s_back_int[:, 1, 0] >= 0)
             print("invalid back transformed pixels: {}".format(mask.sum()))
 
-            kpt_s_back[mask][:, 0, 0] = 0
-            kpt_s_back[mask][:, 1, 0] = 0
-            mask = (mask) & (img_data.components_indices[kpt_s_back[:, 0, 0], kpt_s_back[:, 1, 0]] == valid_component)
+            kpt_s_back_int[~mask][:, 0, 0] = 0
+            kpt_s_back_int[~mask][:, 1, 0] = 0
+            mask = (mask) & (img_data.components_indices[kpt_s_back_int[:, 0, 0], kpt_s_back_int[:, 1, 0]] == valid_component)
             mask = mask.to(torch.bool)
-            kps = [kp for i, kp in enumerate(kpt_s_back) if mask[i]]
+            kps = [kp for i, kp in enumerate(kpt_s_back_int) if mask[i]]
             descs = descs_warped[mask]
             laffs_final = laffs_final[:, mask]
 
@@ -664,7 +639,7 @@ def main():
 
         visualize_LAF(t_img, all_laffs_final[:, ::10], figsize=(8, 12))
 
-            # coords = torch.round(coords)
+            ## coords = torch.round(coords)
             # torch.clamp(coords[:, 0], 0, components_indices.shape[1] - 1, out=coords[:, 0])
             # torch.clamp(coords[:, 1], 0, components_indices.shape[0] - 1, out=coords[:, 1])
             # coords = coords.to(torch.long)
