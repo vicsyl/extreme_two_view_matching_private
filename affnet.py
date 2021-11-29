@@ -194,7 +194,7 @@ def get_lafs(file_path, descriptor, img_name):
     plt.imshow(img)
     plt.close()
 
-    kps, descs, laffs = descriptor.detectAndCompute(img, give_laffs=True)
+    kps, descs, laffs = descriptor.detectAndCompute(img, give_laffs=True, filter=hard_net_filter)
 
     timg = KR.image_to_tensor(img, False).float() / 255.
 
@@ -303,7 +303,7 @@ def compose_lin_maps(ts, phis, lambdas=None, psis=None):
 
     #TODO maybe expand?
     if lambdas is None:
-        lambdas = torch.sqrt(ts)
+        lambdas = 1.0 / torch.sqrt(ts)
         lambdas = lambdas.repeat(1, 1, 1, 1)
     if psis is None:
         psis = torch.zeros_like(phis)
@@ -384,7 +384,7 @@ def decompose_lin_maps(l_maps, asserts=True):
             assert torch.allclose(sins_ang, A[:, :, 1, 0], atol=1e-03)
             assert torch.allclose(A[:, :, 1, 1], A[:, :, 0, 0], atol=1e-05)
 
-    phis = torch.arccos(V[:, :, 0, 0])
+    phis = torch.arccos(torch.clamp(V[:, :, 0, 0], -1.0, 1.0))
     assert_rotation(V, phis)
 
     psis = torch.arcsin(-torch.clamp(U[:, :, 0, 1], -1.0, 1.0))
@@ -437,9 +437,9 @@ def decompose_lin_maps(l_maps, asserts=True):
 
 
 # TODO provide img as a parameter to save some computation
-def get_laffs_no_scale_p_cached(img_file_path, img_name, descriptor):
+def get_laffs_no_scale_p_cached(img_file_path, img_name, descriptor, cache_laffs):
     cache_laffs_fn = "work/laffs_no_scale.pt"
-    if os.path.exists(cache_laffs_fn):
+    if cache_laffs and os.path.exists(cache_laffs_fn):
         Timer.start_check_point("laffs_no_scale cache read")
         laffs_no_scale = torch.load(cache_laffs_fn)
         Timer.end_check_point("laffs_no_scale cache read")
@@ -508,6 +508,7 @@ def get_aff_map(img, t, phi):
                                [w, 0]], dtype=torch.float)[None]
 
     # TODO do I really need this? - test it here for (W, H) vs. (H, W)
+    # TODO convex hull
     H = KR.geometry.convert_affinematrix_to_homography(aff_map)
     corner_pts_new = KR.geometry.transform_points(H, corner_pts)
 
@@ -530,7 +531,7 @@ class PointsStyle:
 def plot_space_of_tilts(label, img_name, valid_component, normal_index, exp_r, point_styles: list, save_dir:str=None):
 
     fig, ax = plt.subplots()
-    plt.title("{} - {}th component -> {}th normal".format(img_name, valid_component, normal_index))
+    plt.title("{}: {} - {}th component -> {}th normal".format(label, img_name, valid_component, normal_index))
     prepare_plot(exp_r, ax)
     for point_style in point_styles:
         draw(exp_r, point_style.ts, point_style.phis, point_style.color, point_style.size, ax)
@@ -539,8 +540,11 @@ def plot_space_of_tilts(label, img_name, valid_component, normal_index, exp_r, p
     # TODO save
     plt.show()
 
+hard_net_filter = 50
 
 def main():
+
+    cache_laffs = False
 
     Timer.start()
 
@@ -558,8 +562,12 @@ def main():
 
         img = cv.cvtColor(cv.imread(img_file_path), cv.COLOR_BGR2RGB)
         # TODO provide img as a parameter to save some computation
-        laffs_no_scale = get_laffs_no_scale_p_cached(img_file_path, img_name, hardnet)
+        laffs_no_scale = get_laffs_no_scale_p_cached(img_file_path, img_name, hardnet, cache_laffs)
         _, _, ts, phis = decompose_lin_maps(laffs_no_scale[:, :, :, :2])
+
+        plot_space_of_tilts("all", img_name, 0, 0, exp_r, [
+            PointsStyle(ts=ts, phis=phis, color="b", size=5),
+        ], save_dir=None)
 
         img_data = pipeline.process_image(img_name, idx % 2)[0]
         kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, laffs_no_scale)
@@ -594,6 +602,8 @@ def main():
                 PointsStyle(ts=t_mean_affnet, phis=phi_mean_affnet, color="r", size=3)
             ], save_dir=None)
 
+            # testing...
+            #aff_maps, new_h, new_w, t_img = get_aff_map(img, torch.tensor([2.0]), torch.tensor([0.0]))
             aff_maps, new_h, new_w, t_img = get_aff_map(img, t_mean_affnet, phi_mean_affnet)
 
             img_warped_t = KR.geometry.warp_affine(t_img, aff_maps, dsize=(new_h, new_w))
@@ -604,28 +614,29 @@ def main():
             plt.show()
 
             #cv.cvtColor(cv.imread(file_path), cv.COLOR_BGR2RGB)
-            kps_warped, descs_warped, laffs_final = hardnet.detectAndCompute(img_warped, give_laffs=True, filter=50)
+            kps_warped, descs_warped, laffs_final = hardnet.detectAndCompute(img_warped, give_laffs=True, filter=hard_net_filter)
 
             aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_maps)
 
             kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
             kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
-
-            laffs_h = torch.zeros(laffs_final.shape[1:2] + (3,))
-            laffs_h[:, :2] = laffs_final[0, :, :, 2]
-            laffs_h[:, 2] = 1.0
-            new_laffs_coords = aff_maps_inv.repeat(laffs_h.shape[0], 1, 1) @ laffs_h.unsqueeze(2)
-            laffs_final[0, :, :, 2] = new_laffs_coords[:, :, 0]
-
             kpt_s_back = kpt_s_back.squeeze(2)
+
+            # laffs_h = torch.zeros(laffs_final.shape[1:2] + (3,))
+            # laffs_h[:, :2] = laffs_final[0, :, :, 2]
+            # laffs_h[:, 2] = 1.0
+            # new_laffs_coords = aff_maps_inv.repeat(laffs_h.shape[0], 1, 1) @ laffs_h.unsqueeze(2)
+            # laffs_final[0, :, :, 2] = new_laffs_coords[:, :, 0]
+            laffs_final[0, :, :, 2] = kpt_s_back
+
             kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
             ##(kpt_s_back[:, 0, 0].to(torch.long) <= img.shape[0]) & (kpt_s_back[:, 0, 0].to(torch.long) < 0)
-            mask = (kpt_s_back_int[:, 0] < img.shape[0]) & (kpt_s_back_int[:, 0] >= 0) & (kpt_s_back_int[:, 1] < img.shape[1]) & (kpt_s_back_int[:, 1] >= 0)
-            print("invalid back transformed pixels: {}/{}".format(mask.sum(), mask.shape[0]))
+            mask = (kpt_s_back_int[:, 1] < img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (kpt_s_back_int[:, 0] < img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
+            print("invalid back transformed pixels: {}/{}".format(mask.shape[0] - mask.sum(), mask.shape[0]))
 
             kpt_s_back_int[~mask, 0] = 0
             kpt_s_back_int[~mask, 1] = 0
-            mask = (mask) & (img_data.components_indices[kpt_s_back_int[:, 0], kpt_s_back_int[:, 1]] == valid_component)
+            mask = (mask) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == valid_component)
             mask = mask.to(torch.bool)
 
             kps = []
@@ -637,25 +648,25 @@ def main():
             descs = descs_warped[mask]
             laffs_final = laffs_final[:, mask]
 
-            visualize_LAF(t_img, laffs_final[:, ::5], figsize=(8, 12))
-            scale_l_final = KF.get_laf_scale(laffs_final)
-            laffs_final = KF.scale_laf(laffs_final, 1. / scale_l_final)
+            visualize_LAF(t_img, laffs_final, figsize=(8, 12))
+            # scale_l_final = KF.get_laf_scale(laffs_final)
+            # laffs_final = KF.scale_laf(laffs_final, 1. / scale_l_final)
 
             all_kps.extend(kps)
             all_desc = np.vstack((all_desc, descs))
             all_laffs_final = torch.cat((all_laffs_final, laffs_final), 1)
 
             _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps(laffs_final[:, :, :, :2])
-            ts_affnet_final_mean = torch.mean(ts_affnet_final)
-            phis_affnet_final_mean = torch.mean(phis_affnet_final)
+            # ts_affnet_final_mean = torch.mean(ts_affnet_final)
+            # phis_affnet_final_mean = torch.mean(phis_affnet_final)
 
             plot_space_of_tilts("rectified", img_name, valid_component, normal_index, exp_r, [
                 PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
                 PointsStyle(ts=ts_affnet_final, phis=phis_affnet_final, color="b", size=0.5),
-                PointsStyle(ts=ts_affnet_final_mean, phis=phis_affnet_final_mean, color="r", size=3)
+                #PointsStyle(ts=ts_affnet_final_mean, phis=phis_affnet_final_mean, color="r", size=3)
             ], save_dir=None)
 
-        visualize_LAF(t_img, all_laffs_final[:, ::10], figsize=(8, 12))
+        visualize_LAF(t_img, all_laffs_final, figsize=(8, 12))
 
             ## coords = torch.round(coords)
             # torch.clamp(coords[:, 0], 0, components_indices.shape[1] - 1, out=coords[:, 0])
