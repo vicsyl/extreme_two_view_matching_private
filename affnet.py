@@ -19,104 +19,6 @@ from hard_net_descriptor import HardNetDescriptor
 from utils import Timer
 from rectification import get_rotation_matrix
 
-# def get_local_descriptors(img, cv2_sift_kpts, kornia_descriptor):
-#     # We will not train anything, so let's save time and memory by no_grad()
-#     with torch.no_grad():
-#         kornia_descriptor.eval()
-#         timg = K.color.rgb_to_grayscale(KR.image_to_tensor(img, False).float()) / 255.
-#         lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts)
-#         # We will estimate affine shape of the feature and re-orient the keypoints with the OriNet
-#         affine = KF.LAFAffNetShapeEstimator(True)
-#         orienter = KF.LAFOrienter(32, angle_detector=KF.OriNet(True))
-#         orienter.eval()
-#         affine.eval()
-#         lafs2 = affine(lafs, timg)
-#         lafs_new = orienter(lafs2, timg)
-#         patches = KF.extract_patches_from_pyramid(timg, lafs_new, 32)
-#         B, N, CH, H, W = patches.size()
-#         # Descriptor accepts standard tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
-#         # So we need to reshape a bit :)
-#         descs = kornia_descriptor(patches.view(B * N, CH, H, W)).view(B * N, -1)
-#     return descs.detach().cpu().numpy(), lafs2
-#
-#
-# def sift_korniadesc_matching(fname1, fname2, descriptor):
-#     img1 = cv.cvtColor(cv.imread(fname1), cv.COLOR_BGR2RGB)
-#     img2 = cv.cvtColor(cv.imread(fname2), cv.COLOR_BGR2RGB)
-#
-#     sift = cv.SIFT_create(8000)
-#     kps1 = sift.detect(img1, None)
-#     kps2 = sift.detect(img2, None)
-#     # That is the only change in the pipeline -- descriptors
-#     descs1, lafs_new1 = get_local_descriptors(img1, kps1, descriptor)
-#     descs2, lafs_new2 = get_local_descriptors(img2, kps2, descriptor)
-#     # The rest is the same, as for SIFT
-#
-#     dists, idxs = KF.match_smnn(torch.from_numpy(descs1), torch.from_numpy(descs2), 0.95)
-#     tentatives = cv2_matches_from_kornia(dists, idxs)
-#     src_pts = np.float32([kps1[m.queryIdx].pt for m in tentatives]).reshape(-1, 2)
-#     dst_pts = np.float32([kps2[m.trainIdx].pt for m in tentatives]).reshape(-1, 2)
-#     F, inliers_mask = pydegensac.findFundamentalMatrix(src_pts, dst_pts, 0.75, 0.99, 100000)
-#     inliers_mask = 1 * inliers_mask
-#     draw_params = dict(matchColor=(255, 255, 0),  # draw matches in yellow color
-#                        singlePointColor=None,
-#                        matchesMask=inliers_mask.ravel().tolist(),  # draw only inliers
-#                        flags=2)
-#     img_out = cv.drawMatches(img1, kps1, img2, kps2, tentatives, None, **draw_params)
-#     plt.figure(figsize=(15, 15))
-#     #fig, ax = plt.subplots(figsize=(15, 15))
-#     plt.imshow(img_out, interpolation='nearest')
-#     plt.show()
-#     print(f'{inliers_mask.sum()} inliers found')
-#     return lafs_new1, lafs_new2
-#
-#
-# def orig_main():
-#
-#     fname1 = 'kn_church-2.jpg'
-#     fname2 = 'kn_church-8.jpg'
-#
-#     hardnet = KF.HardNet(True)
-#     lafs1, lafs2 = sift_korniadesc_matching(fname1, fname2, hardnet)
-#
-#     img1 = cv.cvtColor(cv.imread(fname1), cv.COLOR_BGR2RGB)
-#     timg1 = KR.image_to_tensor(img1, False).float() / 255.
-#
-#     # Let's visualize some of the local features
-#     visualize_LAF(timg1, lafs1[:, 1200:1500], figsize=(8, 12))
-#
-#     scale1 = KF.get_laf_scale(lafs1)
-#     lafs_no_scale = KF.scale_laf(lafs1, 1. / scale1)
-#
-#     u, s, v = torch.linalg.svd(lafs_no_scale[0:, :, :2, :2].reshape(-1, 4).t())
-#     aff1 = u[0].reshape(2, 2)
-#     aff_full = torch.cat([aff1, torch.tensor([800, 400]).view(2, 1)], dim=1)[None]
-#
-#     aff_full = torch.cat([aff1, torch.tensor([100, 100]).view(2, 1)], dim=1)[None]
-#     img1_warped = KR.geometry.rotate(KR.geometry.warp_affine(timg1, aff_full, dsize=(1000, 800)),
-#                                     torch.tensor(-90.))
-#     plt.figure(figsize=(6, 8))
-#     plt.imshow(KR.tensor_to_image(img1_warped[0, :, 100:600, 350:])[:, ::-1])
-#     plt.show()
-
-
-# def normals_caching_scheme():
-#     cache_normals_fn = "work/normals.pt"
-#     if os.path.exists(cache_normals_fn):
-#         Timer.start_check_point("normals cache read")
-#         with open(cache_normals_fn, "rb") as f:
-#             normals_at_kps = pickle.load(f)
-#         Timer.end_check_point("normals cache read")
-#     else:
-#         Timer.start_check_point("normals computation")
-#         normals = pipeline.process_image(img_name, idx % 2)[1]
-#         normals_at_kps = get_kpts_normals(normals, laffs_no_scale).unsqueeze(dim=0)
-#         Timer.end_check_point("normals computation")
-#         Timer.start_check_point("normals cache save")
-#         with open(cache_normals_fn, "wb") as f:
-#             pickle.dump(normals_at_kps, f)
-#         Timer.end_check_point("normals cache save")
-
 
 def get_rotation_matrices(unit_rotation_vectors, thetas):
 
@@ -199,21 +101,11 @@ def get_lafs(file_path, descriptor, img_name):
     timg = KR.image_to_tensor(img, False).float() / 255.
 
     # Let's visualize some of the local features
-    visualize_LAF(timg, laffs[:, ::10], figsize=(8, 12))
+    title = "{} - all unrectified affnet features".format(img_name)
+    visualize_LAF_custom(timg, laffs, title=title, figsize=(8, 12))
 
     scale1 = KF.get_laf_scale(laffs)
     lafs_no_scale = KF.scale_laf(laffs, 1. / scale1)
-
-    # u, s, v = torch.linalg.svd(lafs_no_scale[0:, :, :2, :2].reshape(-1, 4).t())
-    # aff1 = u[0].reshape(2, 2)
-    # aff_full = torch.cat([aff1, torch.tensor([800, 400]).view(2, 1)], dim=1)[None]
-    #
-    # aff_full = torch.cat([aff1, torch.tensor([100, 100]).view(2, 1)], dim=1)[None]
-    # img1_warped = KR.geometry.rotate(KR.geometry.warp_affine(timg1, aff_full, dsize=(1000, 800)),
-    #                                 torch.tensor(-90.))
-    # plt.figure(figsize=(6, 8))
-    # plt.imshow(KR.tensor_to_image(img1_warped[0, :, 100:600, 350:])[:, ::-1])
-    # plt.show()
 
     return kps, descs, lafs_no_scale
 
@@ -221,11 +113,12 @@ def get_lafs(file_path, descriptor, img_name):
 def prepare_pipeline():
 
     Timer.start_check_point("prepare_pipeline")
-    parser = argparse.ArgumentParser(prog='pipeline')
-    parser.add_argument('--output_dir', help='output dir')
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(prog='pipeline')
+    # parser.add_argument('--output_dir', help='output dir')
+    # args = parser.parse_args()
 
-    pipeline, config_map = Pipeline.configure("config.txt", args)
+    pipeline, config_map = Pipeline.configure("config.txt", None)
+    pipeline.output_dir = "affnet_demo"
     all_configs = CartesianConfig.get_configs(config_map)
     config, cache_map = all_configs[0]
     pipeline.config = config
@@ -235,25 +128,6 @@ def prepare_pipeline():
     Timer.end_check_point("prepare_pipeline")
 
     return pipeline
-
-
-# def get_kpts_normals(normals, laffs_no_scale):
-#
-#     Timer.start_check_point("get_kpts_normals")
-#
-#     coords = laffs_no_scale[0, :, :, 2]
-#     coords = torch.round(coords)
-#     torch.clamp(coords[:, 0], 0, normals.shape[1] - 1, out=coords[:, 0])
-#     torch.clamp(coords[:, 1], 0, normals.shape[0] - 1, out=coords[:, 1])
-#     coords = coords.to(torch.long)
-#
-#     normals_kpts = normals[coords[:, 1], coords[:, 0]]
-#
-#     Timer.end_check_point("get_kpts_normals")
-#
-#     return normals_kpts
-#
-#
 
 
 # NOTE : basically version of utils.get_kpts_normals, but for torch!!!
@@ -327,14 +201,10 @@ def compose_lin_maps(ts, phis, lambdas=None, psis=None):
     return lin_maps, lambdas, R_psis, T_ts, R_phis
 
 
-def decompose_lin_maps(l_maps, asserts=True, invert=False):
+def decompose_lin_maps(l_maps, asserts=True):
 
     assert len(l_maps.shape) == 4
     Timer.start_check_point("decompose_lin_maps")
-
-    # CONTINUE
-    if invert:
-        l_maps = torch.inverse(l_maps)
 
     # CONTINUE: think about whether this is correct: features: tilts (t in [1.0, +inf) ) -> that would mean normalizing transformation may be
     # be (t in (0, 1.0] )
@@ -513,9 +383,11 @@ def get_normals(normals, K):
     return ts_h, phis_h
 
 
-def get_aff_map(img, t, phi, component_mask):
+def get_aff_map(img, t, phi, component_mask, invert_first):
 
     lin_map = compose_lin_maps(t, phi)[0]
+    if not invert_first:
+        lin_map = torch.inverse(lin_map)
     aff_map = torch.zeros((1, 2, 3))
     aff_map[:, :2, :2] = lin_map
 
@@ -541,6 +413,7 @@ def get_aff_map(img, t, phi, component_mask):
 
     return aff_map, new_h, new_w, t_img
 
+
 @dataclass
 class PointsStyle:
     ts: torch.tensor
@@ -549,24 +422,158 @@ class PointsStyle:
     size: float
 
 
-def plot_space_of_tilts(label, img_name, valid_component, normal_index, exp_r, point_styles: list, save_dir:str=None):
+def plot_space_of_tilts(label, img_name, valid_component, normal_index, exp_r, point_styles: list):
 
     fig, ax = plt.subplots()
-    plt.title("{}: {} - {}th component -> {}th normal".format(label, img_name, valid_component, normal_index))
+    plt.title("{}: {} - component {} / normal {}".format(label, img_name, valid_component, normal_index))
     prepare_plot(exp_r, ax)
     for point_style in point_styles:
         draw(exp_r, point_style.ts, point_style.phis, point_style.color, point_style.size, ax)
-    # draw(exp_r, ts_affnet, phis_affnet, "b", 0.5, ax)
-    # draw(exp_r, ts_mean_affnet, phis_mean_affnet, "r", 3, ax)
-    # TODO save
     plt.show()
 
-hard_net_filter = 5
+
+def visualize_LAF_custom(img, LAF, img_idx=0, color='r', title="", **kwargs):
+    x, y = KR.feature.laf.get_laf_pts_to_draw(KR.feature.laf.scale_laf(LAF, 0.5), img_idx)
+    plt.figure(**kwargs)
+    plt.title(title)
+    plt.imshow(KR.utils.tensor_to_image(img[img_idx]))
+    plt.plot(x, y, color)
+    plt.show()
+    return
+
+
+hard_net_filter = 50
+tilt_r = 5.8
+
+
+def affnet_process(pipeline, img_name, hardnet, invert_first):
+
+    img_data = pipeline.process_image(img_name, order=0)[0]
+
+    # K = pipeline.scene_info.get_img_K(img_name)
+    # ts_h, phis_h = get_normals(img_data.normals, K)
+
+    assert len(img_data.normals.shape) == 2
+
+    img_file_path = pipeline.scene_info.get_img_file_path(img_name)
+
+    # NOTE I can provide img as a parameter to save some computation
+    img = cv.cvtColor(cv.imread(img_file_path), cv.COLOR_BGR2RGB)
+    #laffs_no_scale = get_laffs_no_scale_p_cached(img_file_path, img_name, hardnet, cache_laffs=False)
+    _, _, laffs_no_scale = get_lafs(img_file_path, hardnet, img_name)
+
+    lin_map = laffs_no_scale[:, :, :, :2]
+
+    if invert_first:
+        lin_map = torch.inverse(lin_map)
+
+    _, _, ts, phis = decompose_lin_maps(lin_map)
+
+    kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, laffs_no_scale)
+
+    label = "inverted all" if invert_first else "not inverted all"
+    print("{}: count: {}".format(label, ts.shape))
+    plot_space_of_tilts(label, img_name, 0, 0, tilt_r, [
+        PointsStyle(ts=ts, phis=phis, color="b", size=0.5),
+    ])
+
+    all_kps = []
+    all_desc = np.zeros((0, 128))
+    all_laffs = torch.zeros(1, 0, 2, 3)
+
+    for current_component in img_data.valid_components_dict:
+
+        normal_index = img_data.valid_components_dict[current_component]
+
+        print("processing component->normal: {} -> {}".format(current_component, normal_index))
+
+        ## ts_normal, phis_normal = ts_h[:, normal_index], phis_h[:, normal_index]
+        mask = kpts_component_indices == current_component
+        ts_affnet, phis_affnet = ts[mask], phis[mask]
+        t_mean_affnet = torch.mean(ts_affnet)
+        phi_mean_affnet = torch.mean(phis_affnet)
+
+        label = "inverted unrectified" if invert_first else "not inverted unrectified"
+        print("{}: count: {}".format(label, ts_affnet.shape))
+        plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r, [
+            #PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
+            PointsStyle(ts=ts_affnet, phis=phis_affnet, color="b", size=0.5),
+            PointsStyle(ts=t_mean_affnet, phis=phi_mean_affnet, color="r", size=3)
+        ])
+
+        # testing...
+        # aff_maps, new_h, new_w, t_img = get_aff_map(img, torch.tensor([2.0]), torch.tensor([0.0]))
+        mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
+        aff_maps, new_h, new_w, t_img = get_aff_map(img, t_mean_affnet, phi_mean_affnet, mask_img_component, invert_first)
+
+        img_normal_component_title = "{} - warped component {}, normal {}".format(img_name, current_component, normal_index)
+        img_warped_t = KR.geometry.warp_affine(t_img, aff_maps, dsize=(new_h, new_w))
+        img_warped = KR.tensor_to_image(img_warped_t * 255.0).astype(dtype=np.uint8)
+        plt.figure(figsize=(6, 8))
+        plt.title(img_normal_component_title)
+        plt.imshow(img_warped)
+        plt.show()
+
+        kps_warped, descs_warped, laffs_final = hardnet.detectAndCompute(img_warped, give_laffs=True, filter=hard_net_filter)
+
+        aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_maps)
+
+        kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
+        kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
+        kpt_s_back = kpt_s_back.squeeze(2)
+
+        laffs_final[0, :, :, 2] = kpt_s_back
+
+        kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
+        mask = (kpt_s_back_int[:, 1] < img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (kpt_s_back_int[:, 0] < img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
+        print("invalid back transformed pixels: {}/{}".format(mask.shape[0] - mask.sum(), mask.shape[0]))
+
+        kpt_s_back_int[~mask, 0] = 0
+        kpt_s_back_int[~mask, 1] = 0
+        mask = (mask) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == current_component)
+        mask = mask.to(torch.bool)
+
+        kps = []
+        for i, kp in enumerate(kps_warped):
+            if mask[i]:
+                kp.pt = (kpt_s_back[i][0].item(), kpt_s_back[i][1].item())
+                kps.append(kp)
+        descs = descs_warped[mask]
+        laffs_final = laffs_final[:, mask]
+
+        img_normal_component_title = "{} - rectified features for component {}, normal {}".format(img_name, current_component, normal_index)
+        visualize_LAF_custom(t_img, laffs_final, title=img_normal_component_title,  figsize=(8, 12))
+        scale_l_final = KF.get_laf_scale(laffs_final)
+        laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
+
+        all_kps.extend(kps)
+        all_desc = np.vstack((all_desc, descs))
+        all_laffs = torch.cat((all_laffs, laffs_final), 1)
+
+        _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps(laffs_final_no_scale[:, :, :, :2])
+
+        label = "inverted rectified" if invert_first else "not inverted rectified"
+        print("{}: count: {}".format(label, ts_affnet_final.shape))
+        plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r, [
+            #PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
+            PointsStyle(ts=ts_affnet_final, phis=phis_affnet_final, color="b", size=0.5),
+        ])
+
+    title = "{} - all rectified features".format(img_name)
+    visualize_LAF_custom(t_img, all_laffs, title=title, figsize=(8, 12))
+
+    all_scales = KF.get_laf_scale(all_laffs)
+    all_laffs_no_scale = KF.scale_laf(all_laffs, 1. / all_scales)
+    _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps(all_laffs_no_scale[:, :, :, :2])
+
+    label = "all inverted rectified" if invert_first else "all not inverted rectified"
+    print("{}: count: {}".format(label, ts_affnet_final.shape))
+    plot_space_of_tilts(label, img_name, "-", "-", tilt_r, [
+        PointsStyle(ts=ts_affnet_final, phis=phis_affnet_final, color="b", size=0.5),
+    ])
+
 
 def main():
-
-    invert_affine = False
-    cache_laffs = False
 
     Timer.start()
 
@@ -577,127 +584,10 @@ def main():
 
     pipeline = prepare_pipeline()
 
-    exp_r = 5.8
-
-    #dfl = ["frame_0000000070_2", "frame_0000001525_1", "frame_0000001865_1"]
-    dfl = ["frame_0000000070_2"]
-    for idx, img_name in enumerate(dfl):
-        img_file_path = pipeline.scene_info.get_img_file_path(img_name)
-
-        img = cv.cvtColor(cv.imread(img_file_path), cv.COLOR_BGR2RGB)
-        # TODO provide img as a parameter to save some computation
-        laffs_no_scale = get_laffs_no_scale_p_cached(img_file_path, img_name, hardnet, cache_laffs)
-        _, _, ts, phis = decompose_lin_maps(laffs_no_scale[:, :, :, :2], invert=invert_affine)
-
-        plot_space_of_tilts("all", img_name, 0, 0, exp_r, [
-            PointsStyle(ts=ts, phis=phis, color="b", size=0.5),
-        ], save_dir=None)
-
-        img_data = pipeline.process_image(img_name, idx % 2)[0]
-        kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, laffs_no_scale)
-
-        K = pipeline.scene_info.get_img_K(img_name)
-        ts_h, phis_h = get_normals(img_data.normals, K)
-
-         # -1 for invalid/no normal #AGAIN the ambiguity of whether 1 normal is (3,) it (1,3)
-        assert len(img_data.normals.shape) == 2
-
-        all_kps = []
-        all_desc = np.zeros((0, 128))
-        all_laffs_final = torch.zeros(1, 0, 2, 3)
-
-        #for i in range(img_data.normals.shape[0]):
-        for valid_component in img_data.valid_components_dict:
-
-            normal_index = img_data.valid_components_dict[valid_component]
-
-            print("processing component->normal: {} -> {}".format(valid_component, normal_index))
-
-            ts_normal, phis_normal = ts_h[:, normal_index], phis_h[:, normal_index]
-            mask = kpts_component_indices == valid_component
-            ts_affnet, phis_affnet = ts[mask], phis[mask]
-            t_mean_affnet = torch.mean(ts_affnet)
-            phi_mean_affnet = torch.mean(phis_affnet)
-
-            plot_space_of_tilts("unrectified", img_name, valid_component, normal_index, exp_r, [
-                PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
-                PointsStyle(ts=ts_affnet, phis=phis_affnet, color="b", size=0.5),
-                PointsStyle(ts=t_mean_affnet, phis=phi_mean_affnet, color="r", size=3)
-            ], save_dir=None)
-
-
-            # testing...
-            #aff_maps, new_h, new_w, t_img = get_aff_map(img, torch.tensor([2.0]), torch.tensor([0.0]))
-            mask_img_component = torch.from_numpy(img_data.components_indices == valid_component)
-            aff_maps, new_h, new_w, t_img = get_aff_map(img, t_mean_affnet, phi_mean_affnet, mask_img_component)
-
-            img_warped_t = KR.geometry.warp_affine(t_img, aff_maps, dsize=(new_h, new_w))
-            img_warped = KR.tensor_to_image(img_warped_t * 255.0).astype(dtype=np.uint8)
-            plt.figure(figsize=(6, 8))
-            plt.title("{} - warped component {}, normal {}".format(img_name, valid_component, normal_index))
-            plt.imshow(img_warped)
-            plt.show()
-
-            #cv.cvtColor(cv.imread(file_path), cv.COLOR_BGR2RGB)
-            kps_warped, descs_warped, laffs_final = hardnet.detectAndCompute(img_warped, give_laffs=True, filter=hard_net_filter)
-
-            aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_maps)
-
-            kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
-            kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
-            kpt_s_back = kpt_s_back.squeeze(2)
-
-            # laffs_h = torch.zeros(laffs_final.shape[1:2] + (3,))
-            # laffs_h[:, :2] = laffs_final[0, :, :, 2]
-            # laffs_h[:, 2] = 1.0
-            # new_laffs_coords = aff_maps_inv.repeat(laffs_h.shape[0], 1, 1) @ laffs_h.unsqueeze(2)
-            # laffs_final[0, :, :, 2] = new_laffs_coords[:, :, 0]
-            laffs_final[0, :, :, 2] = kpt_s_back
-
-            kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
-            ##(kpt_s_back[:, 0, 0].to(torch.long) <= img.shape[0]) & (kpt_s_back[:, 0, 0].to(torch.long) < 0)
-            mask = (kpt_s_back_int[:, 1] < img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (kpt_s_back_int[:, 0] < img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
-            print("invalid back transformed pixels: {}/{}".format(mask.shape[0] - mask.sum(), mask.shape[0]))
-
-            kpt_s_back_int[~mask, 0] = 0
-            kpt_s_back_int[~mask, 1] = 0
-            mask = (mask) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == valid_component)
-            mask = mask.to(torch.bool)
-
-            kps = []
-            for i, kp in enumerate(kps_warped):
-                if mask[i]:
-                    kp.pt = (kpt_s_back[i][0].item(), kpt_s_back[i][1].item())
-                    kps.append(kp)
-
-            descs = descs_warped[mask]
-            laffs_final = laffs_final[:, mask]
-
-            visualize_LAF(t_img, laffs_final, figsize=(8, 12))
-            scale_l_final = KF.get_laf_scale(laffs_final)
-            laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
-
-            all_kps.extend(kps)
-            all_desc = np.vstack((all_desc, descs))
-            all_laffs_final = torch.cat((all_laffs_final, laffs_final), 1)
-
-            _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps(laffs_final_no_scale[:, :, :, :2], invert=False)
-            # ts_affnet_final_mean = torch.mean(ts_affnet_final)
-            # phis_affnet_final_mean = torch.mean(phis_affnet_final)
-
-            plot_space_of_tilts("rectified", img_name, valid_component, normal_index, exp_r, [
-                PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
-                PointsStyle(ts=ts_affnet_final, phis=phis_affnet_final, color="b", size=0.5),
-                #PointsStyle(ts=ts_affnet_final_mean, phis=phis_affnet_final_mean, color="r", size=3)
-            ], save_dir=None)
-
-        visualize_LAF(t_img, all_laffs_final, figsize=(8, 12))
-
-            ## coords = torch.round(coords)
-            # torch.clamp(coords[:, 0], 0, components_indices.shape[1] - 1, out=coords[:, 0])
-            # torch.clamp(coords[:, 1], 0, components_indices.shape[0] - 1, out=coords[:, 1])
-            # coords = coords.to(torch.long)
-
+    #l = ["frame_0000000070_2", "frame_0000001525_1", "frame_0000001865_1"]
+    for img_name in ["frame_0000000070_2"]:
+        affnet_process(pipeline, img_name, hardnet, False)
+        affnet_process(pipeline, img_name, hardnet, True)
 
     Timer.log_stats()
 
@@ -745,7 +635,7 @@ def decomposition_test():
     print("orig t: {}, phi: {}".format(t, phi))
 
     def dec_and_print(lin_map):
-        lambda_, psi, t, phi = decompose_lin_maps(lin_map, asserts=True, invert=False)
+        lambda_, psi, t, phi = decompose_lin_maps(lin_map, asserts=True)
         print("l: {}, psi: {}, t: {}, phi: {}".format(lambda_, psi, t, phi))
         return lambda_, psi, t, phi
 
