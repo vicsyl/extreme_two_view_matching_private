@@ -59,35 +59,36 @@ def get_rotation_matrices(unit_rotation_vectors, thetas):
     return R
 
 
-def get_rectification_rotations(normals):
+# def get_rectification_rotations(normals):
+#
+#     # now the normals will be "from" me, "inside" the surfaces
+#     normals = -torch.from_numpy(normals)[None]
+#
+#     z = torch.tensor([[[0.0, 0.0, 1.0]]]).expand(-1, normals.shape[1], -1)
+#     print()
+#
+#     # this handles the case when there is only one dominating plane
+#
+#     assert torch.all(normals[..., 2] > 0)
+#
+#     rotation_vectors = torch.cross(normals, z)
+#     rotation_vector_norms = torch.norm(rotation_vectors, dim=2).unsqueeze(2)
+#     unit_rotation_vectors = rotation_vectors / rotation_vector_norms
+#
+#     Rs = get_rotation_matrices(unit_rotation_vectors, rotation_vector_norms)
+#     assert torch.allclose(torch.det(Rs), torch.tensor(1.0))
+#     return Rs
+#
+#
 
-    # now the normals will be "from" me, "inside" the surfaces
-    normals = -torch.from_numpy(normals)[None]
-
-    z = torch.tensor([[[0.0, 0.0, 1.0]]]).expand(-1, normals.shape[1], -1)
-    print()
-
-    # this handles the case when there is only one dominating plane
-
-    assert torch.all(normals[..., 2] > 0)
-
-    rotation_vectors = torch.cross(normals, z)
-    rotation_vector_norms = torch.norm(rotation_vectors, dim=2).unsqueeze(2)
-    unit_rotation_vectors = rotation_vectors / rotation_vector_norms
-
-    Rs = get_rotation_matrices(unit_rotation_vectors, rotation_vector_norms)
-    assert torch.allclose(torch.det(Rs), torch.tensor(1.0))
-    return Rs
-
-
-def get_rectification_homographies(normals, K):
-    Rs = get_rectification_rotations(normals)
-    K = torch.from_numpy(K).to(torch.float)[None, None]
-    K_inv = torch.inverse(K).to(torch.float)
-    Hs = K @ Rs @ K_inv
-    return Hs
-
-
+# def get_rectification_homographies(normals, K):
+#     Rs = get_rectification_rotations(normals)
+#     K = torch.from_numpy(K).to(torch.float)[None, None]
+#     K_inv = torch.inverse(K).to(torch.float)
+#     Hs = K @ Rs @ K_inv
+#     return Hs
+#
+#
 def get_lafs(file_path, descriptor, img_name):
 
     img = cv.cvtColor(cv.imread(file_path), cv.COLOR_BGR2RGB)
@@ -113,9 +114,6 @@ def get_lafs(file_path, descriptor, img_name):
 def prepare_pipeline():
 
     Timer.start_check_point("prepare_pipeline")
-    # parser = argparse.ArgumentParser(prog='pipeline')
-    # parser.add_argument('--output_dir', help='output dir')
-    # args = parser.parse_args()
 
     pipeline, config_map = Pipeline.configure("config.txt", None)
     pipeline.output_dir = "affnet_demo"
@@ -131,24 +129,24 @@ def prepare_pipeline():
 
 
 # NOTE : basically version of utils.get_kpts_normals, but for torch!!!
-def get_kpts_normals_indices(components_indices, valid_components_dict, laffs_no_scale):
-
-    Timer.start_check_point("get_kpts_normals_indices")
-
-    coords = laffs_no_scale[0, :, :, 2]
-    coords = torch.round(coords)
-    torch.clamp(coords[:, 0], 0, components_indices.shape[1] - 1, out=coords[:, 0])
-    torch.clamp(coords[:, 1], 0, components_indices.shape[0] - 1, out=coords[:, 1])
-    coords = coords.to(torch.long)
-
-    component_indices = components_indices[coords[:, 1], coords[:, 0]]
-    normals_indices = torch.ones_like(coords[:, 0]) * -1
-    for valid_component in valid_components_dict:
-        normals_indices[component_indices == valid_component] = valid_components_dict[valid_component]
-
-    Timer.end_check_point("get_kpts_normals_indices")
-
-    return normals_indices[None]
+# def get_kpts_normals_indices(components_indices, valid_components_dict, laffs_no_scale):
+#
+#     Timer.start_check_point("get_kpts_normals_indices")
+#
+#     coords = laffs_no_scale[0, :, :, 2]
+#     coords = torch.round(coords)
+#     torch.clamp(coords[:, 0], 0, components_indices.shape[1] - 1, out=coords[:, 0])
+#     torch.clamp(coords[:, 1], 0, components_indices.shape[0] - 1, out=coords[:, 1])
+#     coords = coords.to(torch.long)
+#
+#     component_indices = components_indices[coords[:, 1], coords[:, 0]]
+#     normals_indices = torch.ones_like(coords[:, 0]) * -1
+#     for valid_component in valid_components_dict:
+#         normals_indices[component_indices == valid_component] = valid_components_dict[valid_component]
+#
+#     Timer.end_check_point("get_kpts_normals_indices")
+#
+#     return normals_indices[None]
 
 
 # NOTE : also basically version of utils.get_kpts_normals, but for torch!!!
@@ -175,7 +173,6 @@ def get_kpts_components_indices(components_indices, valid_components_dict, laffs
 
 def compose_lin_maps(ts, phis, lambdas=None, psis=None):
 
-    #TODO maybe expand?
     if lambdas is None:
         lambdas = 1.0 / torch.sqrt(ts)
         lambdas = lambdas.repeat(1, 1, 1, 1)
@@ -206,12 +203,9 @@ def decompose_lin_maps(l_maps, asserts=True):
     assert len(l_maps.shape) == 4
     Timer.start_check_point("decompose_lin_maps")
 
-    # CONTINUE: think about whether this is correct: features: tilts (t in [1.0, +inf) ) -> that would mean normalizing transformation may be
-    # be (t in (0, 1.0] )
-    # btw. it's easier to first decompose and then compute the reverse, is it not?
-    # to test this, maybe
+    # NOTE for now just disallow CUDA
+    assert l_maps.device == torch.device('cpu')
 
-    # TODO watch out for CUDA efficiency
     U, s, V = torch.svd(l_maps)
     V = torch.transpose(V, dim0=2, dim1=3)
 
@@ -229,9 +223,13 @@ def decompose_lin_maps(l_maps, asserts=True):
         assert torch.all(torch.sgn(s[:, :, 0]) == torch.sgn(s[:, :, 1]))
         assert torch.all(s[:, :, 0] != 0)
 
+    # TODO this is probably useless as factor will be 1
     factor = torch.sgn(s[:, :, :1])
     U = factor[:, :, :, None] * U
     s = factor * s
+
+    # lambda <- s[1]
+    # s <- [[t, 0], [0, 1]], t >= 1
     lambdas = s[:, :, 1].clone()
     s = s / s[:, :, 1:]
 
@@ -247,6 +245,7 @@ def decompose_lin_maps(l_maps, asserts=True):
         assert torch.allclose(dets_v, dets_u, atol=1e-07)
         assert torch.allclose(torch.abs(dets_v), torch.tensor(1.0), atol=1e-07)
 
+    # it could be that det U[:, :, i] == det V[:, :, i] == -1, therefore I need to negate row(U, 0) and column(V, 0) -> two reflections
     factor_rows_columns = torch.where(dets_v > 0.0, 1.0, -1.0).view(1, -1, 1)
     U[:, :, :, 0] = factor_rows_columns * U[:, :, :, 0]
     V[:, :, 0, :] = factor_rows_columns * V[:, :, 0, :]
@@ -259,7 +258,7 @@ def decompose_lin_maps(l_maps, asserts=True):
         assert torch.allclose(dets_v, dets_u, atol=1e-07)
         assert torch.allclose(dets_v, torch.tensor(1.0), atol=1e-07)
 
-    # phi in (0, pi)
+    # phi in (0, pi), if not, V <- -V and U <- -U
     phi_norm_factor = torch.where(V[:, :, :1, 1:] > 0, -1.0, 1.0)
     V = V * phi_norm_factor
     U = U * phi_norm_factor
@@ -275,77 +274,34 @@ def decompose_lin_maps(l_maps, asserts=True):
     assert_rotation(V, phis)
 
     psis = torch.arcsin(-torch.clamp(U[:, :, 0, 1], -1.0, 1.0))
-
     assert_rotation(U, psis)
 
     ts = s[:, :, 0]
 
-    Timer.end_check_point("decompose_lin_maps")
-
     assert_decomposition()
+    Timer.end_check_point("decompose_lin_maps")
 
     return lambdas, psis, ts, phis
 
 
-# def get_rectification_rotation_vectors(normals):
-#
-#     # now the normals will be "from" me, "inside" the surfaces
-#     normals = -normals
-#
-#     z = torch.tensor([0.0, 0.0, 1.0])
-#
-#     # this handles the case when there is only one dominating plane
-#     assert normals[:, 2] > 0
-#
-#     rotation_vectors = torch.cross(normals, z)
-#     rotation_vector_norms = np.linalg.norm(rotation_vectors, axis=1) # sins_theta
-#     unit_rotation_vector = rotation_vectors / rotation_vector_norms
-#
-#
-#     # theta = math.asin(abs_sin_theta) * rotation_factor
-#     # # TODO !!!
-#     # theta = min(theta, math.pi * 4.0/9.0)
-#     #
-#     # R = get_rotation_matrix(unit_rotation_vector, theta)
-#     # det = np.linalg.det(R)
-#     # assert math.fabs(det - 1.0) < 0.0001
-#     # return R
-
-# def get_normal_vec_from_decomposition(ts, phis):
-#     Timer.start_check_point("get_normal_vec_from_decomposition")
-#     sin_theta = torch.sqrt(ts ** 2 - 1) / ts
-#     xs = torch.cos(phis) * sin_theta
-#     ys = torch.sin(phis) * sin_theta
-#     zs = torch.sqrt(1 - xs ** 2 - ys ** 2)
-#     norms_from_lafs = torch.cat((xs.unsqueeze(2), ys.unsqueeze(2), zs.unsqueeze(2)), 2)
-#
-#     Timer.end_check_point("get_normal_vec_from_decomposition")
-#     return norms_from_lafs
-
-
-# TODO provide img as a parameter to save some computation
-def get_laffs_no_scale_p_cached(img_file_path, img_name, descriptor, cache_laffs):
-    cache_laffs_fn = "work/laffs_no_scale.pt"
-    if cache_laffs and os.path.exists(cache_laffs_fn):
-        Timer.start_check_point("laffs_no_scale cache read")
-        laffs_no_scale = torch.load(cache_laffs_fn)
-        Timer.end_check_point("laffs_no_scale cache read")
-    else:
-        Timer.start_check_point("laffs_no_scale computation")
-        _, _, laffs_no_scale = get_lafs(img_file_path, descriptor, img_name)
-        Timer.end_check_point("laffs_no_scale computation")
-        Timer.start_check_point("laffs_no_scale saving")
-        torch.save(laffs_no_scale, cache_laffs_fn)
-        Timer.end_check_point("laffs_no_scale saving")
-    return laffs_no_scale
+# # TODO provide img as a parameter to save some computation
+# def get_laffs_no_scale_p_cached(img_file_path, img_name, descriptor, cache_laffs):
+#     cache_laffs_fn = "work/laffs_no_scale.pt"
+#     if cache_laffs and os.path.exists(cache_laffs_fn):
+#         Timer.start_check_point("laffs_no_scale cache read")
+#         laffs_no_scale = torch.load(cache_laffs_fn)
+#         Timer.end_check_point("laffs_no_scale cache read")
+#     else:
+#         Timer.start_check_point("laffs_no_scale computation")
+#         _, _, laffs_no_scale = get_lafs(img_file_path, descriptor, img_name)
+#         Timer.end_check_point("laffs_no_scale computation")
+#         Timer.start_check_point("laffs_no_scale saving")
+#         torch.save(laffs_no_scale, cache_laffs_fn)
+#         Timer.end_check_point("laffs_no_scale saving")
+#     return laffs_no_scale
 
 
 def draw(radius, ts, phis, color, size, ax):
-
-    # upper bound on radii
-    log_radius = math.log(radius)
-    # if len(ts.shape) > 1:
-    #print("foo draw: r = {}\n ts = {} \n phis = {} \n style = {}".format(log_radius, ts[:100], phis[:100], color))
 
     ts_logs = torch.log(ts)
     xs = torch.cos(phis) * ts_logs
@@ -369,19 +325,19 @@ def prepare_plot(radius: float, ax):
 
 
 # TODO export somehow?
-def get_normals(normals, K):
-
-    Hs = get_rectification_homographies(normals, K)
-    Hs_as_affine = Hs[:, :, :2, :2]
-    det_Hs = torch.det(Hs_as_affine).sqrt().unsqueeze(2).unsqueeze(3)
-    Hs_as_affine = Hs_as_affine / det_Hs
-
-    # TODO CONTINUE asserts=False did not work on the whole set of normals (index 3081)
-    # TODO invert=?
-    _, _, ts_h, phis_h = decompose_lin_maps(Hs_as_affine, asserts=True)
-
-    return ts_h, phis_h
-
+# def get_normals(normals, K):
+#
+#     Hs = get_rectification_homographies(normals, K)
+#     Hs_as_affine = Hs[:, :, :2, :2]
+#     det_Hs = torch.det(Hs_as_affine).sqrt().unsqueeze(2).unsqueeze(3)
+#     Hs_as_affine = Hs_as_affine / det_Hs
+#
+#     # TODO CONTINUE asserts=False did not work on the whole set of normals (index 3081)
+#     # TODO invert=?
+#     _, _, ts_h, phis_h = decompose_lin_maps(Hs_as_affine, asserts=True)
+#
+#     return ts_h, phis_h
+#
 
 def get_aff_map(img, t, phi, component_mask, invert_first):
 
@@ -446,14 +402,7 @@ hard_net_filter = 50
 tilt_r = 5.8
 
 
-def affnet_process(pipeline, img_name, hardnet, invert_first):
-
-    img_data = pipeline.process_image(img_name, order=0)[0]
-
-    # K = pipeline.scene_info.get_img_K(img_name)
-    # ts_h, phis_h = get_normals(img_data.normals, K)
-
-    assert len(img_data.normals.shape) == 2
+def affnet_process(pipeline, img_name, hardnet, invert_first, img_data):
 
     img_file_path = pipeline.scene_info.get_img_file_path(img_name)
 
@@ -586,8 +535,12 @@ def main():
 
     #l = ["frame_0000000070_2", "frame_0000001525_1", "frame_0000001865_1"]
     for img_name in ["frame_0000000070_2"]:
-        affnet_process(pipeline, img_name, hardnet, False)
-        affnet_process(pipeline, img_name, hardnet, True)
+
+        img_data = pipeline.process_image(img_name, order=0)[0]
+        assert len(img_data.normals.shape) == 2
+
+        affnet_process(pipeline, img_name, hardnet, False, img_data)
+        affnet_process(pipeline, img_name, hardnet, True, img_data)
 
     Timer.log_stats()
 
