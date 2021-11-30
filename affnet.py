@@ -327,11 +327,36 @@ def compose_lin_maps(ts, phis, lambdas=None, psis=None):
     return lin_maps
 
 
-def decompose_lin_maps(l_maps, asserts=True):
+def decompose_lin_maps(l_maps, asserts=True, rec=True):
 
     Timer.start_check_point("decompose_lin_maps")
 
     l_maps = torch.inverse(l_maps)
+
+    # CONTINUE: think about whether this is correct: features: tilts (t in [1.0, +inf) ) -> that would mean normalizing transformation may be
+    # be (t in (0, 1.0] )
+    # btw. it's easier to first decompose and then compute the reverse, is it not?
+    # to test this, maybe
+
+    # if rec:
+    #     l_maps_orig = l_maps
+    #     print("rec: {}".format(l_maps[0, 0]))
+    #     lambdas2, psis2, ts2, phis2 = decompose_lin_maps(l_maps_orig, asserts, rec=False)
+    #     Timer.start_check_point("inverse")
+    #     l_maps = torch.inverse(l_maps)
+    #
+    #     projected_lin_map = compose_lin_maps(ts2[0, 0], phis2[0, 0])
+    #     projected_lin_map_inv = torch.inverse(projected_lin_map)
+    #     lambdas3, psis3, ts3, phis3 = decompose_lin_maps(projected_lin_map_inv, asserts, rec=False)
+    #     lambdas4, psis4, ts4, phis4 = decompose_lin_maps(projected_lin_map, asserts, rec=False)
+    #     print()
+    #
+    #     Timer.end_check_point("inverse")
+    #     print("rec2: {}".format(l_maps[0, 0]))
+    #     print("rec2 orig: {}".format(l_maps_orig[0, 0]))
+    #     print()
+    # else:
+    #     print("NOT rec: {}".format(l_maps[0, 0]))
 
     # TODO watch out for CUDA efficiency
     U, s, V = torch.svd(l_maps)
@@ -396,6 +421,11 @@ def decompose_lin_maps(l_maps, asserts=True):
     ts = s[:, :, 0]
 
     Timer.end_check_point("decompose_lin_maps")
+
+    # if rec:
+    #     # CONTINUE: ts == ts2, therefore to je blbe!!! - viz predchozi CONTINUE!
+    #     #lambdas2, psis2, ts2, phis2
+    #     print()
 
     return lambdas, psis, ts, phis
 
@@ -473,7 +503,7 @@ def prepare_plot(radius: float, ax):
 
     ax.set_aspect(1.0)
 
-    factor = 3
+    factor = 1.2
     ax.set_xlim((-factor*log_radius, factor*log_radius))
     ax.set_ylim((-factor*log_radius, factor*log_radius))
 
@@ -495,20 +525,23 @@ def get_normals(normals, K):
     return ts_h, phis_h
 
 
-def get_aff_map(img, t, phi):
+def get_aff_map(img, t, phi, component_mask):
 
-    h, w = img.shape[:2]
     lin_map = compose_lin_maps(t, phi)
     aff_map = torch.zeros((1, 2, 3))
     aff_map[:, :2, :2] = lin_map
 
-    corner_pts = torch.tensor([[0, 0],
-                               [0, h],
-                               [w, h],
-                               [w, 0]], dtype=torch.float)[None]
+    coords = torch.where(component_mask)
+    min_x = coords[1].min()
+    max_x = coords[1].max()
+    min_y = coords[0].min()
+    max_y = coords[0].max()
 
-    # TODO do I really need this? - test it here for (W, H) vs. (H, W)
-    # TODO convex hull
+    corner_pts = torch.tensor([[min_x, min_y],
+                               [min_x, max_y],
+                               [max_x, max_y],
+                               [max_x, min_y]], dtype=torch.float)[None]
+
     H = KR.geometry.convert_affinematrix_to_homography(aff_map)
     corner_pts_new = KR.geometry.transform_points(H, corner_pts)
 
@@ -540,7 +573,7 @@ def plot_space_of_tilts(label, img_name, valid_component, normal_index, exp_r, p
     # TODO save
     plt.show()
 
-hard_net_filter = 50
+hard_net_filter = 5
 
 def main():
 
@@ -555,6 +588,8 @@ def main():
 
     pipeline = prepare_pipeline()
 
+    exp_r = 5.8
+
     #dfl = ["frame_0000000070_2", "frame_0000001525_1", "frame_0000001865_1"]
     dfl = ["frame_0000000070_2"]
     for idx, img_name in enumerate(dfl):
@@ -566,7 +601,7 @@ def main():
         _, _, ts, phis = decompose_lin_maps(laffs_no_scale[:, :, :, :2])
 
         plot_space_of_tilts("all", img_name, 0, 0, exp_r, [
-            PointsStyle(ts=ts, phis=phis, color="b", size=5),
+            PointsStyle(ts=ts, phis=phis, color="b", size=0.5),
         ], save_dir=None)
 
         img_data = pipeline.process_image(img_name, idx % 2)[0]
@@ -575,7 +610,6 @@ def main():
         K = pipeline.scene_info.get_img_K(img_name)
         ts_h, phis_h = get_normals(img_data.normals, K)
 
-        exp_r = 1.7
          # -1 for invalid/no normal #AGAIN the ambiguity of whether 1 normal is (3,) it (1,3)
         assert len(img_data.normals.shape) == 2
 
@@ -602,9 +636,11 @@ def main():
                 PointsStyle(ts=t_mean_affnet, phis=phi_mean_affnet, color="r", size=3)
             ], save_dir=None)
 
+
             # testing...
             #aff_maps, new_h, new_w, t_img = get_aff_map(img, torch.tensor([2.0]), torch.tensor([0.0]))
-            aff_maps, new_h, new_w, t_img = get_aff_map(img, t_mean_affnet, phi_mean_affnet)
+            mask_img_component = torch.from_numpy(img_data.components_indices == valid_component)
+            aff_maps, new_h, new_w, t_img = get_aff_map(img, t_mean_affnet, phi_mean_affnet, mask_img_component)
 
             img_warped_t = KR.geometry.warp_affine(t_img, aff_maps, dsize=(new_h, new_w))
             img_warped = KR.tensor_to_image(img_warped_t * 255.0).astype(dtype=np.uint8)
