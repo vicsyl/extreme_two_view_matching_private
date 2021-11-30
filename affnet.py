@@ -324,43 +324,36 @@ def compose_lin_maps(ts, phis, lambdas=None, psis=None):
     T_ts[:, :, 1, 1] = 1
 
     lin_maps = lambdas * R_psis @ T_ts @ R_phis
-    return lin_maps
+    return lin_maps, lambdas, R_psis, T_ts, R_phis
 
 
-def decompose_lin_maps(l_maps, asserts=True, rec=True):
+def decompose_lin_maps(l_maps, asserts=True, invert=False):
 
+    assert len(l_maps.shape) == 4
     Timer.start_check_point("decompose_lin_maps")
 
-    l_maps = torch.inverse(l_maps)
+    # CONTINUE
+    if invert:
+        l_maps = torch.inverse(l_maps)
 
     # CONTINUE: think about whether this is correct: features: tilts (t in [1.0, +inf) ) -> that would mean normalizing transformation may be
     # be (t in (0, 1.0] )
     # btw. it's easier to first decompose and then compute the reverse, is it not?
     # to test this, maybe
 
-    # if rec:
-    #     l_maps_orig = l_maps
-    #     print("rec: {}".format(l_maps[0, 0]))
-    #     lambdas2, psis2, ts2, phis2 = decompose_lin_maps(l_maps_orig, asserts, rec=False)
-    #     Timer.start_check_point("inverse")
-    #     l_maps = torch.inverse(l_maps)
-    #
-    #     projected_lin_map = compose_lin_maps(ts2[0, 0], phis2[0, 0])
-    #     projected_lin_map_inv = torch.inverse(projected_lin_map)
-    #     lambdas3, psis3, ts3, phis3 = decompose_lin_maps(projected_lin_map_inv, asserts, rec=False)
-    #     lambdas4, psis4, ts4, phis4 = decompose_lin_maps(projected_lin_map, asserts, rec=False)
-    #     print()
-    #
-    #     Timer.end_check_point("inverse")
-    #     print("rec2: {}".format(l_maps[0, 0]))
-    #     print("rec2 orig: {}".format(l_maps_orig[0, 0]))
-    #     print()
-    # else:
-    #     print("NOT rec: {}".format(l_maps[0, 0]))
-
     # TODO watch out for CUDA efficiency
     U, s, V = torch.svd(l_maps)
     V = torch.transpose(V, dim0=2, dim1=3)
+
+    lambdas = torch.ones(l_maps.shape[:2])
+
+    def assert_decomposition():
+        d = torch.diag_embed(s)
+        product = lambdas.view(1, -1, 1, 1) * U @ d @ V
+        close_cond = torch.allclose(product, l_maps, atol=1e-05)
+        assert close_cond
+
+    assert_decomposition()
 
     if asserts:
         assert torch.all(torch.sgn(s[:, :, 0]) == torch.sgn(s[:, :, 1]))
@@ -372,6 +365,8 @@ def decompose_lin_maps(l_maps, asserts=True, rec=True):
     lambdas = s[:, :, 1].clone()
     s = s / s[:, :, 1:]
 
+    assert_decomposition()
+
     if asserts:
         assert torch.all(s[:, :, 0] >= 1)
         assert torch.all(s[:, :, 1] == 1)
@@ -382,14 +377,11 @@ def decompose_lin_maps(l_maps, asserts=True, rec=True):
         assert torch.allclose(dets_v, dets_u, atol=1e-07)
         assert torch.allclose(torch.abs(dets_v), torch.tensor(1.0), atol=1e-07)
 
-    def swap_rows(A):
-        for col in [0, 1]:
-            tmp_el = A[:, :, 0, col].clone()
-            A[:, :, 0, col] = torch.where(dets_v < 0.0, A[:, :, 1, col], A[:, :, 0, col])
-            A[:, :, 1, col] = torch.where(dets_v < 0.0, tmp_el, A[:, :, 1, col])
+    factor_rows_columns = torch.where(dets_v > 0.0, 1.0, -1.0).view(1, -1, 1)
+    U[:, :, :, 0] = factor_rows_columns * U[:, :, :, 0]
+    V[:, :, 0, :] = factor_rows_columns * V[:, :, 0, :]
 
-    swap_rows(U)
-    swap_rows(V)
+    assert_decomposition()
 
     dets_u = torch.det(U)
     dets_v = torch.det(V)
@@ -413,8 +405,6 @@ def decompose_lin_maps(l_maps, asserts=True, rec=True):
     assert_rotation(V, phis)
 
     psis = torch.arcsin(-torch.clamp(U[:, :, 0, 1], -1.0, 1.0))
-    #psis_norm_factor = torch.where(U[:, :, :1, 1:] > 0, -1.0, 1.0)
-    #psis = psis * psis_norm_factor[:, :, 0, 0]
 
     assert_rotation(U, psis)
 
@@ -422,10 +412,7 @@ def decompose_lin_maps(l_maps, asserts=True, rec=True):
 
     Timer.end_check_point("decompose_lin_maps")
 
-    # if rec:
-    #     # CONTINUE: ts == ts2, therefore to je blbe!!! - viz predchozi CONTINUE!
-    #     #lambdas2, psis2, ts2, phis2
-    #     print()
+    assert_decomposition()
 
     return lambdas, psis, ts, phis
 
@@ -520,6 +507,7 @@ def get_normals(normals, K):
     Hs_as_affine = Hs_as_affine / det_Hs
 
     # TODO CONTINUE asserts=False did not work on the whole set of normals (index 3081)
+    # TODO invert=?
     _, _, ts_h, phis_h = decompose_lin_maps(Hs_as_affine, asserts=True)
 
     return ts_h, phis_h
@@ -527,7 +515,7 @@ def get_normals(normals, K):
 
 def get_aff_map(img, t, phi, component_mask):
 
-    lin_map = compose_lin_maps(t, phi)
+    lin_map = compose_lin_maps(t, phi)[0]
     aff_map = torch.zeros((1, 2, 3))
     aff_map[:, :2, :2] = lin_map
 
@@ -577,6 +565,7 @@ hard_net_filter = 5
 
 def main():
 
+    invert_affine = False
     cache_laffs = False
 
     Timer.start()
@@ -598,7 +587,7 @@ def main():
         img = cv.cvtColor(cv.imread(img_file_path), cv.COLOR_BGR2RGB)
         # TODO provide img as a parameter to save some computation
         laffs_no_scale = get_laffs_no_scale_p_cached(img_file_path, img_name, hardnet, cache_laffs)
-        _, _, ts, phis = decompose_lin_maps(laffs_no_scale[:, :, :, :2])
+        _, _, ts, phis = decompose_lin_maps(laffs_no_scale[:, :, :, :2], invert=invert_affine)
 
         plot_space_of_tilts("all", img_name, 0, 0, exp_r, [
             PointsStyle(ts=ts, phis=phis, color="b", size=0.5),
@@ -685,14 +674,14 @@ def main():
             laffs_final = laffs_final[:, mask]
 
             visualize_LAF(t_img, laffs_final, figsize=(8, 12))
-            # scale_l_final = KF.get_laf_scale(laffs_final)
-            # laffs_final = KF.scale_laf(laffs_final, 1. / scale_l_final)
+            scale_l_final = KF.get_laf_scale(laffs_final)
+            laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
 
             all_kps.extend(kps)
             all_desc = np.vstack((all_desc, descs))
             all_laffs_final = torch.cat((all_laffs_final, laffs_final), 1)
 
-            _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps(laffs_final[:, :, :, :2])
+            _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps(laffs_final_no_scale[:, :, :, :2], invert=False)
             # ts_affnet_final_mean = torch.mean(ts_affnet_final)
             # phis_affnet_final_mean = torch.mean(phis_affnet_final)
 
@@ -749,8 +738,43 @@ def draw_test():
     plt.show()
 
 
+def decomposition_test():
+
+    t = torch.tensor(1.5220)
+    phi = torch.tensor(2.2653)
+    print("orig t: {}, phi: {}".format(t, phi))
+
+    def dec_and_print(lin_map):
+        lambda_, psi, t, phi = decompose_lin_maps(lin_map, asserts=True, invert=False)
+        print("l: {}, psi: {}, t: {}, phi: {}".format(lambda_, psi, t, phi))
+        return lambda_, psi, t, phi
+
+
+    projected_lin_map, lambdas, R_psis, T_ts, R_phis = compose_lin_maps(t, phi)
+    assert torch.all(projected_lin_map == lambdas * R_psis @ T_ts @ R_phis)
+
+    print("decomposition scalar and matrices: lambda, R_1, T, R_2: \n {} \n {} \n {} \n {}".format(lambdas, R_psis, T_ts, R_phis))
+    print(" = lin map: {}:".format(projected_lin_map))
+
+    lambdas_back, psis_back, ts_back, phis_back = dec_and_print(projected_lin_map)
+
+    projected_lin_map_back, lambdas, R_psis, T_ts, R_phis = compose_lin_maps(ts_back, phis_back, lambdas_back, psis_back)
+    assert torch.all(projected_lin_map_back == lambdas * R_psis @ T_ts @ R_phis)
+
+    assert torch.allclose(projected_lin_map_back, projected_lin_map)
+
+    print("decomposition scalar and matrices: lambda, R_1, T, R_2: \n {} \n {} \n {} \n {}".format(lambdas, R_psis, T_ts, R_phis))
+    print(" = lin map: {}:".format(projected_lin_map_back))
+
+    projected_lin_map_inv = torch.inverse(projected_lin_map)
+    print(" inverse: {}:".format(projected_lin_map_inv))
+
+    lambdas_inv, psis_inv, ts_inv, phis_inv = dec_and_print(projected_lin_map_inv)
+
+
 if __name__ == "__main__":
     main()
+    #decomposition_test()
     #draw_test()
 
 # CONTINUE:
