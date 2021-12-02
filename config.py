@@ -46,10 +46,10 @@ class Property:
     cache_img_data = 2
     all_combinations = 3
 
-    def __init__(self, _type, default, option=False, cache=cache_img_data, list_allowed=True, allowed_values=None):
+    def __init__(self, _type, default, optional=False, cache=cache_img_data, list_allowed=True, allowed_values=None):
         self.type = _type
         self.default = default
-        self.option = option
+        self.optional = optional
         self.cache = cache
         self.list_allowed = list_allowed
         self.allowed_values = allowed_values
@@ -70,7 +70,7 @@ class Property:
 
     def parse_value(self, value):
 
-        if self.option and value.lower() == "none":
+        if self.optional and value.lower() == "none":
             return None
 
         if self.type == "string":
@@ -117,7 +117,7 @@ class CartesianConfig:
         "fginn_spatial_th": Property("int", 100, cache=Property.cache_img_data),
         "ratio_th": Property("float", 0.5, cache=Property.cache_img_data),
         "feature_descriptor": Property("enum", default="SIFT", cache=Property.cache_img_data, allowed_values=["SIFT", "BRISK", "SUPERPOINT"]),
-        "n_features": Property("int", None, option=True, cache=Property.cache_img_data),
+        "n_features": Property("int", None, optional=True, cache=Property.cache_img_data),
         "use_hardnet": Property("bool", False, cache=Property.cache_img_data),
         "pipeline_final_step": Property("enum", default="final", cache=Property.all_combinations, list_allowed=False, allowed_values=["final", "before_matching", "before_rectification"]),
         "recify_by_fixed_rotation": Property("bool", default=False, cache=Property.all_combinations),
@@ -125,6 +125,11 @@ class CartesianConfig:
         "recify_by_GT": Property("bool", default=False, cache=Property.all_combinations),
         "rotation_alpha1": Property("float", default=1.0, cache=Property.cache_img_data, list_allowed=True),
         "rotation_alpha2": Property("float", default=1.0, cache=Property.cache_img_data, list_allowed=True),
+        "rectify_affine_affnet": Property("bool", default=False, cache=Property.cache_img_data, list_allowed=True),
+        "affnet_invert_first": Property("bool", default=True, cache=Property.cache_img_data, list_allowed=True),
+        "affnet_tilt_r": Property("float", default=5.8, cache=Property.cache_img_data, list_allowed=True),
+        "affnet_hard_net_filter": Property("int", default=None, optional=True, cache=Property.cache_img_data, list_allowed=False),
+        "show_affnet": Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=False),
     }
 
     @staticmethod

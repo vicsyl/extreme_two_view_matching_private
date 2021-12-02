@@ -4,6 +4,7 @@ from kornia.utils import batched_forward
 from kornia_moons.feature import *
 import numpy as np
 import torch
+from utils import Timer
 
 """
 DISCLAIMER: taken from https://github.com/kornia/kornia-examples/blob/master/MKD_TFeat_descriptors_in_kornia.ipynb
@@ -21,14 +22,29 @@ class HardNetDescriptor:
         else:
             self.hardnet.cpu()
 
-    def detectAndCompute(self, img, mask):
+    def detectAndCompute(self, img, mask=None, give_laffs=False, filter=None):
+        Timer.start_check_point("HadrNet.detectAndCompute")
         # NOTE this is just how it was called before
         assert mask is None
         kps = self.sift_descriptor.detect(img, None)
-        descs = self.get_local_descriptors(img, kps)
-        return kps, descs
+        if filter is not None:
+            kps = kps[::filter]
+        ret = self.get_local_descriptors(img, kps, compute_laffs=give_laffs)
+        if len(ret) != 2:
+            # corner case
+            descs = np.zeros(0)
+            laffs = np.zeros(0)
+        else:
+            descs, laffs = ret
 
-    def get_local_descriptors(self, img, cv2_sift_kpts):
+        if give_laffs:
+            Timer.end_check_point("HadrNet.detectAndCompute")
+            return kps, descs, laffs
+        else:
+            Timer.end_check_point("HadrNet.detectAndCompute")
+            return kps, descs
+
+    def get_local_descriptors(self, img, cv2_sift_kpts, compute_laffs=False):
         if len(cv2_sift_kpts) == 0:
             return np.array([])
 
@@ -37,7 +53,20 @@ class HardNetDescriptor:
             self.hardnet.eval()
             timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.).to(self.device)
             lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
-            patches = KF.extract_patches_from_pyramid(timg, lafs, 32)
+
+            if compute_laffs:
+                # We will estimate affine shape of the feature and re-orient the keypoints with the OriNet
+                affine = KF.LAFAffNetShapeEstimator(True)
+                affine.eval()
+                orienter = KF.LAFOrienter(32, angle_detector=KF.OriNet(True))
+                orienter.eval()
+                lafs2 = affine(lafs, timg)
+                # NOTE torch.abs(lafs_to_use - lafs).max() == 0.0
+                lafs_to_use = orienter(lafs2, timg)
+            else:
+                lafs_to_use = lafs
+
+            patches = KF.extract_patches_from_pyramid(timg, lafs_to_use, 32)
 
             B, N, CH, H, W = patches.size()
             patches = patches.view(B * N, CH, H, W)
@@ -47,4 +76,4 @@ class HardNetDescriptor:
             # descs = self.hardnet(patches).view(B * N, -1)
             descs = batched_forward(self.hardnet, patches, self.device, 128).view(B * N, -1)
 
-        return descs.detach().cpu().numpy()
+        return descs.detach().cpu().numpy(), lafs_to_use

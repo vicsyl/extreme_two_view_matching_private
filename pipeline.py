@@ -32,6 +32,8 @@ from evaluation import *
 from sky_filter import get_nonsky_mask
 from clustering import Clustering, bilateral_filter
 
+from affnet import affnet_rectify
+
 import matplotlib.pyplot as plt
 
 two_hundred_permutation = [164, 90, 8, 35, 50, 112, 30, 51, 120, 78, 130, 134, 171, 5, 101, 147, 192, 72, 47, 156, 105,
@@ -103,10 +105,6 @@ class Pipeline:
     cache_map = None
     stats_map = {}
     stats = {}
-
-    # actually unused
-    show_save_normals = False
-    show_orig_image = True
 
     # ! FIXME not really compatible with matching pairs
     chosen_depth_files = None
@@ -509,20 +507,38 @@ class Pipeline:
                                     path=components_out_path,
                                     file_name=depth_data_file_name[:-4])
 
-            if self.config["recify_by_fixed_rotation"] or self.get_stage_number() <= self.stages_map["before_rectification"]:
+            img_data = ImageData(img=img,
+                                 real_K=real_K,
+                                 key_points=None,
+                                 descriptions=None,
+                                 normals=normals_clusters_repr,
+                                 components_indices=components_indices,
+                                 valid_components_dict=valid_components_dict)
 
-                kps, descs = None, None
+            fixed_rot_condition = self.config["recify_by_fixed_rotation"]
+            finish_cond = self.get_stage_number() <= self.stages_map["before_rectification"]
+            if fixed_rot_condition or finish_cond:
+                print("rectify_by_fixed_rotation: {}, finish before_rectification: {}".format(fixed_rot_condition, finish_cond))
+                print("process_image done")
+
+            elif self.config["rectify_affine_affnet"]:
+
+                assert isinstance(self.feature_descriptor, HardNetDescriptor), "rectify_affine_affnet on, but without HardNet descriptor"
+
+                img_data.key_points, img_data.descriptions, _ = affnet_rectify(img_name,
+                                                                               self.feature_descriptor,
+                                                                               img_data,
+                                                                               self.config)
 
             else:
 
-                if order == 0:
-                    rotation_factor = self.config["rotation_alpha1"]
-                else:
-                    rotation_factor = self.config["rotation_alpha2"]
+                key = "rotation_alpha1" if order == 0 else "rotation_alpha2"
+                rotation_factor = self.config[key]
 
                 # get rectification
                 rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name)
-                kps, descs, unrectified_indices = get_rectified_keypoints(normals_clusters_repr,
+
+                img_data.key_points, img_data.descriptions, unrectified_indices = get_rectified_keypoints(normals_clusters_repr,
                                                      components_indices,
                                                      valid_components_dict,
                                                      img,
@@ -536,14 +552,6 @@ class Pipeline:
                                                      rotation_factor=rotation_factor,
                                                      all_unrectified=self.all_unrectified
                                                      )
-
-            img_data = ImageData(img=img,
-                                 real_K=real_K,
-                                 key_points=kps,
-                                 descriptions=descs,
-                                 normals=normals_clusters_repr,
-                                 components_indices=components_indices,
-                                 valid_components_dict=valid_components_dict)
 
             Timer.end_check_point("processing img from scratch")
 
@@ -776,7 +784,7 @@ class Pipeline:
 
         file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
         for idx, depth_data_file_name in enumerate(file_names):
-            self.process_image(depth_data_file_name[:-4], idx)
+            self.process_image(depth_data_file_name[:-4], idx % 2)
 
         self.save_stats("sequential")
 

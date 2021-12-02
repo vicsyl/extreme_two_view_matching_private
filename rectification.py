@@ -28,6 +28,7 @@ def get_rectification_rotation(normal, rotation_factor=1.0):
     rotation_vector_norm = abs_sin_theta = np.linalg.norm(rotation_vector)
     unit_rotation_vector = rotation_vector / rotation_vector_norm
     theta = math.asin(abs_sin_theta) * rotation_factor
+    # TODO !!!
     theta = min(theta, math.pi * 4.0/9.0)
 
     R = get_rotation_matrix(unit_rotation_vector, theta)
