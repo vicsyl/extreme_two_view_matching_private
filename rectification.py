@@ -118,8 +118,6 @@ def get_perspective_transform(img, R, K, K_inv, component_indices, index, clip_a
                 unscaled = False
                 break
 
-
-
     translate_vec_new = (-np.min(dst[0]), -np.min(dst[1]))
     translate_matrix_new = np.array([
         [1, 0, translate_vec_new[0]],

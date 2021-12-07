@@ -1080,6 +1080,7 @@ def quantil_stats():
     file_name = "work/stats_superpoint_all.pkl"
     file_name = "./work/stats_matching_baseline.pkl"; just_root = False
     #file_name = "./work/all_stats_old_baseline.pkl"; just_root = True
+    file_name = "./persist_do_not_commit/stats_matching_baseline.pkl"; just_root = False
 
     with open(file_name, "rb") as f:
         stats_map = pickle.load(f)

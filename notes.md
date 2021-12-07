@@ -396,9 +396,52 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * some things may be done/needed on the lower level - hopefully it won't break the existing observations
 * when would it be the time to wrap it up? What should I do in terms of the computations 
   * (other scenes, other DSs, more combinations of params, new kpts detectors, etc..)
-
+    
 ## Action items
 
 * AffNet
 * filtering based on the plane correspondences 
   * tentatives, RANSAC
+
+
+* https://hal.archives-ouvertes.fr/hal-02156259v2/document
+* https://math.stackexchange.com/questions/861674/decompose-a-2d-arbitrary-transform-into-only-scaling-and-rotation
+
+
+# notes from 11/26/2021
+
+## the space of tilts ~ AffNet
+
+* approach taken: cluster the decompositions of affine maps of AffNet features (space of tilts) based on the clustering
+* per detected connected component (not only normal)
+* comparison with the normal doesn't look convincing: it's important that the affine maps themselves are aligned
+* demo  
+* still finishing the whole pipeline
+  
+* generally I think that affine maps may be better than the homographies
+  * less memory, faster
+  * aligned with the (apparently fruitful) approach taken by Rodriguez and others ("IMAS methods")  
+
+* covering of the space of tilts per component
+  * a) same approach as in Rodriguez - fixed covering 
+    * (the speedup without the depth/normals info very impressive)
+  * b) compute the optimal covering per component (or maybe combined with c))
+  * c) just use the mean (there needs to be just one cluster) - I am trying now
+    
+  * what about the rest of the image  
+
+* what if clustering is applied based on affnet features
+* TODO gaussian blur
+* https://github.com/opencv/opencv/blob/master/samples/python/asift.py#L59
+
+
+## submission deadline
+
+* 4th January (5 1/2 weeks)
+* I would like to still keep experimenting for some time 
+* will try to work on the text (of what I already have)
+
+
+
+# Q: RGB vs BGR!!!
+

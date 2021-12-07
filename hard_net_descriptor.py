@@ -17,10 +17,19 @@ class HardNetDescriptor:
         self.sift_descriptor = sift_descriptor
         self.hardnet = KF.HardNet(True)
         self.device = device
-        if self.device == torch.device('cuda'):
-            self.hardnet.cuda()
-        else:
-            self.hardnet.cpu()
+        self.affine = KF.LAFAffNetShapeEstimator(True)
+        self.orienter = KF.LAFOrienter(32, angle_detector=KF.OriNet(True))
+        self.set_device_eval_to_nets([self.hardnet, self.affine, self.orienter], self.device)
+
+    @staticmethod
+    def set_device_eval_to_nets(nets: list, device):
+        for net in nets:
+            net.eval()
+            if device == torch.device('cuda'):
+                net.cuda()
+            else:
+                net.cpu()
+
 
     def detectAndCompute(self, img, mask=None, give_laffs=False, filter=None):
         Timer.start_check_point("HadrNet.detectAndCompute")
@@ -50,19 +59,16 @@ class HardNetDescriptor:
 
         # We will not train anything, so let's save time and memory by no_grad()
         with torch.no_grad():
-            self.hardnet.eval()
+            #self.hardnet.eval()
             timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.).to(self.device)
             lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
 
             if compute_laffs:
                 # We will estimate affine shape of the feature and re-orient the keypoints with the OriNet
-                affine = KF.LAFAffNetShapeEstimator(True)
-                affine.eval()
-                orienter = KF.LAFOrienter(32, angle_detector=KF.OriNet(True))
-                orienter.eval()
-                lafs2 = affine(lafs, timg)
-                # NOTE torch.abs(lafs_to_use - lafs).max() == 0.0
-                lafs_to_use = orienter(lafs2, timg)
+                # self.affine.eval()
+                # orienter.eval()
+                lafs2 = self.affine(lafs, timg)
+                lafs_to_use = self.orienter(lafs2, timg)
             else:
                 lafs_to_use = lafs
 

@@ -481,10 +481,10 @@ class Pipeline:
                 angle_degrees = angle_rad * 180 / math.pi
                 # print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
                 if angle_degrees >= Config.plane_threshold_degrees:
-                    # print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
+                    print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
                     continue
                 else:
-                    # print("angle ok")
+                    print("angle ok")
                     valid_normal_indices.append(i)
 
             components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices,
