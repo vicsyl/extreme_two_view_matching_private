@@ -350,7 +350,7 @@ def warp_affine(img_t, mask, affine_map, mode='biliner'):
 def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, show_all=True):
 
     assert invert_first, "current impl needs invert_first to be set to True"
-    show_all = True
+    show_all = False
     if show_all:
         show_torch_img(img, title="before warping")
 
@@ -424,11 +424,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map):
 
     # TODO - check and remove - is COLOR_BGR2RGB necessary? If so, then previous experiments (with HardNet) were invalid?
     img = cv.cvtColor(img_data.img, cv.COLOR_BGR2RGB)
-    plt.figure(figsize=(9, 9))
-    plt.title(img_name)
-    plt.imshow(img)
-    plt.show()
-    plt.close()
+    # plt.figure(figsize=(9, 9))
+    # plt.title(img_name)
+    # plt.imshow(img)
+    # plt.show()
+    # plt.close()
 
     identity_kps, identity_descs, identity_laffs = hardnet_descriptor.detectAndCompute(img, give_laffs=True, filter=affnet_hard_net_filter)
     # torch
