@@ -318,6 +318,9 @@ class Pipeline:
         print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
         print("device: {}".format(self.device))
 
+        if self.config["rectify_affine_affnet"]:
+            assert isinstance(self.feature_descriptor, HardNetDescriptor), "rectify_affine_affnet on, but without HardNet descriptor"
+
         self.log()
         self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type, file_name_suffix=self.file_name_suffix)
         self.setup_descriptor()
