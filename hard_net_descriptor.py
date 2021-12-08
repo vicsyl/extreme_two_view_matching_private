@@ -46,11 +46,10 @@ class HardNetDescriptor:
         else:
             descs, laffs = ret
 
+        Timer.end_check_point("HadrNet.detectAndCompute")
         if give_laffs:
-            Timer.end_check_point("HadrNet.detectAndCompute")
             return kps, descs, laffs
         else:
-            Timer.end_check_point("HadrNet.detectAndCompute")
             return kps, descs
 
     def get_local_descriptors(self, img, cv2_sift_kpts, compute_laffs=False):
@@ -82,4 +81,4 @@ class HardNetDescriptor:
             # descs = self.hardnet(patches).view(B * N, -1)
             descs = batched_forward(self.hardnet, patches, self.device, 128).view(B * N, -1)
 
-        return descs.detach().cpu().numpy(), lafs_to_use
+        return descs.detach().cpu().numpy(), lafs_to_use.detach().cpu()

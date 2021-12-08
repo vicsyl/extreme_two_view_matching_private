@@ -47,7 +47,7 @@ def get_kpts_components_indices(components_indices_np, valid_components_dict, la
 
     coords = round_and_clamp_coords_torch(laffs_no_scale[0, :, :, 2], components_indices_np.shape[1], components_indices_np.shape[0])
 
-    components_indices_deviced = torch.from_numpy(components_indices_np).to(device)
+    components_indices_deviced = torch.from_numpy(components_indices_np)#.to(device)
     components_indices_linear = components_indices_deviced[coords[:, 1], coords[:, 0]]
     components_indices_linear_and_invalid = torch.ones_like(coords[:, 0]) * -1
     for valid_component in valid_components_dict:
