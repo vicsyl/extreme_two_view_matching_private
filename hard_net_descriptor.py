@@ -30,7 +30,6 @@ class HardNetDescriptor:
             else:
                 net.cpu()
 
-
     def detectAndCompute(self, img, mask=None, give_laffs=False, filter=None):
         Timer.start_check_point("HadrNet.detectAndCompute")
         # NOTE this is just how it was called before

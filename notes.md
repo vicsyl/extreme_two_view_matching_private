@@ -445,3 +445,5 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 
 # Q: RGB vs BGR!!!
 
+https://cmp.felk.cvut.cz/~chum/papers/Chum-CVIU05.pdf
+http://people.ciirc.cvut.cz/~hlavac/TeachPresEn/17CompVision3D/11Geom1camera.pdf
