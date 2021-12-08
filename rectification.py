@@ -185,7 +185,8 @@ def get_rectified_keypoints(normals,
         if new_kps is not None:
             kps_int_coords = np.int32(new_kps).reshape(-1, 2)
 
-            h, w, _ = img.shape
+            h = img.shape[0]
+            w = img.shape[1]
             first = kps_int_coords[:, 0]
             first = np.where(0 <= first, first, 0)
             first = np.where(first < w, first, 0)
