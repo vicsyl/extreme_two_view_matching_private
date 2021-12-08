@@ -198,7 +198,7 @@ def compare_R_to_GT(img_pair: ImagePairEntry, scene_info: SceneInfo, r):
     return err_q
 
 
-def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2):
+def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2, img_data_list):
 
     img_entry_1: ImageEntry = scene_info.img_info_map[img_pair.img1]
     T1 = img_entry_1.t
@@ -211,8 +211,8 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
     dR = R2 @ R1.T
     dt = T2 - dR @ T1
 
-    K1 = scene_info.get_img_K(img_pair.img1)
-    K2 = scene_info.get_img_K(img_pair.img2)
+    K1 = scene_info.get_img_K(img_pair.img1, img_data_list[0].img)
+    K2 = scene_info.get_img_K(img_pair.img2, img_data_list[1].img)
 
     # TODO Q: what is actually this? if I remove it, I can remove the call to scene_info.get_img_K
     p1n = normalize_keypoints(pts1, K1).astype(np.float64)
@@ -228,7 +228,7 @@ def compare_poses(E, img_pair: ImagePairEntry, scene_info: SceneInfo, pts1, pts2
 
     print("rotation vector(GT): {}".format(rot_vec_deg_gt))
     print("rotation vector(est): {}".format(rot_vec_deg_est))
-    print("errors (R, T): {}".format((err_q, err_t)))
+    print("errors (R, T): ({} degrees, {} (unscaled))".format(np.rad2deg(err_q), err_t))
 
     return err_q, err_t
 
@@ -312,7 +312,7 @@ class Stats:
 
 def evaluate_matching(scene_info,
                       E,
-                      img_data,
+                      img_data_list,
                       tentative_matches,
                       inlier_mask,
                       img_pair,
@@ -324,15 +324,15 @@ def evaluate_matching(scene_info,
     print("Number of inliers: {}".format(inlier_mask[inlier_mask == [1]].shape[0]))
     print("Number of outliers: {}".format(inlier_mask[inlier_mask == [0]].shape[0]))
 
-    src_tentatives_2d, dst_tentatives_2d = split_points(tentative_matches, img_data[0].key_points, img_data[1].key_points)
+    src_tentatives_2d, dst_tentatives_2d = split_points(tentative_matches, img_data_list[0].key_points, img_data_list[1].key_points)
     src_pts_inliers = src_tentatives_2d[inlier_mask[:, 0] == [1]]
     dst_pts_inliers = dst_tentatives_2d[inlier_mask[:, 0] == [1]]
 
-    error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers)
+    error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers, img_data_list)
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
-    if is_rectified_condition(img_data[0]):
-        _, unique, counts = get_normals_stats(img_data, src_tentatives_2d, dst_tentatives_2d)
+    if is_rectified_condition(img_data_list[0]):
+        _, unique, counts = get_normals_stats(img_data_list, src_tentatives_2d, dst_tentatives_2d)
         print("Matching stats in evaluation:")
         print("unique plane correspondence counts of tentatives:\n{}".format(np.vstack((unique.T, counts)).T))
 
@@ -341,7 +341,7 @@ def evaluate_matching(scene_info,
     count_sampson_estimated, \
     count_symmetrical_estimated = evaluate_tentatives_agains_ground_truth(scene_info,
                                                                           img_pair,
-                                                                          img_data,
+                                                                          img_data_list,
                                                                           src_tentatives_2d,
                                                                           dst_tentatives_2d,
                                                                           [ransac_th, 0.1, 0.5, 1, 3],
@@ -354,11 +354,11 @@ def evaluate_matching(scene_info,
                   error_T=error_T,
                   tentative_matches=len(tentative_matches),
                   inliers=inliers,
-                  all_features_1=len(img_data[0].key_points),
-                  all_features_2=len(img_data[1].key_points),
+                  all_features_1=len(img_data_list[0].key_points),
+                  all_features_2=len(img_data_list[1].key_points),
                   E=E,
-                  normals1=img_data[0].normals,
-                  normals2=img_data[1].normals,
+                  normals1=img_data_list[0].normals,
+                  normals2=img_data_list[1].normals,
                   )
 
     key = "{}_{}".format(img_pair.img1, img_pair.img2)
@@ -471,28 +471,28 @@ def vector_product_matrix(vec: np.ndarray):
 
 def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo,
                                             img_pair: ImagePairEntry,
-                                            img_data,
+                                            img_data_list,
                                             src_tentatives_2d,
                                             dst_tentatives_2d,
                                             thresholds,
                                             est_E,
                                             inliers_from_ransac):
 
-    def get_T_R_K_inv(img_key):
+    def get_T_R_K_inv(img_key, img):
         img_entry: ImageEntry = scene_info.img_info_map[img_key]
         T = np.array(img_entry.t)
         R = img_entry.R
         # TODO we use the real K here, right?
-        K = scene_info.get_img_K(img_key)
+        K = scene_info.get_img_K(img_key, img)
         K_inv = np.linalg.inv(K)
         return T, R, K_inv, K
 
-    T1, R1, K1_inv, K1 = get_T_R_K_inv(img_pair.img1)
+    T1, R1, K1_inv, K1 = get_T_R_K_inv(img_pair.img1, img_data_list[0].img)
     src_tentative_h = np.ndarray((src_tentatives_2d.shape[0], 3))
     src_tentative_h[:, :2] = src_tentatives_2d
     src_tentative_h[:, 2] = 1.0
 
-    T2, R2, K2_inv, K2 = get_T_R_K_inv(img_pair.img2)
+    T2, R2, K2_inv, K2 = get_T_R_K_inv(img_pair.img2, img_data_list[1].img)
     dst_tentative_h = np.ndarray((dst_tentatives_2d.shape[0], 3))
     dst_tentative_h[:, :2] = dst_tentatives_2d
     dst_tentative_h[:, 2] = 1.0
@@ -520,8 +520,8 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo,
     print("Matching stats in inliers:")
     def evaluate_metric(metric, th, label):
         mask = (np.abs(metric) < th)[0]
-        if is_rectified_condition(img_data[0]):
-            _, unique, counts = get_normals_stats(img_data, src_tentatives_2d, dst_tentatives_2d, mask)
+        if is_rectified_condition(img_data_list[0]):
+            _, unique, counts = get_normals_stats(img_data_list, src_tentatives_2d, dst_tentatives_2d, mask)
             print("{} < {}:".format(label, th))
             print("unique plane correspondence counts:\n{}".format(np.vstack((unique.T, counts)).T))
         return np.sum(mask)

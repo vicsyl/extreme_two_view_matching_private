@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
 from hard_net_descriptor import HardNetDescriptor
+from rootsift_descriptor import RootSIFT
 from normals_rotations import *
 
 import kornia.geometry as KG
@@ -152,10 +153,18 @@ class Pipeline:
     def setup_descriptor(self):
         feature_descriptor = self.config["feature_descriptor"]
         n_features = self.config["n_features"]
+        sift_octave_layers = self.config["sift_octave_layers"]
+        sift_contrast_threshold = self.config["sift_contrast_threshold"]
+        sift_edge_threshold = self.config["sift_edge_threshold"]
+        sift_sigma = self.config["sift_sigma"]
+
         use_hardnet = self.config["use_hardnet"]
+        use_rootfift = self.config["use_rootsift"]
+
+        assert not use_rootfift or not use_hardnet, "you cannot have both: use_rootfift and use_hardnet"
 
         if feature_descriptor == "SIFT":
-            feature_descriptor = cv.SIFT_create(n_features)
+            feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
         elif feature_descriptor == "BRISK":
             feature_descriptor = cv.BRISK_create(n_features)
         elif feature_descriptor == "SUPERPOINT":
@@ -163,6 +172,8 @@ class Pipeline:
 
         if use_hardnet:
             self.feature_descriptor = HardNetDescriptor(feature_descriptor, device=self.device)
+        elif use_rootfift:
+            self.feature_descriptor = RootSIFT(feature_descriptor)
         else:
             self.feature_descriptor = feature_descriptor
 
@@ -379,6 +390,43 @@ class Pipeline:
             pickle.dump(img_data.to_serialized_data(), f)
         Timer.end_check_point("saving img data")
 
+    def read_img(self, img_name):
+
+        def format_to_read_mode(read_mode, img):
+            if read_mode is None:
+                return img
+            if read_mode == "RGB":
+                cv_mode = cv.COLOR_BGR2RGB
+            elif read_mode == "GRAY":
+                cv_mode = cv.COLOR_BGR2GRAY
+            else:
+                raise Exception("Unexpected value for read_mode: {}".format(read_mode))
+            return cv.cvtColor(img, cv_mode)
+
+        def scale_img(max_size, img):
+            if max_size is None:
+                return img
+            if max_size < np.max(img.shape):
+                resize_factor = np.max(img.shape) / max_size
+                img = cv.resize(img, (int(img.shape[1] / resize_factor), int(img.shape[0] / resize_factor)), interpolation=cv.INTER_LINEAR)
+            return img
+
+        read_mode = self.config["img_read_mode"]
+        max_size = self.config["img_max_size"]
+
+        img_file_path = self.scene_info.get_img_file_path(img_name)
+        img = cv.imread(img_file_path, None)
+        img = format_to_read_mode(read_mode, img)
+        img = scale_img(max_size, img)
+
+        if self.show_input_img:
+            plt.figure(figsize=(9, 9))
+            plt.title(img_name)
+            plt.imshow(img)
+            show_or_close(True)
+
+        return img
+
     def process_image(self, img_name, order):
 
         Timer.start_check_point("processing img")
@@ -386,17 +434,11 @@ class Pipeline:
         img_processing_dir = self.get_and_create_img_processing_dir()
         Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
 
-        img_file_path = self.scene_info.get_img_file_path(img_name)
-        img = cv.imread(img_file_path, None)
-        if self.show_input_img:
-            plt.figure(figsize=(9, 9))
-            plt.title(img_name)
-            plt.imshow(img)
-            show_or_close(True)
+        img = self.read_img(img_name)
 
         orig_height = img.shape[0]
         orig_width = img.shape[1]
-        real_K = self.scene_info.get_img_K(img_name)
+        real_K = self.scene_info.get_img_K(img_name, img)
         if self.estimate_k:
             focal_length = (orig_width + orig_height) * self.focal_point_mean_factor
             K_for_rectification = np.array([
@@ -407,8 +449,6 @@ class Pipeline:
         else:
             K_for_rectification = real_K
             focal_length = real_K[0, 0]
-            assert abs(real_K[0, 2] * 2 - orig_width) < 0.5
-            assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
 
         img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
 
@@ -668,7 +708,7 @@ class Pipeline:
         if self.estimate_k:
             focal_length = (orig_width + orig_height) * self.focal_point_mean_factor
         else:
-            real_K = self.scene_info.get_img_K(img_name)
+            real_K = self.scene_info.get_img_K(img_name, img)
             focal_length = real_K[0, 0]
             assert abs(real_K[0, 2] * 2 - orig_width) < 0.5
             assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
@@ -817,6 +857,7 @@ class Pipeline:
         else:
             print("incorrect value of '{}' for method. Choose one from 'compute_normals', 'run_sequential_pipeline' or 'run_matching_pipeline'".format(self.method))
 
+    # TODO deprecated
     def run_sequential_for_normals_compare(self):
 
         self.start()
@@ -870,6 +911,7 @@ class Pipeline:
 
         self.save_stats("normals")
 
+    # TODO deprecated
     def run_sequential_for_normals(self):
 
         self.start()
@@ -908,12 +950,12 @@ class Pipeline:
         if not map.__contains__(key):
             map[key] = {}
 
-    def do_matching(self, image_data, img_pair, matching_out_dir, stats_map_diff, difficulty):
+    def do_matching(self, image_data_list, img_pair, matching_out_dir, stats_map_diff, difficulty):
 
         if self.planes_based_matching:
             E, inlier_mask, src_pts, dst_pts, tentative_matches = match_images_with_dominant_planes(
-                image_data[0],
-                image_data[1],
+                image_data_list[0],
+                image_data_list[1],
                 use_degensac=self.use_degensac,
                 find_fundamental=self.estimate_k,
                 img_pair=img_pair,
@@ -928,14 +970,14 @@ class Pipeline:
 
         elif self.use_degensac:
             E, inlier_mask, src_pts, dst_pts, tentative_matches = match_find_F_degensac(
-                image_data[0].img,
-                image_data[0].key_points,
-                image_data[0].descriptions,
-                image_data[0].real_K,
-                image_data[1].img,
-                image_data[1].key_points,
-                image_data[1].descriptions,
-                image_data[1].real_K,
+                image_data_list[0].img,
+                image_data_list[0].key_points,
+                image_data_list[0].descriptions,
+                image_data_list[0].real_K,
+                image_data_list[1].img,
+                image_data_list[1].key_points,
+                image_data_list[1].descriptions,
+                image_data_list[1].real_K,
                 img_pair,
                 matching_out_dir,
                 show=self.show_matching,
@@ -949,7 +991,7 @@ class Pipeline:
         else:
             # NOTE using img_datax.real_K for a call to findE
             E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
-                image_data[0], image_data[1],
+                image_data_list[0], image_data_list[1],
                 find_fundamental=self.estimate_k,
                 img_pair=img_pair,
                 out_dir=matching_out_dir,
@@ -967,7 +1009,7 @@ class Pipeline:
 
         stats_struct = evaluate_matching(self.scene_info,
                                          E,
-                                         image_data,
+                                         image_data_list,
                                          tentative_matches,
                                          inlier_mask,
                                          img_pair,

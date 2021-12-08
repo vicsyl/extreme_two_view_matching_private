@@ -359,7 +359,7 @@ def show_rectifications(scene_info: SceneInfo, normals_parent_dir, original_inpu
         #     print("normalized: {}".format(normals[i]))
 
         normal_indices = possibly_upsample_normals(img, normal_indices)
-        K = scene_info.get_img_K(img_name)
+        K = scene_info.get_img_K(img_name, img)
         components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
 
         get_rectified_keypoints(normals,
@@ -416,7 +416,7 @@ def play_with_rectification(scene_info: SceneInfo, normals_parent_dir, original_
         #     print("normalized: {}".format(normals[i]))
 
         normal_indices = possibly_upsample_normals(img, normal_indices)
-        K = scene_info.get_img_K(img_name)
+        K = scene_info.get_img_K(img_name, img)
         components_indices, valid_components_dict = get_connected_components(normal_indices, range(len(normals)), True)
 
         all_kps, all_descs, _ = get_rectified_keypoints(normals,

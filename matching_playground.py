@@ -16,7 +16,7 @@ def prepare_to_rectify(scene_info, img_name):
     show_original_image = False
     show_or_close(show_original_image)
 
-    K = scene_info.get_img_K(img_name)
+    K = scene_info.get_img_K(img_name, img)
 
     # depth => indices
 
@@ -58,7 +58,7 @@ def rectify_play(scene_info, img_name, rectify, use_default_dict=True):
     show_original_image = False
     show_or_close(show_original_image)
 
-    K = scene_info.get_img_K(img_name)
+    K = scene_info.get_img_K(img_name, img)
 
     # depth => indices
 

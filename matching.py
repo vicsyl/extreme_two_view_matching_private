@@ -44,14 +44,23 @@ def decolorize(img):
 
 
 def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
-    h, w, ch = img1.shape
+    h = img1.shape[0]
+    w = img1.shape[1]
     pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
+
+    def possibly_decolorize(img_local):
+        if len(img_local.shape) <= 2:
+            return img2
+        return decolorize(img_local)
+
+    img1_dec = possibly_decolorize(img1)
+    img2_dec = possibly_decolorize(img2)
 
     if H is not None:
         dst = cv.perspectiveTransform(pts, H)
-        img2_tr = cv.polylines(decolorize(img2), [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
+        img2_tr = cv.polylines(img2_dec, [np.int32(dst)], True, (0, 0, 255), 3, cv.LINE_AA)
     else:
-        img2_tr = decolorize(img2)
+        img2_tr = img2_dec
 
     matches_mask = inlier_mask.ravel().tolist()
 
@@ -60,7 +69,7 @@ def draw_matches(kps1, kps2, tentative_matches, H, inlier_mask, img1, img2):
                        singlePointColor=None,
                        matchesMask=matches_mask,  # draw only inliers
                        flags=20)
-    img_out = cv.drawMatches(decolorize(img1), kps1, img2_tr, kps2, tentative_matches, None, **draw_params)
+    img_out = cv.drawMatches(img1_dec, kps1, img2_tr, kps2, tentative_matches, None, **draw_params)
     return img_out
 
 
@@ -694,8 +703,8 @@ def match_find_F_degensac(img1, kps1, descs1, real_K_1, img2, kps2, descs2, real
 
 def prepare_data_for_keypoints_and_desc(scene_info, img_name, normal_indices, normals, descriptor, out_dir, rectify):
 
-    K = scene_info.get_img_K(img_name)
     img = cv.imread('original_dataset/scene1/images/{}.jpg'.format(img_name))
+    K = scene_info.get_img_K(img_name, img)
 
     if rectify:
         normal_indices = possibly_upsample_normals(img, normal_indices)

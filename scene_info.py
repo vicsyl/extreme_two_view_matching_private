@@ -171,12 +171,17 @@ class SceneInfo:
             self.file_name_suffix = ".jpg"
         return '{}/{}{}'.format(self.get_input_dir(), img_name, self.file_name_suffix)
 
-    def get_img_K(self, img_name):
-        img = self.img_info_map[img_name]
-        if img.K is not None:
-            return img.K
+    def get_img_K(self, img_name, img):
+        img_entry = self.img_info_map[img_name]
+        if img_entry.K is not None:
+            K_to_scale = img_entry.K
         else:
-            return self.cameras[img.camera_id].get_K()
+            K_to_scale = self.cameras[img_entry.camera_id].get_K()
+
+        K_to_scale[:2, :] *= img.shape[1] / (K_to_scale[0, 2] * 2.0)
+        assert abs(K_to_scale[0, 2] * 2 - img.shape[1]) < 1.0
+        assert abs(K_to_scale[1, 2] * 2 - img.shape[0]) < 1.0
+        return K_to_scale
 
     def depth_input_dir(self):
         if self.type == "orig":

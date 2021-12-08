@@ -117,8 +117,11 @@ class CartesianConfig:
         "fginn_spatial_th": Property("int", 100, cache=Property.cache_img_data),
         "ratio_th": Property("float", 0.5, cache=Property.cache_img_data),
         "feature_descriptor": Property("enum", default="SIFT", cache=Property.cache_img_data, allowed_values=["SIFT", "BRISK", "SUPERPOINT"]),
-        "n_features": Property("int", None, optional=True, cache=Property.cache_img_data),
+
+        # advanced descriptors / decorators
         "use_hardnet": Property("bool", False, cache=Property.cache_img_data),
+        "use_rootsift": Property("bool", False, cache=Property.cache_img_data),
+
         "pipeline_final_step": Property("enum", default="final", cache=Property.all_combinations, list_allowed=False, allowed_values=["final", "before_matching", "before_rectification"]),
         "recify_by_fixed_rotation": Property("bool", default=False, cache=Property.all_combinations),
         "recify_by_0_around_z": Property("bool", default=False, cache=Property.all_combinations),
@@ -130,6 +133,17 @@ class CartesianConfig:
         "affnet_tilt_r": Property("float", default=5.8, cache=Property.cache_img_data, list_allowed=True),
         "affnet_hard_net_filter": Property("int", default=None, optional=True, cache=Property.cache_img_data, list_allowed=False),
         "show_affnet": Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=False),
+
+        # SIFT
+        "n_features": Property("int", None, optional=True, cache=Property.cache_img_data),
+        "sift_octave_layers": Property("int", 3, optional=True, cache=Property.cache_img_data),
+        "sift_contrast_threshold": Property("float", 0.04, optional=True, cache=Property.cache_img_data), # try 0.03
+        "sift_edge_threshold": Property("int", 10, optional=True, cache=Property.cache_img_data),
+        "sift_sigma": Property("float", 1.6, optional=True, cache=Property.cache_img_data),
+
+        # IMG preprocessing
+        "img_read_mode": Property("enum", default=None, optional=True, list_allowed=False, allowed_values=["RGB", "GRAY"]),
+        "img_max_size": Property("int", default=None, optional=True, list_allowed=False),
     }
 
     @staticmethod
