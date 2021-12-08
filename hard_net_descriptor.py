@@ -58,6 +58,13 @@ class HardNetDescriptor:
         # We will not train anything, so let's save time and memory by no_grad()
         with torch.no_grad():
             #self.hardnet.eval()
+            if len(img.shape) == 3:
+                pass # OK
+            elif len(img.shape) == 2:
+                img = img.reshape(img.shape[0], img.shape[1], 1)
+                img = np.repeat(img, 3, axis=2)
+            else:
+                raise Exception("Unexpected shape of the img: {}".format(img.shape))
             timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.).to(self.device)
             lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
 
