@@ -531,7 +531,8 @@ class Pipeline:
                 img_data.key_points, img_data.descriptions, _ = affnet_rectify(img_name,
                                                                                self.feature_descriptor,
                                                                                img_data,
-                                                                               self.config)
+                                                                               self.config,
+                                                                               device=self.device)
 
             else:
 

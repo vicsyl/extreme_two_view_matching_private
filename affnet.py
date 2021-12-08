@@ -41,13 +41,14 @@ def round_and_clamp_coords_torch(coords, max_0_excl, max_1_excl):
 
 # NOTE : also basically version of utils.get_kpts_normals, but for torch!!!
 # TODO there is some duplicate code with get_kpts_normals_indices
-def get_kpts_components_indices(components_indices_np, valid_components_dict, laffs_no_scale):
+def get_kpts_components_indices(components_indices_np, valid_components_dict, laffs_no_scale, device=torch.device('cpu')):
 
     Timer.start_check_point("get_kpts_components_indices")
 
     coords = round_and_clamp_coords_torch(laffs_no_scale[0, :, :, 2], components_indices_np.shape[1], components_indices_np.shape[0])
 
-    components_indices_linear = components_indices_np[coords[:, 1], coords[:, 0]]
+    components_indices_deviced = torch.from_numpy(components_indices_np).to(device)
+    components_indices_linear = components_indices_deviced[coords[:, 1], coords[:, 0]]
     components_indices_linear_and_invalid = torch.ones_like(coords[:, 0]) * -1
     for valid_component in valid_components_dict:
         components_indices_linear_and_invalid[components_indices_linear == valid_component] = valid_component
@@ -410,7 +411,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, show
     return img_tilt, affine_transform
 
 
-def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map):
+def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu')):
 
     Timer.start_check_point("affnet_rectify")
 
@@ -432,7 +433,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map):
 
     identity_kps, identity_descs, identity_laffs = hardnet_descriptor.detectAndCompute(img, give_laffs=True, filter=affnet_hard_net_filter)
     # torch
-    kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, identity_laffs)
+    kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, identity_laffs, device)
     mask_no_valid_component = (kpts_component_indices == -1)[0]
 
     all_kps = [kps for i, kps in enumerate(identity_kps) if mask_no_valid_component[i]] # []
