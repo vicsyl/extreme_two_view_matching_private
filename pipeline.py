@@ -161,8 +161,6 @@ class Pipeline:
         use_hardnet = self.config["use_hardnet"]
         use_rootfift = self.config["use_rootsift"]
 
-        assert not use_rootfift or not use_hardnet, "you cannot have both: use_rootfift and use_hardnet"
-
         if feature_descriptor == "SIFT":
             feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
         elif feature_descriptor == "BRISK":
@@ -170,10 +168,11 @@ class Pipeline:
         elif feature_descriptor == "SUPERPOINT":
             feature_descriptor = SuperPointDescriptor(path="./superpoint_forked/superpoint_v1.pth", device=self.device)
 
+        if use_rootfift:
+            feature_descriptor = RootSIFT(feature_descriptor)
+
         if use_hardnet:
             self.feature_descriptor = HardNetDescriptor(feature_descriptor, device=self.device)
-        elif use_rootfift:
-            self.feature_descriptor = RootSIFT(feature_descriptor)
         else:
             self.feature_descriptor = feature_descriptor
 
