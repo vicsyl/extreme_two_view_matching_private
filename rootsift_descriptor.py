@@ -7,6 +7,10 @@ class RootSIFT:
         self.eps = eps
         self.descriptor = descriptor
 
+    def detect(self, img, positions=None):
+        assert positions is None
+        return self.descriptor.detect(img, positions)
+
     def detectAndCompute(self, img, mask=None):
         kps, descs = self.descriptor.detectAndCompute(img, mask)
         if len(kps) == 0:
