@@ -331,7 +331,7 @@ def warp_affine(img_t, mask, affine_map, mode='biliner'):
     return warped_img, new_h, new_w
 
 
-warp_image_show_transformation = False
+warp_image_show_transformation = True
 
 
 def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
@@ -351,7 +351,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
         if warp_image_show_transformation:
             show_torch_img(img_tilt_x, title="blurred img - rescale")
 
-        return img_tilt_x
+        return img_tilt_y
 
     def blur(img_fc, tilt, blur_param=0.8):
         blur_amplification = 1.0
@@ -367,7 +367,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
             show_torch_img(img_blurred_x, title="rotated then blurred")
             show_torch_img(img_blurred_y, title="rotated then blurred in the other direction")
 
-        return img_blurred_x
+        return img_blurred_y
 
     def warp_rotate(angle, img_fc, img_mask):
         s = math.sin(angle)
@@ -381,7 +381,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
     affine_transform, img_rotated, new_h, new_w = warp_rotate(phi, img, img_mask)
     img_blurred = blur(img_rotated, tilt, blur_param=blur_param)
 
-    affine_transform[0, 0, :] = affine_transform[0, 0, :] * 1.0 / tilt
+    affine_transform[0, 1, :] = affine_transform[0, 1, :] * 1.0 / tilt
     img_tilt = tilt_img(img_blurred, tilt)
 
     if warp_image_show_transformation:
@@ -468,7 +468,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
 
         t_img = KR.image_to_tensor(img_data.img, False).float() / 255.
-        img_warped_t, aff_map = warp_image(t_img, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first, show_transformation=show_affnet)
+        img_warped_t, aff_map = warp_image(t_img, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first)
         img_warped = k_to_img_np(img_warped_t)
 
         if show_affnet:
