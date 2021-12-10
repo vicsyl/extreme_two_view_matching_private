@@ -1,25 +1,15 @@
-from dataclasses import dataclass
 import math
-from matplotlib.patches import Circle
-from matplotlib.collections import PatchCollection
+from dataclasses import dataclass
 
-import pickle
-import os
 import cv2 as cv
 import kornia as KR
 import kornia.feature as KF
-import kornia.geometry as KG
-import matplotlib.pyplot as plt
-import numpy as np
 import torch
-import argparse
-from kornia_moons.feature import *
-from config import CartesianConfig
-from hard_net_descriptor import HardNetDescriptor
-from utils import Timer
-from rectification import get_rotation_matrix
-from kornia_moons.feature import visualize_LAF
+from matplotlib.patches import Circle
+
 from kornia_utils import *
+from utils import Timer
+
 
 @dataclass
 class PointsStyle:
@@ -73,13 +63,6 @@ def compose_lin_maps(ts, phis, lambdas, psis):
         lambdas = lambdas.repeat(1, 1, 1, 1)
     if psis is None:
         psis = torch.zeros_like(phis)
-
-    # def get_rotation_matrices(angles):
-    #     R = torch.cos(angles)
-    #     R = R.repeat(1, 1, 2, 2)
-    #     R[:, :, 1, 0] = torch.sin(angles)
-    #     R[:, :, 0, 1] = -R[:, :, 1, 0]
-    #     return R
 
     R_psis = get_rotation_matrices(psis)
     R_phis = get_rotation_matrices(phis)
@@ -193,7 +176,7 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     return lambdas, psis, ts, phis
 
 
-def draw(radius, ts, phis, color, size, ax):
+def draw(ts, phis, color, size, ax):
 
     ts_logs = torch.log(ts)
     xs = torch.cos(phis) * ts_logs
@@ -267,7 +250,7 @@ def plot_space_of_tilts(label, img_name, valid_component, normal_index, exp_r, p
         plt.title("{}: {} - component {} / normal {}".format(label, img_name, valid_component, normal_index))
         prepare_plot(exp_r, ax)
         for point_style in point_styles:
-            draw(exp_r, point_style.ts, point_style.phis, point_style.color, point_style.size, ax)
+            draw(point_style.ts, point_style.phis, point_style.color, point_style.size, ax)
         plt.show(block=False)
 
 
@@ -348,24 +331,27 @@ def warp_affine(img_t, mask, affine_map, mode='biliner'):
     return warped_img, new_h, new_w
 
 
-def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, show_all=True):
+warp_image_show_transformation = False
+
+
+def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
 
     Timer.start_check_point("warp_image")
 
     assert invert_first, "current impl needs invert_first to be set to True"
-    show_all = False
-    if show_all:
+    if warp_image_show_transformation:
         show_torch_img(img, title="before warping")
 
-    def tilt_img(img_fc, til):
+    def tilt_img(img_fc, tilt_local):
 
         # TODO 2 interpolation = 'nearest' ??!!
-        img_tilt = KR.geometry.transform.rescale(img_fc, (1.0, 1.0 / tilt), interpolation='nearest')
+        img_tilt_x = KR.geometry.transform.rescale(img_fc, (1.0, 1.0 / tilt_local), interpolation='nearest')
+        img_tilt_y = KR.geometry.transform.rescale(img_fc, (1.0 / tilt, 1.0), interpolation='nearest')
 
-        if show_all:
-            show_torch_img(img_tilt, title="blurred img - rescale")
+        if warp_image_show_transformation:
+            show_torch_img(img_tilt_x, title="blurred img - rescale")
 
-        return img_tilt
+        return img_tilt_x
 
     def blur(img_fc, tilt, blur_param=0.8):
         blur_amplification = 1.0
@@ -374,21 +360,21 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, show
         kernel = KR.filters.get_gaussian_kernel1d(kernel_size, sigma_x)[None].unsqueeze(1)
         print("kernal shape: {}".format(kernel.shape))
         # will kernel be in a good shape? (#dimensions, but also the shape?)
-        img_blurred = KR.filters.filter2d(img_fc, kernel)
+        img_blurred_x = KR.filters.filter2d(img_fc, kernel)
+        img_blurred_y = KR.filters.filter2d(img_fc, kernel.view(1, kernel.shape[2], 1))
 
-        if show_all:
-            show_torch_img(img_blurred, title="rotated then blurred")
-            img_blurred_y = KR.filters.filter2d(img_fc, kernel.view(1, kernel.shape[2], 1))
+        if warp_image_show_transformation:
+            show_torch_img(img_blurred_x, title="rotated then blurred")
             show_torch_img(img_blurred_y, title="rotated then blurred in the other direction")
 
-        return img_blurred
+        return img_blurred_x
 
     def warp_rotate(angle, img_fc, img_mask):
         s = math.sin(angle)
         c = math.cos(angle)
         affine_rotation = torch.tensor([[c, -s, 0.0], [s, c, 0.0]]).unsqueeze(0)
         rotated_img, new_h, new_w = warp_affine(img_fc, img_mask, affine_rotation, mode='bilinear')
-        if show_all:
+        if warp_image_show_transformation:
             show_torch_img(rotated_img, title="rotated img")
         return affine_rotation, rotated_img, new_h, new_w
 
@@ -398,10 +384,8 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, show
     affine_transform[0, 0, :] = affine_transform[0, 0, :] * 1.0 / tilt
     img_tilt = tilt_img(img_blurred, tilt)
 
-    show_all = True
-    if show_all:
+    if warp_image_show_transformation:
         show_torch_img(img_tilt, title="final rectification")
-
 
         img_warped_test = KR.geometry.warp_affine(img, affine_transform, dsize=(new_h, new_w))
         show_torch_img(img_warped_test, title="warped by one sigle affine transform")
@@ -426,17 +410,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     affnet_hard_net_filter = conf_map.get("affnet_hard_net_filter", 1)
     show_affnet = conf_map.get("show_affnet", True)
 
-    #laffs_no_scale = get_lafs(img_data.img, hardnet_descriptor, img_name, conf_map)
 
-    # TODO - check and remove - is COLOR_BGR2RGB necessary? If so, then previous experiments (with HardNet) were invalid?
-    img = cv.cvtColor(img_data.img, cv.COLOR_BGR2RGB)
-    # plt.figure(figsize=(9, 9))
-    # plt.title(img_name)
-    # plt.imshow(img)
-    # plt.show()
-    # plt.close()
-
-    identity_kps, identity_descs, identity_laffs = hardnet_descriptor.detectAndCompute(img, give_laffs=True, filter=affnet_hard_net_filter)
+    identity_kps, identity_descs, identity_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, filter=affnet_hard_net_filter)
     # torch
     kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, identity_laffs, device)
     mask_no_valid_component = (kpts_component_indices == -1)[0]
@@ -449,7 +424,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     laffs_no_scale = KF.scale_laf(identity_laffs, 1. / laffs_scale)
 
     if show_affnet:
-        timg = KR.image_to_tensor(img, False).float() / 255.
+        timg = KR.image_to_tensor(img_data.img, False).float() / 255.
         title = "{} - all unrectified affnet features".format(img_name)
         visualize_LAF_custom(timg, identity_laffs, title=title, figsize=(8, 12))
         title = "{} - all unrectified affnet features - no valid component".format(img_name)
@@ -493,15 +468,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
 
         t_img = KR.image_to_tensor(img_data.img, False).float() / 255.
-        img_warped_t, aff_map = warp_image(t_img, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first)
+        img_warped_t, aff_map = warp_image(t_img, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first, show_transformation=show_affnet)
         img_warped = k_to_img_np(img_warped_t)
-
-        # testing...
-        # aff_maps, new_h, new_w, t_img = get_aff_map(img, torch.tensor([2.0]), torch.tensor([0.0]))
-
-        # aff_maps, new_h, new_w, t_img = get_aff_map(img_data.img, t_mean_affnet, phi_mean_affnet, mask_img_component, invert_first)
-        # img_warped_t = KR.geometry.warp_affine(t_img, aff_maps, dsize=(new_h, new_w))
-        # img_warped = KR.tensor_to_image(img_warped_t * 255.0).astype(dtype=np.uint8)
 
         if show_affnet:
             img_normal_component_title = "{} - warped component {}, normal {}".format(img_name, current_component, normal_index)
@@ -542,9 +510,6 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         descs = descs_warped[mask]
         laffs_final = laffs_final[:, mask]
 
-        img_normal_component_title = "{} - rectified features for component {}, normal {}".format(img_name, current_component, normal_index)
-        visualize_LAF_custom(t_img, laffs_final, title=img_normal_component_title,  figsize=(8, 12))
-
         all_kps.extend(kps)
         all_descs = np.vstack((all_descs, descs))
         all_laffs = torch.cat((all_laffs, laffs_final), 1)
@@ -552,6 +517,9 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         Timer.end_check_point("affnet filtering keypoints")
 
         if show_affnet:
+            img_normal_component_title = "{} - rectified features for component {}, normal {}".format(img_name, current_component, normal_index)
+            visualize_LAF_custom(t_img, laffs_final, title=img_normal_component_title, figsize=(8, 12))
+
             scale_l_final = KF.get_laf_scale(laffs_final)
             laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
             _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
@@ -615,7 +583,7 @@ def draw_test():
     fig, ax = plt.subplots()
     plt.title("img foo - 1st normal")
     prepare_plot(radius, ax)
-    draw(radius, ts, phis, "b", 1, ax)
+    draw(ts, phis, "b", 1, ax)
     plt.show()
 
 
