@@ -130,7 +130,8 @@ class CartesianConfig:
         "rotation_alpha2": Property("float", default=1.0, cache=Property.cache_img_data, list_allowed=True),
         "rectify_affine_affnet": Property("bool", default=False, cache=Property.cache_img_data, list_allowed=True),
         "affnet_invert_first": Property("bool", default=True, cache=Property.cache_img_data, list_allowed=True),
-        "affnet_tilt_r": Property("float", default=5.8, cache=Property.cache_img_data, list_allowed=True),
+        "affnet_tilt_r_ln": Property("float", default=1.7, cache=Property.cache_img_data, list_allowed=True),
+        "affnet_max_tilt_r": Property("float", default=5.8, cache=Property.cache_img_data, list_allowed=True),
         "affnet_hard_net_filter": Property("int", default=None, optional=True, cache=Property.cache_img_data, list_allowed=False),
         "show_affnet": Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=False),
 

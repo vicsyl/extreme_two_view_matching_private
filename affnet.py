@@ -185,17 +185,20 @@ def draw(ts, phis, color, size, ax):
     ax.plot(xs, ys, 'o', color=color, markersize=size)
 
 
-def prepare_plot(radius: float, ax):
+def prepare_plot(max_radius: float, unit_radius: float, ax):
 
-    log_radius = math.log(radius)
+    log_max_radius = math.log(max_radius)
+    log_unit_radius = math.log(unit_radius)
 
     ax.set_aspect(1.0)
 
     factor = 1.2
-    ax.set_xlim((-factor*log_radius, factor*log_radius))
-    ax.set_ylim((-factor*log_radius, factor*log_radius))
+    ax.set_xlim((-factor*log_max_radius, factor*log_max_radius))
+    ax.set_ylim((-factor*log_max_radius, factor*log_max_radius))
 
-    circle = Circle((0, 0), log_radius, color='r', fill=False)
+    circle = Circle((0, 0), log_max_radius, color='r', fill=False)
+    ax.add_artist(circle)
+    circle = Circle((0, 0), log_unit_radius, color='r', fill=False)
     ax.add_artist(circle)
 
 
@@ -244,11 +247,11 @@ def get_aff_map(t, phi, component_mask, invert_first):
     return aff_map, new_h, new_w, lin_map, T_t, R_phi
 
 
-def plot_space_of_tilts(label, img_name, valid_component, normal_index, exp_r, point_styles: list, really_show=True):
+def plot_space_of_tilts(label, img_name, valid_component, normal_index, tilt_r, max_tilt_r, point_styles: list, really_show=True):
     if really_show:
         fig, ax = plt.subplots()
         plt.title("{}: {} - component {} / normal {}".format(label, img_name, valid_component, normal_index))
-        prepare_plot(exp_r, ax)
+        prepare_plot(max_tilt_r, tilt_r, ax)
         for point_style in point_styles:
             draw(point_style.ts, point_style.phis, point_style.color, point_style.size, ax)
         plt.show(block=False)
@@ -331,7 +334,7 @@ def warp_affine(img_t, mask, affine_map, mode='biliner'):
     return warped_img, new_h, new_w
 
 
-warp_image_show_transformation = True
+warp_image_show_transformation = False
 
 
 def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
@@ -381,6 +384,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
     affine_transform, img_rotated, new_h, new_w = warp_rotate(phi, img, img_mask)
     img_blurred = blur(img_rotated, tilt, blur_param=blur_param)
 
+    #affine_transform[0, 0, :] = affine_transform[0, 0, :] * 1.0 / tilt
     affine_transform[0, 1, :] = affine_transform[0, 1, :] * 1.0 / tilt
     img_tilt = tilt_img(img_blurred, tilt)
 
@@ -404,31 +408,27 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     Timer.start_check_point("affnet_init")
 
-    tilt_r = conf_map.get("affnet_tilt_r", 5.8)
+    max_tilt_r = conf_map.get("affnet_max_tilt_r", 5.8)
+    tilt_r_exp = conf_map.get("affnet_tilt_r_ln", 1.7)
     invert_first = conf_map.get("invert_first", True)
     # TODO - test the None functionality
     affnet_hard_net_filter = conf_map.get("affnet_hard_net_filter", 1)
     show_affnet = conf_map.get("show_affnet", True)
-
 
     identity_kps, identity_descs, identity_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, filter=affnet_hard_net_filter)
     # torch
     kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, identity_laffs, device)
     mask_no_valid_component = (kpts_component_indices == -1)[0]
 
-    all_kps = [kps for i, kps in enumerate(identity_kps) if mask_no_valid_component[i]] # []
-    all_descs = identity_descs[mask_no_valid_component] # np.zeros((0, 128), dtype=np.float32)
-    all_laffs = identity_laffs[:, mask_no_valid_component] # orch.zeros(1, 0, 2, 3)
-
     laffs_scale = KF.get_laf_scale(identity_laffs)
     laffs_no_scale = KF.scale_laf(identity_laffs, 1. / laffs_scale)
 
-    if show_affnet:
-        timg = KR.image_to_tensor(img_data.img, False).float() / 255.
-        title = "{} - all unrectified affnet features".format(img_name)
-        visualize_LAF_custom(timg, identity_laffs, title=title, figsize=(8, 12))
-        title = "{} - all unrectified affnet features - no valid component".format(img_name)
-        visualize_LAF_custom(timg, identity_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
+    # if show_affnet:
+    #     timg = KR.image_to_tensor(img_data.img, False).float() / 255.
+    #     title = "{} - all unrectified affnet features".format(img_name)
+    #     visualize_LAF_custom(timg, identity_laffs, title=title, figsize=(8, 12))
+    #     title = "{} - all unrectified affnet features - no valid component".format(img_name)
+    #     visualize_LAF_custom(timg, identity_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
     affnet_lin_maps = laffs_no_scale[:, :, :, :2]
 
@@ -437,11 +437,26 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     _, _, ts, phis = decompose_lin_maps_lambda_psi_t_phi(affnet_lin_maps)
 
+    mask_in = (ts < tilt_r_exp)[0]
+    mask_in_or_invalid = mask_in | mask_no_valid_component
+    ts_affnet_in = ts[:, mask_in_or_invalid]
+    ts_affnet_out = ts[:, ~mask_in_or_invalid]
+    phis_affnet_in = phis[:, mask_in_or_invalid]
+    phis_affnet_out = phis[:, ~mask_in_or_invalid]
+
+    mask_to_add = mask_no_valid_component
+    mask_to_add = torch.ones_like(mask_no_valid_component).to(torch.bool)
+    all_kps = [kps for i, kps in enumerate(identity_kps) if mask_to_add[i]] # []
+    all_descs = identity_descs[mask_to_add] # np.zeros((0, 128), dtype=np.float32)
+    all_laffs = identity_laffs[:, mask_to_add] # orch.zeros(1, 0, 2, 3)
+
     # plot_space_of_tilts -> all initial
     label = "inverted all" if invert_first else "not inverted all"
+    # TODO valid, etc
     print("{}: count: {}".format(label, ts.shape))
-    plot_space_of_tilts(label, img_name, 0, 0, tilt_r, [
-        PointsStyle(ts=ts, phis=phis, color="b", size=0.5),
+    plot_space_of_tilts(label, img_name, 0, 0, tilt_r_exp, max_tilt_r, [
+        PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
+        PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
     ], show_affnet)
 
     Timer.end_check_point("affnet_init")
@@ -451,17 +466,24 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         normal_index = img_data.valid_components_dict[current_component]
         print("processing component->normal: {} -> {}".format(current_component, normal_index))
 
-        mask = kpts_component_indices == current_component
-        ts_affnet, phis_affnet = ts[mask], phis[mask]
+        mask_cmp = kpts_component_indices == current_component
 
-        t_mean_affnet = torch.mean(ts_affnet)
-        phi_mean_affnet = torch.mean(phis_affnet)
+        ts_compponent, phis_component = ts[mask_cmp], phis[mask_cmp]
+
+        mask_in = ts_compponent < tilt_r_exp
+        ts_affnet_in = ts_compponent[mask_in]
+        ts_affnet_out = ts_compponent[~mask_in]
+        phis_affnet_in = phis_component[mask_in]
+        phis_affnet_out = phis_component[~mask_in]
+
+        t_mean_affnet = torch.mean(ts_affnet_out)
+        phi_mean_affnet = torch.mean(phis_affnet_out)
 
         label = "inverted unrectified" if invert_first else "not inverted unrectified"
-        print("{}: count: {}".format(label, ts_affnet.shape))
-        plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r, [
-            #PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
-            PointsStyle(ts=ts_affnet, phis=phis_affnet, color="b", size=0.5),
+        print("{}: count: {}".format(label, ts_compponent.shape))
+        plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
+            PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
+            PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
             PointsStyle(ts=t_mean_affnet, phis=phi_mean_affnet, color="r", size=3)
         ], show_affnet)
 
@@ -471,7 +493,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         img_warped_t, aff_map = warp_image(t_img, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first)
         img_warped = k_to_img_np(img_warped_t)
 
-        if show_affnet:
+        if warp_image_show_transformation:
             img_normal_component_title = "{} - warped component {}, normal {}".format(img_name, current_component, normal_index)
             plt.figure(figsize=(6, 8))
             plt.title(img_normal_component_title)
@@ -481,7 +503,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True, filter=affnet_hard_net_filter)
 
         aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
-        if show_affnet:
+
+        if warp_image_show_transformation:
             img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv, dsize=(t_img.shape[2], t_img.shape[3]))
             show_torch_img(img_warped_back_t, "warped back from caller")
 
@@ -494,21 +517,21 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         laffs_final[0, :, :, 2] = kpt_s_back
 
         kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
-        mask = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (kpt_s_back_int[:, 0] < img_data.img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
-        print("invalid back transformed pixels: {}/{}".format(mask.shape[0] - mask.sum(), mask.shape[0]))
+        mask_cmp = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (kpt_s_back_int[:, 0] < img_data.img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
+        print("invalid back transformed pixels: {}/{}".format(mask_cmp.shape[0] - mask_cmp.sum(), mask_cmp.shape[0]))
 
-        kpt_s_back_int[~mask, 0] = 0
-        kpt_s_back_int[~mask, 1] = 0
-        mask = (mask) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == current_component)
-        mask = mask.to(torch.bool)
+        kpt_s_back_int[~mask_cmp, 0] = 0
+        kpt_s_back_int[~mask_cmp, 1] = 0
+        mask_cmp = (mask_cmp) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == current_component)
+        mask_cmp = mask_cmp.to(torch.bool)
 
         kps = []
         for i, kp in enumerate(kps_warped):
-            if mask[i]:
+            if mask_cmp[i]:
                 kp.pt = (kpt_s_back[i][0].item(), kpt_s_back[i][1].item())
                 kps.append(kp)
-        descs = descs_warped[mask]
-        laffs_final = laffs_final[:, mask]
+        descs = descs_warped[mask_cmp]
+        laffs_final = laffs_final[:, mask_cmp]
 
         all_kps.extend(kps)
         all_descs = np.vstack((all_descs, descs))
@@ -525,7 +548,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
             _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
             label = "inverted rectified" if invert_first else "not inverted rectified"
             print("{}: count: {}".format(label, ts_affnet_final.shape))
-            plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r, [
+            plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
                 #PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
                 PointsStyle(ts=ts_affnet_final, phis=phis_affnet_final, color="b", size=0.5),
             ], show_affnet)
@@ -540,7 +563,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
         label = "all inverted rectified" if invert_first else "all not inverted rectified"
         print("{}: count: {}".format(label, ts_affnet_final.shape))
-        plot_space_of_tilts(label, img_name, "-", "-", tilt_r, [
+        plot_space_of_tilts(label, img_name, "-", "-", tilt_r_exp, max_tilt_r, [
             PointsStyle(ts=ts_affnet_final, phis=phis_affnet_final, color="b", size=0.5),
         ], show_affnet)
 
@@ -582,7 +605,7 @@ def draw_test():
     # plt.figure()
     fig, ax = plt.subplots()
     plt.title("img foo - 1st normal")
-    prepare_plot(radius, ax)
+    prepare_plot(radius, 1.7, ax)
     draw(ts, phis, "b", 1, ax)
     plt.show()
 
@@ -759,7 +782,7 @@ if __name__ == "__main__":
 #
 #     pipeline = prepare_pipeline()
 #
-#     conf_map = {"affnet_tilt_r": 5.8}
+#     conf_map = {"affnet_max_tilt_r": 5.8}
 #
 #     #l = ["frame_0000000070_2", "frame_0000001525_1", "frame_0000001865_1"]
 #     for img_name in ["frame_0000000070_2"]:
