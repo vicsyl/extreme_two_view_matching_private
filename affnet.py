@@ -76,19 +76,6 @@ def compose_lin_maps(ts, phis, lambdas, psis):
     return lin_maps, lambdas, R_psis, T_ts, R_phis
 
 
-# def compose_lin_maps(ts, phis):
-#
-#     R_phis = get_rotation_matrices(phis)
-#
-#     T_ts = torch.zeros_like(ts)
-#     T_ts = T_ts.repeat(1, 1, 2, 2)
-#     T_ts[:, :, 0, 0] = ts
-#     T_ts[:, :, 1, 1] = 1
-#
-#     lin_maps = T_ts @ R_phis
-#     return lin_maps, T_ts, R_phis
-
-
 # TODO handle CUDA
 def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
 
@@ -267,34 +254,6 @@ def visualize_LAF_custom(img, LAF, img_idx=0, color='r', title="", **kwargs):
     return
 
 
-def get_rectified_keypoints(normals,
-                            components_indices,
-                            valid_components_dict,
-                            img,
-                            K,
-                            descriptor,
-                            img_name,
-                            fixed_rotation_vector=None,
-                            clip_angle=None,
-                            show=False,
-                            save=False,
-                            out_prefix=None,
-                            rotation_factor=1.0,
-                            all_unrectified=False):
-
-    print()
-    # for component_index in valid_components_dict:
-    #     R = get_rotation
-    #     T, bounding_box = get_perspective_transform(R, K)
-    #     rectified_img = warpPerspective(img, T, bounding_box)
-    #     kps, descs = descriptor.detectAndCompute(rectified, None)
-    #     * warp back
-    #     * filter the kpts
-    #     * update kpts location
-    #     * add the keypoints
-    # add keypoint with not belonging to any plane
-    # return kpts, descs, unrectified_indices !!
-
 # TODO document
 def get_corners_of_mask(mask):
     coords = torch.where(mask)
@@ -407,24 +366,25 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     max_tilt_r = conf_map.get("affnet_max_tilt_r", 5.8)
     tilt_r_exp = conf_map.get("affnet_tilt_r_ln", 1.7)
     invert_first = conf_map.get("invert_first", True)
-    # TODO - test the None functionality
     affnet_hard_net_filter = conf_map.get("affnet_hard_net_filter", 1)
-    show_affnet = conf_map.get("show_affnet", True)
+    affnet_include_all_from_identity = conf_map.get("affnet_include_all_from_identity", False)
+
+    show_affnet = conf_map.get("show_affnet", False)
+
 
     identity_kps, identity_descs, identity_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, filter=affnet_hard_net_filter)
     # torch
     kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, identity_laffs, device)
-    mask_no_valid_component = (kpts_component_indices == -1)[0]
 
     laffs_scale = KF.get_laf_scale(identity_laffs)
     laffs_no_scale = KF.scale_laf(identity_laffs, 1. / laffs_scale)
 
-    # if show_affnet:
-    #     timg = KR.image_to_tensor(img_data.img, False).float() / 255.
-    #     title = "{} - all unrectified affnet features".format(img_name)
-    #     visualize_LAF_custom(timg, identity_laffs, title=title, figsize=(8, 12))
-    #     title = "{} - all unrectified affnet features - no valid component".format(img_name)
-    #     visualize_LAF_custom(timg, identity_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
+    if show_affnet:
+        timg = KR.image_to_tensor(img_data.img, False).float() / 255.
+        title = "{} - all unrectified affnet features".format(img_name)
+        visualize_LAF_custom(timg, identity_laffs, title=title, figsize=(8, 12))
+        title = "{} - all unrectified affnet features - no valid component".format(img_name)
+        visualize_LAF_custom(timg, identity_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
     affnet_lin_maps = laffs_no_scale[:, :, :, :2]
 
@@ -433,15 +393,15 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     _, _, ts, phis = decompose_lin_maps_lambda_psi_t_phi(affnet_lin_maps)
 
+    mask_no_valid_component = (kpts_component_indices == -1)[0]
     mask_in = (ts < tilt_r_exp)[0]
-    mask_in_or_invalid = mask_in | mask_no_valid_component
-    ts_affnet_in = ts[:, mask_in_or_invalid]
-    ts_affnet_out = ts[:, ~mask_in_or_invalid]
-    phis_affnet_in = phis[:, mask_in_or_invalid]
-    phis_affnet_out = phis[:, ~mask_in_or_invalid]
+    mask_in_or_no_component = mask_in | mask_no_valid_component
+    ts_affnet_in = ts[:, mask_in]
+    ts_affnet_out = ts[:, ~mask_in]
+    phis_affnet_in = phis[:, mask_in]
+    phis_affnet_out = phis[:, ~mask_in]
 
-    mask_to_add = mask_no_valid_component
-    mask_to_add = torch.ones_like(mask_no_valid_component).to(torch.bool)
+    mask_to_add = mask_in_or_no_component if affnet_include_all_from_identity else mask_in
     all_kps = [kps for i, kps in enumerate(identity_kps) if mask_to_add[i]] # []
     all_descs = identity_descs[mask_to_add] # np.zeros((0, 128), dtype=np.float32)
     all_laffs = identity_laffs[:, mask_to_add] # orch.zeros(1, 0, 2, 3)
@@ -667,179 +627,4 @@ if __name__ == "__main__":
 
 # (background - get_normal_vec_from_decomposition(ts, phis) is most likely wrong - at least because of the missing calibration
 # get_normal_vec_from_decomposition - probably doesn't work as expected - implement 5,6 from affine_decomposition.pdf
-
-# def get_rotation_matrices(unit_rotation_vectors, thetas):
-#
-#     # Rodrigues formula
-#     # R = I + sin(theta) . K + (1 - cos(theta)).K**2
-#
-#     K = torch.zeros([*unit_rotation_vectors.shape[:2], *[3, 3]])
-#
-#     # K[:, :, 0, 0] = 0.0
-#     K[:, :, 0, 1] = -unit_rotation_vectors[:, :, 2]
-#     K[:, :, 0, 2] = unit_rotation_vectors[:, :, 1]
-#     K[:, :, 1, 0] = unit_rotation_vectors[:, :, 2]
-#     # K[:, :, 1, 1] = 0.0
-#     K[:, :, 1, 2] = -unit_rotation_vectors[:, :, 0]
-#
-#     K[:, :, 2, 0] = -unit_rotation_vectors[:, :, 1]
-#     K[:, :, 2, 1] = unit_rotation_vectors[:, :, 0]
-#     # K[:, :, 2, 2] = 0.0
-#
-#     a = torch.eye(3)[None, None]
-#
-#     b = torch.sin(thetas).unsqueeze(3) * K
-#
-#     c = (1.0 - torch.cos(thetas)).unsqueeze(3) * K @ K
-#
-#     R = a + b + c
-#
-#     a0 = torch.eye(3)
-#     b0 = torch.sin(thetas[0, 0]) * K[0, 0]
-#     c0 = (1.0 - torch.cos(thetas[0, 0])) * K[0, 0] @ K[0, 0]
-#     R0 = a0 + b0 + c0
-#
-#     R1 = get_rotation_matrix(unit_rotation_vectors[0, 0], thetas[0, 0])
-#
-#     assert torch.all(R[0,0] == R0)
-#     assert torch.allclose(R[0,0], torch.from_numpy(R1).to(torch.float))
-#
-#     return R
-
-
-# def get_rectification_rotations(normals):
-#
-#     # now the normals will be "from" me, "inside" the surfaces
-#     normals = -torch.from_numpy(normals)[None]
-#
-#     z = torch.tensor([[[0.0, 0.0, 1.0]]]).expand(-1, normals.shape[1], -1)
-#     print()
-#
-#     # this handles the case when there is only one dominating plane
-#
-#     assert torch.all(normals[..., 2] > 0)
-#
-#     rotation_vectors = torch.cross(normals, z)
-#     rotation_vector_norms = torch.norm(rotation_vectors, dim=2).unsqueeze(2)
-#     unit_rotation_vectors = rotation_vectors / rotation_vector_norms
-#
-#     Rs = get_rotation_matrices(unit_rotation_vectors, rotation_vector_norms)
-#     assert torch.allclose(torch.det(Rs), torch.tensor(1.0))
-#     return Rs
-#
-#
-
-# def get_rectification_homographies(normals, K):
-#     Rs = get_rectification_rotations(normals)
-#     K = torch.from_numpy(K).to(torch.float)[None, None]
-#     K_inv = torch.inverse(K).to(torch.float)
-#     Hs = K @ Rs @ K_inv
-#     return Hs
-#
-#
-
-# def get_lafs(img, hardnet_desctiptor, img_name, conf_map={}):
-#
-#     affnet_hard_net_filter = conf_map.get("affnet_hard_net_filter", None)
-#
-#     # TODO - check and remove - is COLOR_BGR2RGB necessary? If so, then previous experiments with HardNet were invalid?
-#     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-#     plt.figure(figsize=(9, 9))
-#     plt.title(img_name)
-#     plt.imshow(img)
-#     plt.show()
-#     plt.close()
-#
-#     kps, descs, laffs = hardnet_desctiptor.detectAndCompute(img, give_laffs=True, filter=affnet_hard_net_filter)
-#     scale1 = KF.get_laf_scale(laffs)
-#     lafs_no_scale = KF.scale_laf(laffs, 1. / scale1)
-#
-#     if conf_map.get("show_affnet", True):
-#         timg = KR.image_to_tensor(img, False).float() / 255.
-#         title = "{} - all unrectified affnet features".format(img_name)
-#         visualize_LAF_custom(timg, laffs, title=title, figsize=(8, 12))
-#
-#     return lafs_no_scale
-
-# NOTE : basically version of utils.get_kpts_normals, but for torch!!!
-# def get_kpts_normals_indices(components_indices, valid_components_dict, laffs_no_scale):
-#
-#     Timer.start_check_point("get_kpts_normals_indices")
-#
-#     coords = laffs_no_scale[0, :, :, 2]
-#     coords = torch.round(coords)
-#     torch.clamp(coords[:, 0], 0, components_indices.shape[1] - 1, out=coords[:, 0])
-#     torch.clamp(coords[:, 1], 0, components_indices.shape[0] - 1, out=coords[:, 1])
-#     coords = coords.to(torch.long)
-#
-#     component_indices = components_indices[coords[:, 1], coords[:, 0]]
-#     normals_indices = torch.ones_like(coords[:, 0]) * -1
-#     for valid_component in valid_components_dict:
-#         normals_indices[component_indices == valid_component] = valid_components_dict[valid_component]
-#
-#     Timer.end_check_point("get_kpts_normals_indices")
-#
-#     return normals_indices[None]
-
-# def main_demo():
-#
-#     Timer.start()
-#
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     Timer.start_check_point("HardNetDescriptor")
-#     hardnet = HardNetDescriptor(sift_descriptor=cv.SIFT_create(None), device=device)
-#     Timer.end_check_point("HardNetDescriptor")
-#
-#     pipeline = prepare_pipeline()
-#
-#     conf_map = {"affnet_max_tilt_r": 5.8}
-#
-#     #l = ["frame_0000000070_2", "frame_0000001525_1", "frame_0000001865_1"]
-#     for img_name in ["frame_0000000070_2"]:
-#
-#         img_data = pipeline.process_image(img_name, order=0)[0]
-#         assert len(img_data.normals.shape) == 2
-#
-#         conf_map["invert_first"] = False
-#         affnet_rectify(img_name, hardnet, img_data, conf_map)
-#         conf_map["invert_first"] = True
-#         affnet_rectify(img_name, hardnet, img_data, conf_map)
-#
-#     Timer.log_stats()
-
-# # TODO provide img as a parameter to save some computation
-# def get_laffs_no_scale_p_cached(img_file_path, img_name, descriptor, cache_laffs):
-#     cache_laffs_fn = "work/laffs_no_scale.pt"
-#     if cache_laffs and os.path.exists(cache_laffs_fn):
-#         Timer.start_check_point("laffs_no_scale cache read")
-#         laffs_no_scale = torch.load(cache_laffs_fn)
-#         Timer.end_check_point("laffs_no_scale cache read")
-#     else:
-#         Timer.start_check_point("laffs_no_scale computation")
-#         _, _, laffs_no_scale = get_lafs(img_file_path, descriptor, img_name)
-#         Timer.end_check_point("laffs_no_scale computation")
-#         Timer.start_check_point("laffs_no_scale saving")
-#         torch.save(laffs_no_scale, cache_laffs_fn)
-#         Timer.end_check_point("laffs_no_scale saving")
-#     return laffs_no_scale
-
-# TODO circular dependence
-# def prepare_pipeline():
-#
-#     Timer.start_check_point("prepare_pipeline")
-#
-#     pipeline, config_map = Pipeline.configure("config.txt", None)
-#     pipeline.output_dir = "affnet_demo"
-#     all_configs = CartesianConfig.get_configs(config_map)
-#     config, cache_map = all_configs[0]
-#     pipeline.config = config
-#     pipeline.cache_map = cache_map
-#
-#     pipeline.start()
-#     Timer.end_check_point("prepare_pipeline")
-#
-#     return pipeline
-
-
-
 

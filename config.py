@@ -134,6 +134,7 @@ class CartesianConfig:
         "affnet_max_tilt_r": Property("float", default=5.8, cache=Property.cache_img_data, list_allowed=True),
         "affnet_hard_net_filter": Property("int", default=None, optional=True, cache=Property.cache_img_data, list_allowed=False),
         "show_affnet": Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=False),
+        "affnet_include_all_from_identity": Property("bool", default=False, optional=True, cache=Property.cache_img_data),
 
         # SIFT
         "n_features": Property("int", None, optional=True, cache=Property.cache_img_data),
