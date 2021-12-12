@@ -334,10 +334,7 @@ def warp_affine(img_t, mask, affine_map, mode='biliner'):
     return warped_img, new_h, new_w
 
 
-warp_image_show_transformation = False
-
-
-def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
+def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp_image_show_transformation=False):
 
     Timer.start_check_point("warp_image")
 
@@ -384,7 +381,6 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
     affine_transform, img_rotated, new_h, new_w = warp_rotate(phi, img, img_mask)
     img_blurred = blur(img_rotated, tilt, blur_param=blur_param)
 
-    #affine_transform[0, 0, :] = affine_transform[0, 0, :] * 1.0 / tilt
     affine_transform[0, 1, :] = affine_transform[0, 1, :] * 1.0 / tilt
     img_tilt = tilt_img(img_blurred, tilt)
 
@@ -402,7 +398,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True):
     return img_tilt, affine_transform
 
 
-def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu')):
+def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), warp_image_show_transformation=False):
 
     Timer.start_check_point("affnet_rectify")
 
@@ -451,7 +447,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     all_laffs = identity_laffs[:, mask_to_add] # orch.zeros(1, 0, 2, 3)
 
     # plot_space_of_tilts -> all initial
-    label = "inverted all" if invert_first else "not inverted all"
+    label = "all: {}/{}".format(ts_affnet_in.shape[1], ts_affnet_out.shape[1])
     # TODO valid, etc
     print("{}: count: {}".format(label, ts.shape))
     plot_space_of_tilts(label, img_name, 0, 0, tilt_r_exp, max_tilt_r, [
@@ -479,7 +475,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         t_mean_affnet = torch.mean(ts_affnet_out)
         phi_mean_affnet = torch.mean(phis_affnet_out)
 
-        label = "inverted unrectified" if invert_first else "not inverted unrectified"
+        label = "unrectified: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
         print("{}: count: {}".format(label, ts_compponent.shape))
         plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
             PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
@@ -546,25 +542,39 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
             scale_l_final = KF.get_laf_scale(laffs_final)
             laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
             _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
-            label = "inverted rectified" if invert_first else "not inverted rectified"
+
+            mask_in = ts_affnet_final < tilt_r_exp
+            ts_affnet_in = ts_affnet_final[mask_in]
+            ts_affnet_out = ts_affnet_final[~mask_in]
+            phis_affnet_in = phis_affnet_final[mask_in]
+            phis_affnet_out = phis_affnet_final[~mask_in]
+
+            label = "rectified: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
             print("{}: count: {}".format(label, ts_affnet_final.shape))
             plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
-                #PointsStyle(ts=ts_normal, phis=phis_normal, color="black", size=5),
-                PointsStyle(ts=ts_affnet_final, phis=phis_affnet_final, color="b", size=0.5),
+                PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
+                PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
             ], show_affnet)
 
     if show_affnet:
-        title = "{} - all rectified features".format(img_name)
+        title = "{} - all features after rectification".format(img_name)
         visualize_LAF_custom(t_img, all_laffs, title=title, figsize=(8, 12))
 
         all_scales = KF.get_laf_scale(all_laffs)
         all_laffs_no_scale = KF.scale_laf(all_laffs, 1. / all_scales)
         _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(all_laffs_no_scale[:, :, :, :2])
 
-        label = "all inverted rectified" if invert_first else "all not inverted rectified"
+        mask_in = ts_affnet_final < tilt_r_exp
+        ts_affnet_in = ts_affnet_final[mask_in]
+        ts_affnet_out = ts_affnet_final[~mask_in]
+        phis_affnet_in = phis_affnet_final[mask_in]
+        phis_affnet_out = phis_affnet_final[~mask_in]
+
+        label = "all features after rectification: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
         print("{}: count: {}".format(label, ts_affnet_final.shape))
         plot_space_of_tilts(label, img_name, "-", "-", tilt_r_exp, max_tilt_r, [
-            PointsStyle(ts=ts_affnet_final, phis=phis_affnet_final, color="b", size=0.5),
+            PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
+            PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
         ], show_affnet)
 
     Timer.end_check_point("affnet_rectify")

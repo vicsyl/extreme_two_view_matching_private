@@ -442,8 +442,35 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * will try to work on the text (of what I already have)
 
 
+# notes from 11/26/2021
 
-# Q: RGB vs BGR!!!
+## Experiments
 
-https://cmp.felk.cvut.cz/~chum/papers/Chum-CVIU05.pdf
-http://people.ciirc.cvut.cz/~hlavac/TeachPresEn/17CompVision3D/11Geom1camera.pdf
+* RootSIFT + settings they had (does it mean I )
+* (Affnet) 
+
+## Demo on AffNet
+
+* demo
+* color(v(x, y)) = color(u(A(x,y)) (coordinate transformation) (ASIFT, AffNet)
+* x_v, y_v <- B(x, y)  (img transformation) 
+* A = inverse(B)
+* imagine A = 2 * eye(2)
+
+## Questions
+
+* Homography => how to compute the direction for the gaussian blur
+  * https://cmp.felk.cvut.cz/~chum/papers/Chum-CVIU05.pdf
+  * http://people.ciirc.cvut.cz/~hlavac/TeachPresEn/17CompVision3D/11Geom1camera.pdf
+  * compare if the norm affine maps would change along with the changing direction of "maximal shrink"     
+
+* RGB vs BGR
+
+## Plan
+
+* need to start writing the content
+  * let me start with AffNet
+
+* what should I still compute (DS, settings)    
+
+* how frequently should we sync (online, offline)
