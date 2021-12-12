@@ -873,6 +873,25 @@ def evaluate_file(scene_name, file_name):
 def evaluate_stats(stats_map):
     evaluate_normals_stats(stats_map)
     evaluate_matching_stats(stats_map)
+    evaluate_affnet(stats_map)
+
+
+def evaluate_affnet(stats_map):
+
+    if not stats_map.__contains__("affnet_identity_no_component"):
+        print("WARNING: 'affnet_identity_no_component' not found, skipping")
+    else:
+        print("'affnet_identity_no_component' found, continue...")
+
+
+def get_all_diffs(maps_all_params):
+    keys_list = maps_all_params.keys()
+    all_diffs = set()
+    for key in keys_list:
+        all_diffs = all_diffs.union(set(maps_all_params[key].keys()))
+    all_diffs = list(all_diffs)
+    all_diffs.sort()
+    return all_diffs
 
 
 def evaluate_matching_stats(stats_map):
@@ -884,13 +903,8 @@ def evaluate_matching_stats(stats_map):
 
     stats_local = {"all_keypoints": {}, "tentatives": {}, "inliers": {}, "inlier_ratio": {}}
 
+    all_diffs = get_all_diffs(matching_map_all)
     keys_list = matching_map_all.keys()
-
-    all_diffs = set()
-    for key in keys_list:
-        all_diffs = all_diffs.union(set(matching_map_all[key].keys()))
-    all_diffs = list(all_diffs)
-    all_diffs.sort()
 
     for difficulty in all_diffs:
 

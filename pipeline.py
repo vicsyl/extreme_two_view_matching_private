@@ -56,18 +56,6 @@ def parse_list(list_str: str):
     return fields
 
 
-def ensure_key(map, key):
-    if not map.keys().__contains__(key):
-        map[key] = {}
-
-
-def ensure_keys(map, keys_list):
-    for i in range(len(keys_list)):
-        ensure_key(map, keys_list[i])
-        map = map[keys_list[i]]
-    return map
-
-
 def possibly_expand_normals(normals):
     if len(normals.shape) == 1:
         normals = np.expand_dims(normals, axis=0)
@@ -104,7 +92,9 @@ class Pipeline:
 
     config = None
     cache_map = None
+    # obsolete
     stats_map = {}
+    # simple
     stats = {}
 
     # ! FIXME not really compatible with matching pairs
@@ -571,7 +561,9 @@ class Pipeline:
                                                                                self.feature_descriptor,
                                                                                img_data,
                                                                                self.config,
-                                                                               device=self.device)
+                                                                               device=self.device,
+                                                                               params_key=self.cache_map[Property.all_combinations],
+                                                                               stats_map = self.stats)
 
             else:
 
@@ -818,8 +810,9 @@ class Pipeline:
         print("counter: {}".format(counter))
 
     def update_stats_map(self, key_list, obj):
-        map = ensure_keys(self.stats, key_list[:-1])
-        map[key_list[-1]] = obj
+        update_stats_map_static(key_list, obj, self.stats)
+        # map = ensure_keys(self.stats, key_list[:-1])
+        # map[key_list[-1]] = obj
 
     def run_sequential_pipeline(self):
 

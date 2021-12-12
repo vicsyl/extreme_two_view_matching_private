@@ -10,6 +10,23 @@ import torch.nn.functional as F
 import kornia.geometry as KG
 
 
+def ensure_key(map, key):
+    if not map.keys().__contains__(key):
+        map[key] = {}
+
+
+def ensure_keys(map, keys_list):
+    for i in range(len(keys_list)):
+        ensure_key(map, keys_list[i])
+        map = map[keys_list[i]]
+    return map
+
+
+def update_stats_map_static(key_list, obj, map_in):
+    map = ensure_keys(map_in, key_list[:-1])
+    map[key_list[-1]] = obj
+
+
 def is_rectified_condition(img_data):
     return img_data.valid_components_dict is not None
 
