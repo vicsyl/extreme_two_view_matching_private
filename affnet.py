@@ -8,7 +8,7 @@ import torch
 from matplotlib.patches import Circle
 
 from kornia_utils import *
-from utils import Timer, update_stats_map_static
+from utils import Timer, update_stats_map_static, append_update_stats_map_static
 
 
 @dataclass
@@ -359,6 +359,9 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
 
 def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), warp_image_show_transformation=False, params_key="", stats_map={}):
 
+    if params_key is None or params_key == "":
+        params_key = "default"
+
     Timer.start_check_point("affnet_rectify")
 
     Timer.start_check_point("affnet_init")
@@ -370,7 +373,6 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     affnet_include_all_from_identity = conf_map.get("affnet_include_all_from_identity", False)
 
     show_affnet = conf_map.get("show_affnet", False)
-
 
     identity_kps, identity_descs, identity_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, filter=affnet_hard_net_filter)
     # torch
@@ -399,10 +401,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     all_descs = identity_descs[mask_to_add] # np.zeros((0, 128), dtype=np.float32)
     all_laffs = identity_laffs[:, mask_to_add] # orch.zeros(1, 0, 2, 3)
 
-    update_stats_map_static(["affnet_identity_no_component", params_key, img_name], mask_no_valid_component.sum(), stats_map)
-    update_stats_map_static(["affnet_identity_close", params_key, img_name], mask_in.sum(), stats_map)
-    update_stats_map_static(["affnet_identity_no_component_or_close", params_key, img_name], mask_in_or_no_component.sum(), stats_map)
-    update_stats_map_static(["affnet_identity_added", params_key, img_name], mask_to_add.sum(), stats_map)
+    update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_all"], len(identity_kps), stats_map)
+    update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component"], mask_no_valid_component.sum().item(), stats_map)
+    update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_close"], mask_in.sum().item(), stats_map)
+    update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component_or_close"], mask_in_or_no_component.sum().item(), stats_map)
+    update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_added"], mask_to_add.sum().item(), stats_map)
 
     print("affnet_identity_no_component: {}".format(mask_no_valid_component.sum()))
     print("affnet_identity_close: {}".format(mask_in.sum()))
@@ -419,11 +422,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     ], show_affnet)
 
     if show_affnet:
-        timg = KR.image_to_tensor(img_data.img, False).float() / 255.
+        t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
         title = "{} - all unrectified affnet features".format(img_name)
-        visualize_LAF_custom(timg, identity_laffs, title=title, figsize=(8, 12))
+        visualize_LAF_custom(t_img_all, identity_laffs, title=title, figsize=(8, 12))
         title = "{} - all unrectified affnet features - no valid component".format(img_name)
-        visualize_LAF_custom(timg, identity_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
+        visualize_LAF_custom(t_img_all, identity_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
     Timer.end_check_point("affnet_init")
 
@@ -455,8 +458,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
         mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
 
-        t_img = KR.image_to_tensor(img_data.img, False).float() / 255.
-        img_warped_t, aff_map = warp_image(t_img, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first)
+        #t_img = KR.image_to_tensor(img_data.img, False).float() / 255.
+        img_warped_t, aff_map = warp_image(t_img_all, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first)
         img_warped = k_to_img_np(img_warped_t)
 
         if warp_image_show_transformation:
@@ -471,7 +474,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
 
         if warp_image_show_transformation:
-            img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv, dsize=(t_img.shape[2], t_img.shape[3]))
+            img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv, dsize=(t_img_all.shape[2], t_img_all.shape[3]))
             show_torch_img(img_warped_back_t, "warped back from caller")
 
         Timer.start_check_point("affnet filtering keypoints")
@@ -508,16 +511,17 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
 
         mask_in = ts_affnet_final < tilt_r_exp
-        update_stats_map_static(["affnet_warped_added", params_key, img_name], ts_affnet_final.shape[1], stats_map)
-        update_stats_map_static(["affnet_warped_added_close", params_key, img_name], mask_in.sum(), stats_map)
-        print("affnet_warped_added: {}".format(ts_affnet_final))
-        print("affnet_warped_added_close: {}".format(mask_in.sum()))
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added"], ts_affnet_final.shape[1], stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_close"], mask_in.sum().item(), stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_compponent.shape[0], stats_map)
+        print("affnet_warped_added: {}".format(ts_affnet_final.shape[1]))
+        print("affnet_warped_added_close: {}".format(mask_in.sum().item()))
 
         Timer.end_check_point("affnet filtering keypoints")
 
         if show_affnet:
             img_normal_component_title = "{} - rectified features for component {}, normal {}".format(img_name, current_component, normal_index)
-            visualize_LAF_custom(t_img, laffs_final, title=img_normal_component_title, figsize=(8, 12))
+            visualize_LAF_custom(t_img_all, laffs_final, title=img_normal_component_title, figsize=(8, 12))
 
             ts_affnet_in = ts_affnet_final[mask_in]
             ts_affnet_out = ts_affnet_final[~mask_in]
@@ -533,7 +537,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     if show_affnet:
         title = "{} - all features after rectification".format(img_name)
-        visualize_LAF_custom(t_img, all_laffs, title=title, figsize=(8, 12))
+        visualize_LAF_custom(t_img_all, all_laffs, title=title, figsize=(8, 12))
 
         all_scales = KF.get_laf_scale(all_laffs)
         all_laffs_no_scale = KF.scale_laf(all_laffs, 1. / all_scales)
@@ -554,7 +558,6 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     Timer.end_check_point("affnet_rectify")
 
-    # TODO
     unrectified_indices = None
     return all_kps, all_descs, unrectified_indices
 

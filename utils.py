@@ -27,6 +27,13 @@ def update_stats_map_static(key_list, obj, map_in):
     map[key_list[-1]] = obj
 
 
+def append_update_stats_map_static(key_list, obj, map_in):
+    map = ensure_keys(map_in, key_list[:-1])
+    if not map.__contains__(key_list[-1]):
+        map[key_list[-1]] = []
+    map[key_list[-1]].append(obj)
+
+
 def is_rectified_condition(img_data):
     return img_data.valid_components_dict is not None
 

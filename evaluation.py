@@ -552,6 +552,13 @@ def evaluate_all_matching_stats(stats_map_all: dict, n_examples=10, special_diff
     all_diffs = list(all_diffs)
     all_diffs.sort()
 
+    for diff in all_diffs:
+        if special_diff is not None and special_diff != diff:
+            continue
+        for key in keys_list:
+            if stats_map_all[key].__contains__(diff): # and len(stats_map_all[key][diff]) > 0:
+                print_significant_instances(stats_map_all[key][diff], key, diff, n_examples=n_examples)
+
     angle_thresholds = [5, 10, 20]
     for angle_threshold in angle_thresholds:
         print("Accuracy ({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in keys_list])))
@@ -574,13 +581,6 @@ def evaluate_all_matching_stats(stats_map_all: dict, n_examples=10, special_diff
             else:
                 value_list.append("0")
         print("{}\t{}".format(diff, "\t".join(value_list)))
-
-    for diff in all_diffs:
-        if special_diff is not None and special_diff != diff:
-            continue
-        for key in keys_list:
-            if stats_map_all[key].__contains__(diff): # and len(stats_map_all[key][diff]) > 0:
-                print_significant_instances(stats_map_all[key][diff], key, diff, n_examples=n_examples)
 
 
 # def evaluate(stats_map: dict, scene_info: SceneInfo):
@@ -870,18 +870,24 @@ def evaluate_file(scene_name, file_name):
 #     end = time.time()
 #     print("Time elapsed: {}".format(end - start))
 
-def evaluate_stats(stats_map):
+def evaluate_stats(stats_map, all):
     evaluate_normals_stats(stats_map)
     evaluate_matching_stats(stats_map)
-    evaluate_affnet(stats_map)
+    if all:
+        evaluate_per_img_stats(stats_map)
 
 
-def evaluate_affnet(stats_map):
+def evaluate_per_img_stats(stats_map):
 
-    if not stats_map.__contains__("affnet_identity_no_component"):
-        print("WARNING: 'affnet_identity_no_component' not found, skipping")
+    if not stats_map.__contains__("per_img_stats"):
+        print("WARNING: 'per_img_stats' not found, skipping")
     else:
-        print("'affnet_identity_no_component' found, continue...")
+        print("Per img stats:")
+        m = stats_map["per_img_stats"]
+        for configuration in m:
+            print("configuration: {}".format(configuration))
+            for img in m[configuration]:
+                print("img: {}, props: ({})".format(img, m[configuration][img]))
 
 
 def get_all_diffs(maps_all_params):
@@ -1093,7 +1099,7 @@ def quantil_stats():
     file_name = "work/stats_diff_all.pkl"
     file_name = "work/stats_superpoint_all.pkl"
     file_name = "./work/stats_matching_baseline.pkl"; just_root = False
-    #file_name = "./work/all_stats_old_baseline.pkl"; just_root = True
+    file_name = "./work/all_stats_old_baseline.pkl"; just_root = True
     file_name = "./persist_do_not_commit/stats_matching_baseline.pkl"; just_root = False
 
     with open(file_name, "rb") as f:

@@ -513,7 +513,7 @@ class Pipeline:
                 angle_degrees = angle_rad * 180 / math.pi
                 # print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
                 if angle_degrees >= Config.plane_threshold_degrees:
-                    print("WARNING: two sharp of an angle with the -z axis, skipping the rectification")
+                    print("WARNING: too sharp of an angle with the -z axis, skipping the rectification")
                     continue
                 else:
                     print("angle ok")
@@ -1153,7 +1153,7 @@ class Pipeline:
                 Timer.end_check_point("complete image pair matching")
 
                 if stats_counter % 10 == 0:
-                    evaluate_stats(self.stats)
+                    evaluate_stats(self.stats, all=stats_counter % 100 == 0)
                 evaluate_all_matching_stats(self.stats_map, n_examples=30, special_diff=difficulty)
 
                 Timer.log_stats()
@@ -1161,6 +1161,7 @@ class Pipeline:
             stats_file_name = self.get_diff_stats_file(difficulty)
             with open(stats_file_name, "wb") as f:
                 pickle.dump(stats_map_diff, f)
+            self.save_stats("matching_after_{}_diff_{}".format(self.cache_map[Property.all_combinations], difficulty))
 
         all_stats_file_name = self.get_diff_stats_file()
         with open(all_stats_file_name, "wb") as f:
@@ -1169,8 +1170,8 @@ class Pipeline:
         self.save_stats("matching_after_{}".format(self.cache_map[Property.all_combinations]))
         self.log()
         # These two are different approaches to stats
+        evaluate_stats(self.stats, all=True)
         evaluate_all_matching_stats(self.stats_map, n_examples=30)
-        evaluate_stats(self.stats)
 
     def save_stats(self, key=""):
         file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())
