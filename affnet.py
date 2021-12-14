@@ -421,8 +421,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
     ], show_affnet)
 
+    t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
     if show_affnet:
-        t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
         title = "{} - all unrectified affnet features".format(img_name)
         visualize_LAF_custom(t_img_all, identity_laffs, title=title, figsize=(8, 12))
         title = "{} - all unrectified affnet features - no valid component".format(img_name)
@@ -458,7 +458,6 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
         mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
 
-        #t_img = KR.image_to_tensor(img_data.img, False).float() / 255.
         img_warped_t, aff_map = warp_image(t_img_all, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first)
         img_warped = k_to_img_np(img_warped_t)
 
