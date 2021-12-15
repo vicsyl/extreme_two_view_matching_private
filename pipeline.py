@@ -1115,7 +1115,7 @@ class Pipeline:
                         for idx, img in enumerate([img_pair.img1, img_pair.img2]):
                             image_data.append(self.process_image(img, idx))
                     except:
-                        print("(processing image) {}_{} couldn't be processed, skipping the matching pair".format(img_pair.img1, img_pair.img1))
+                        print("(processing image) {}_{} couldn't be processed, skipping the matching pair".format(img_pair.img1, img_pair.img2))
                         print(traceback.format_exc(), file=sys.stdout)
                         continue
 

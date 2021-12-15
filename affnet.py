@@ -396,7 +396,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     phis_affnet_in = phis[:, mask_in]
     phis_affnet_out = phis[:, ~mask_in]
 
-    mask_to_add = mask_in_or_no_component if affnet_include_all_from_identity else mask_in
+    mask_to_add = torch.ones_like(mask_in_or_no_component, dtype=torch.bool) if affnet_include_all_from_identity else mask_in_or_no_component
     all_kps = [kps for i, kps in enumerate(identity_kps) if mask_to_add[i]] # []
     all_descs = identity_descs[mask_to_add] # np.zeros((0, 128), dtype=np.float32)
     all_laffs = identity_laffs[:, mask_to_add] # orch.zeros(1, 0, 2, 3)
@@ -444,6 +444,10 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         ts_affnet_out = ts_compponent[~mask_in]
         phis_affnet_in = phis_component[mask_in]
         phis_affnet_out = phis_component[~mask_in]
+
+        if ts_affnet_out.shape[0] == 0:
+            print("Component no {} will be skipped from rectification, no features with a large tilt".format(current_component))
+            continue
 
         t_mean_affnet = torch.mean(ts_affnet_out)
         phi_mean_affnet = torch.mean(phis_affnet_out)
