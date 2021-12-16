@@ -46,7 +46,7 @@ class CoveringParams:
             t_max=6.0,
             # TODO just pretty randomly populated
             ts_opt=[2.2, 2.5],
-            phis_opt=[math.pi / 16.0, math.pi / 20.0])
+            phis_opt=[math.pi / 32.0, math.pi / 32.0])
 
     def covering_coordinates(self):
         t_phi_list = []
