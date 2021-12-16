@@ -129,12 +129,17 @@ class CartesianConfig:
         "rotation_alpha1": Property("float", default=1.0, cache=Property.cache_img_data, list_allowed=True),
         "rotation_alpha2": Property("float", default=1.0, cache=Property.cache_img_data, list_allowed=True),
         "rectify_affine_affnet": Property("bool", default=False, cache=Property.cache_img_data, list_allowed=True),
+
+        # AFFNET
         "affnet_invert_first": Property("bool", default=True, cache=Property.cache_img_data, list_allowed=True),
         "affnet_tilt_r_ln": Property("float", default=1.7, cache=Property.cache_img_data, list_allowed=True),
         "affnet_max_tilt_r": Property("float", default=5.8, cache=Property.cache_img_data, list_allowed=True),
         "affnet_hard_net_filter": Property("int", default=None, optional=True, cache=Property.cache_img_data, list_allowed=False),
         "show_affnet": Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=False),
         "affnet_include_all_from_identity": Property("bool", default=False, optional=True, cache=Property.cache_img_data),
+        "affnet_covering_type": Property("enum", default="dense_cover", cache=Property.cache_img_data, optional=False, list_allowed=True, allowed_values=["mean", "dense_cover"]),
+        "affnet_covering_fraction_th": Property("float", default=0.9, cache=Property.cache_img_data, optional=False, list_allowed=True),
+        "affnet_covering_max_iter": Property("int", default=2, cache=Property.cache_img_data, optional=False, list_allowed=True),
 
         # SIFT
         "n_features": Property("int", None, optional=True, cache=Property.cache_img_data),

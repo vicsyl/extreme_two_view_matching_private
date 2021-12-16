@@ -8,6 +8,7 @@ from matplotlib.patches import Circle
 
 from kornia_utils import *
 from utils import Timer, update_stats_map_static, append_update_stats_map_static
+from opt_covering import *
 
 
 @dataclass
@@ -356,6 +357,62 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
     return img_tilt, affine_transform
 
 
+def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
+
+    covering_type = config.get("affnet_covering_type", "dense_cover")
+
+    # TODO synchronize the other params already used (max_r, r)
+    covering_fraction_th = config.get("affnet_covering_fraction_th", 0.9)
+    covering_max_iter = config.get("affnet_covering_max_iter", 2)
+
+    show_affnet = config.get("show_affnet", False)
+
+    if covering_type == "dense_cover":
+
+        covering_params = CoveringParams.denser_covering()
+        covering_coords = covering_params.covering_coordinates()
+        data = torch.vstack((data_all_ts, data_all_phis))
+
+        winning_centers = vote(covering_coords, data, covering_params.r_max, fraction_th=covering_fraction_th, iter_th=covering_max_iter)
+
+        if show_affnet:
+            ax = opt_cov_prepare_plot(covering_params)
+            opt_conv_draw(ax, data, "b", 1.0)
+            opt_conv_draw(ax, covering_coords, "r", 3.0)
+
+            for i, wc in enumerate(winning_centers):
+                draw_in_center(ax, wc, data, covering_params.r_max)
+                opt_conv_draw(ax, wc, "b", 5.0)
+
+            draw_identity_data(ax, data, covering_params.r_max)
+
+            plt.show()
+
+        return winning_centers
+
+    elif covering_type == "mean":
+
+        # obsolete
+        max_tilt_r = config.get("affnet_max_tilt_r", 5.8)
+        tilt_r_exp = config.get("affnet_tilt_r_ln", 1.7)
+
+        t_mean_affnet = torch.mean(ts_out)
+        phi_mean_affnet = torch.mean(phis_out)
+
+        if show_affnet:
+            label = "unrectified: {}/{}".format(ts_in.shape[0], ts_out.shape[0])
+            plot_space_of_tilts(label, img_name, component_index, normal_index, tilt_r_exp, max_tilt_r, [
+                PointsStyle(ts=ts_in, phis=phis_in, color="b", size=0.5),
+                PointsStyle(ts=ts_out, phis=phis_out, color="y", size=0.5),
+                PointsStyle(ts=t_mean_affnet, phis=phi_mean_affnet, color="r", size=3)
+            ], show_affnet)
+
+        return torch.hstack((t_mean_affnet, phi_mean_affnet)).unsqueeze(0)
+
+    else:
+        raise Exception("Unexpected covering_type: {}".format(covering_type))
+
+
 def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), warp_image_show_transformation=False, params_key="", stats_map={}):
 
     if params_key is None or params_key == "":
@@ -450,94 +507,90 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
             print("Component no {} will be skipped from rectification, no features with a large tilt".format(current_component))
             continue
 
-        t_mean_affnet = torch.mean(ts_affnet_out)
-        phi_mean_affnet = torch.mean(phis_affnet_out)
-
-        label = "unrectified: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
-        print("{}: count: {}".format(label, ts_compponent.shape))
-        plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
-            PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
-            PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
-            PointsStyle(ts=t_mean_affnet, phis=phi_mean_affnet, color="r", size=3)
-        ], show_affnet)
-
         mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
 
-        img_warped_t, aff_map = warp_image(t_img_all, t_mean_affnet.item(), phi_mean_affnet.item(), mask_img_component, invert_first=invert_first)
-        img_warped = k_to_img_np(img_warped_t)
+        ts_phis = get_covering_transformations(ts_compponent, phis_component,
+                                               ts_affnet_out, phis_affnet_out,
+                                               ts_affnet_in, phis_affnet_in,
+                                               img_name, current_component, normal_index, conf_map)
 
-        if warp_image_show_transformation:
-            img_normal_component_title = "{} - warped component {}, normal {}".format(img_name, current_component, normal_index)
-            plt.figure(figsize=(6, 8))
-            plt.title(img_normal_component_title)
-            plt.imshow(img_warped)
-            plt.show()
+        for t_phi in ts_phis:
 
-        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True, filter=affnet_hard_net_filter)
+            img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=invert_first)
+            img_warped = k_to_img_np(img_warped_t)
 
-        aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
+            if warp_image_show_transformation:
+                img_normal_component_title = "{} - warped component {}, normal {}".format(img_name, current_component, normal_index)
+                plt.figure(figsize=(6, 8))
+                plt.title(img_normal_component_title)
+                plt.imshow(img_warped)
+                plt.show()
 
-        if warp_image_show_transformation:
-            img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv, dsize=(t_img_all.shape[2], t_img_all.shape[3]))
-            show_torch_img(img_warped_back_t, "warped back from caller")
+            kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True, filter=affnet_hard_net_filter)
 
-        Timer.start_check_point("affnet filtering keypoints")
+            aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
 
-        kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
-        kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
-        kpt_s_back = kpt_s_back.squeeze(2)
+            if warp_image_show_transformation:
+                img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv, dsize=(t_img_all.shape[2], t_img_all.shape[3]))
+                show_torch_img(img_warped_back_t, "warped back from caller")
 
-        laffs_final[0, :, :, 2] = kpt_s_back
+            Timer.start_check_point("affnet filtering keypoints")
 
-        kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
-        mask_cmp = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (kpt_s_back_int[:, 0] < img_data.img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
-        print("invalid back transformed pixels: {}/{}".format(mask_cmp.shape[0] - mask_cmp.sum(), mask_cmp.shape[0]))
+            kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
+            kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
+            kpt_s_back = kpt_s_back.squeeze(2)
 
-        kpt_s_back_int[~mask_cmp, 0] = 0
-        kpt_s_back_int[~mask_cmp, 1] = 0
-        mask_cmp = (mask_cmp) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == current_component)
-        mask_cmp = mask_cmp.to(torch.bool)
+            laffs_final[0, :, :, 2] = kpt_s_back
 
-        kps = []
-        for i, kp in enumerate(kps_warped):
-            if mask_cmp[i]:
-                kp.pt = (kpt_s_back[i][0].item(), kpt_s_back[i][1].item())
-                kps.append(kp)
-        descs = descs_warped[mask_cmp]
-        laffs_final = laffs_final[:, mask_cmp]
+            kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
+            mask_cmp = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (kpt_s_back_int[:, 0] < img_data.img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
+            print("invalid back transformed pixels: {}/{}".format(mask_cmp.shape[0] - mask_cmp.sum(), mask_cmp.shape[0]))
 
-        all_kps.extend(kps)
-        all_descs = np.vstack((all_descs, descs))
-        all_laffs = torch.cat((all_laffs, laffs_final), 1)
+            kpt_s_back_int[~mask_cmp, 0] = 0
+            kpt_s_back_int[~mask_cmp, 1] = 0
+            mask_cmp = (mask_cmp) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == current_component)
+            mask_cmp = mask_cmp.to(torch.bool)
 
-        scale_l_final = KF.get_laf_scale(laffs_final)
-        laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
-        _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
+            kps = []
+            for i, kp in enumerate(kps_warped):
+                if mask_cmp[i]:
+                    kp.pt = (kpt_s_back[i][0].item(), kpt_s_back[i][1].item())
+                    kps.append(kp)
+            descs = descs_warped[mask_cmp]
+            laffs_final = laffs_final[:, mask_cmp]
 
-        mask_in = ts_affnet_final < tilt_r_exp
-        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added"], ts_affnet_final.shape[1], stats_map)
-        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_close"], mask_in.sum().item(), stats_map)
-        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_compponent.shape[0], stats_map)
-        print("affnet_warped_added: {}".format(ts_affnet_final.shape[1]))
-        print("affnet_warped_added_close: {}".format(mask_in.sum().item()))
+            all_kps.extend(kps)
+            all_descs = np.vstack((all_descs, descs))
+            all_laffs = torch.cat((all_laffs, laffs_final), 1)
 
-        Timer.end_check_point("affnet filtering keypoints")
+            scale_l_final = KF.get_laf_scale(laffs_final)
+            laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
+            _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
 
-        if show_affnet:
-            img_normal_component_title = "{} - rectified features for component {}, normal {}".format(img_name, current_component, normal_index)
-            visualize_LAF_custom(t_img_all, laffs_final, title=img_normal_component_title, figsize=(8, 12))
+            mask_in = ts_affnet_final < tilt_r_exp
+            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added"], ts_affnet_final.shape[1], stats_map)
+            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_close"], mask_in.sum().item(), stats_map)
+            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_compponent.shape[0], stats_map)
+            print("affnet_warped_added: {}".format(ts_affnet_final.shape[1]))
+            print("affnet_warped_added_close: {}".format(mask_in.sum().item()))
 
-            ts_affnet_in = ts_affnet_final[mask_in]
-            ts_affnet_out = ts_affnet_final[~mask_in]
-            phis_affnet_in = phis_affnet_final[mask_in]
-            phis_affnet_out = phis_affnet_final[~mask_in]
+            Timer.end_check_point("affnet filtering keypoints")
 
-            label = "rectified: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
-            print("{}: count: {}".format(label, ts_affnet_final.shape))
-            plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
-                PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
-                PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
-            ], show_affnet)
+            if show_affnet:
+                img_normal_component_title = "{} - rectified features for component {}, normal {}".format(img_name, current_component, normal_index)
+                visualize_LAF_custom(t_img_all, laffs_final, title=img_normal_component_title, figsize=(8, 12))
+
+                ts_affnet_in = ts_affnet_final[mask_in]
+                ts_affnet_out = ts_affnet_final[~mask_in]
+                phis_affnet_in = phis_affnet_final[mask_in]
+                phis_affnet_out = phis_affnet_final[~mask_in]
+
+                label = "rectified: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
+                print("{}: count: {}".format(label, ts_affnet_final.shape))
+                plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
+                    PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
+                    PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
+                ], show_affnet)
 
     if show_affnet:
         title = "{} - all features after rectification".format(img_name)
