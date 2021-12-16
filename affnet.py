@@ -1,7 +1,6 @@
 import math
 from dataclasses import dataclass
 
-import cv2 as cv
 import kornia as KR
 import kornia.feature as KF
 import torch
@@ -391,10 +390,6 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     mask_no_valid_component = (kpts_component_indices == -1)[0]
     mask_in = (ts < tilt_r_exp)[0]
     mask_in_or_no_component = mask_in | mask_no_valid_component
-    ts_affnet_in = ts[:, mask_in]
-    ts_affnet_out = ts[:, ~mask_in]
-    phis_affnet_in = phis[:, mask_in]
-    phis_affnet_out = phis[:, ~mask_in]
 
     mask_to_add = torch.ones_like(mask_in_or_no_component, dtype=torch.bool) if affnet_include_all_from_identity else mask_in_or_no_component
     all_kps = [kps for i, kps in enumerate(identity_kps) if mask_to_add[i]] # []
@@ -412,17 +407,23 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     print("affnet_identity_no_component_or_close: {}".format(mask_in_or_no_component.sum()))
     print("affnet_identity_added: {}".format(mask_to_add.sum()))
 
-    # plot_space_of_tilts -> all initial
-    label = "all: {}/{}".format(ts_affnet_in.shape[1], ts_affnet_out.shape[1])
-    # TODO valid, etc
-    print("{}: count: {}".format(label, ts.shape))
-    plot_space_of_tilts(label, img_name, 0, 0, tilt_r_exp, max_tilt_r, [
-        PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
-        PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
-    ], show_affnet)
-
     t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
+
     if show_affnet:
+        ts_affnet_in_or_no_comp = ts[:, mask_in_or_no_component]
+        ts_affnet_out = ts[:, ~mask_in_or_no_component]
+        phis_affnet_in_or_no_comp = phis[:, mask_in_or_no_component]
+        phis_affnet_out = phis[:, ~mask_in_or_no_component]
+
+        # plot_space_of_tilts -> all initial
+        label = "all: {}/{}".format(ts_affnet_in_or_no_comp.shape[1], ts_affnet_out.shape[1])
+        # TODO valid, etc
+        print("{}: count: {}".format(label, ts.shape))
+        plot_space_of_tilts(label, img_name, 0, 0, tilt_r_exp, max_tilt_r, [
+            PointsStyle(ts=ts_affnet_in_or_no_comp, phis=phis_affnet_in_or_no_comp, color="b", size=0.5),
+            PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
+        ], show_affnet)
+
         title = "{} - all unrectified affnet features".format(img_name)
         visualize_LAF_custom(t_img_all, identity_laffs, title=title, figsize=(8, 12))
         title = "{} - all unrectified affnet features - no valid component".format(img_name)
