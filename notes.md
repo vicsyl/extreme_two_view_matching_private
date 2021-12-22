@@ -504,5 +504,41 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
   * with minor modifications I can actually try the exact method by Rodriquez - to comparison
   * complete (and rework) the thesis itself
 
-   
+
+# notes from 12/22/2021
+
+# experiments
+
+* in progress
+  * the whole original DS
+  * Rodriquez approach on scene 1 - in progress
+
+# thesis content
+
+* used the official template - questions mostly regarding the language (will discuss with department)
+* it needs reworking really
+* roughly divided into 2 parts: Toft approach and HardNet 
+
+
+# questions
+
+* Sharing on github? With source? (/export pdf to st editable)
+  
+* Wording - copying from the original paper 
+  * my own style / notation consistency 
+  * the source is listed in references
+
+* Structure 
+  * not sure whether the structure logically makes sense to a (first) reader 
+  * parts may be needed to be swapped/amended
+  
+* format - I don't really like my graphs/pseudocode, etc.
+  * will improve it gradually
+  * can I use img taken from other papers? (I may come up with my own at the very end)
+
+# plan 
+* annotate the work with notes and TODOs so that it can be revised
+* finish the new section around ASIFT/Space of tilts/HardNet
+* shall we sync on Monday?
+
 
