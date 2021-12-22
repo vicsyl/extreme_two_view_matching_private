@@ -474,3 +474,35 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * what should I still compute (DS, settings)    
 
 * how frequently should we sync (online, offline)
+
+
+# notes from 12/17/2021
+
+# experiments
+
+* rectification driven via AffNet affine maps - results
+  * naive covering the space of tilts via one mean per component
+  * covering inspired by Rodriquez - resembling also the voting during the clustering
+    * demo    
+  * how to improve the Affnet (driven rectification via affine maps) even more?
+    * keep top 400 sorted by ratio 
+    * there are many keypoints found (many thousands), but only few tentatives - different matcher parameters (distance ratio threshold - currently 0.85)
+  * there is an obvious accuracy / resources (time, memory) trade-off - for these coverings the memory footprint / comp. time should not be that bad    
+
+* plan
+  * try on the rest of the DS
+  * try on different DS - st. peters, EVD,...
+  * try with estimated K
+  * Q: can most of the measurements done just by scene1 and the whole data sets on few standard settings? 
+  * A: EVD compute homography
+
+- comparison with Rodriques
+- comparison with Torsten
+- ICPR - dates? - ping ... 
+
+  * shouldn't take long to try out the gaussian blur (I will use the decomposition of H = H_p @ Aff) 
+  * with minor modifications I can actually try the exact method by Rodriquez - to comparison
+  * complete (and rework) the thesis itself
+
+   
+
