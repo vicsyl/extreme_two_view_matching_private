@@ -369,7 +369,7 @@ def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, t
 
     if covering_type == "dense_cover":
 
-        covering_params = CoveringParams.denser_covering()
+        covering_params = CoveringParams.narrow_covering()
         covering_coords = covering_params.covering_coordinates()
         data = torch.vstack((data_all_ts, data_all_phis))
 
@@ -527,6 +527,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
                 plt.show()
 
             kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True, filter=affnet_hard_net_filter)
+            if len(kps_warped) == 0:
+                continue
 
             aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
 

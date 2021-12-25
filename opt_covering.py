@@ -12,41 +12,45 @@ class CoveringParams:
     t_max: float
     ts_opt: list
     phis_opt: list
+    name: str
 
     @staticmethod
-    def get_log_1_8_covering():
+    def log_1_8_covering():
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             ts_opt=[2.88447, 6.2197],
-            phis_opt=[math.pi / 8.0, math.pi / 16.0])
+            phis_opt=[math.pi / 8.0, math.pi / 16.0],
+            name="log_1_8_covering")
 
     @staticmethod
-    def light_covering():
+    def log_1_8_covering_denser():
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             # TODO just pretty randomly populated
             ts_opt=[2.2, 2.88447, 4.28, 6.2197],
-            phis_opt=[math.pi / 8.0, math.pi / 10.0, math.pi / 12.0, math.pi / 16.0])
+            phis_opt=[math.pi / 8.0, math.pi / 10.0, math.pi / 12.0, math.pi / 16.0],
+            name="log_1_8_covering_denser")
 
     @staticmethod
-    def denser_covering_backup():
+    def log_1_8_covering_densest():
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             # TODO just pretty randomly populated
             ts_opt=[2.2, 2.5, 2.88447, 3.5, 4.28, 5.5, 6.2197],
-            phis_opt=[math.pi / 16.0, math.pi / 20.0, math.pi / 24.0, math.pi / 28.0, math.pi / 32.0, math.pi / 36.0, math.pi / 40.0])
+            phis_opt=[math.pi / 16.0, math.pi / 20.0, math.pi / 24.0, math.pi / 28.0, math.pi / 32.0, math.pi / 36.0, math.pi / 40.0],
+            name="log_1_8_covering_densest")
 
     @staticmethod
-    def denser_covering():
+    def narrow_covering():
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
-            # TODO just pretty randomly populated
             ts_opt=[2.2, 2.5],
-            phis_opt=[math.pi / 32.0, math.pi / 32.0])
+            phis_opt=[math.pi / 32.0, math.pi / 32.0],
+            name="narrow_covering")
 
     def covering_coordinates(self):
         t_phi_list = []
@@ -89,9 +93,7 @@ def vote(centers, data, r, fraction_th, iter_th):
     iter_finished = 0
     winning_centers = []
     rect_fraction = 1 - filtered_data.shape[1] / data.shape[1]
-    print("rect_fraction: {}".format(rect_fraction))
     while rect_fraction < fraction_th and iter_finished < iter_th:
-        print("rect_fraction: {}".format(rect_fraction))
 
         distances = distance_matrix(centers[0], filtered_data[0], centers[1], filtered_data[1])
         votes = (distances < rhs)
@@ -112,6 +114,33 @@ def vote(centers, data, r, fraction_th, iter_th):
     return torch.tensor(winning_centers)
 
 
+def opt_conv_draw_ellipses(ax, cov_params, centers):
+
+    log_max_radius = math.log(cov_params.t_max)
+    log_unit_radius = math.log(cov_params.r_max)
+    rhs = (math.exp(2 * log_unit_radius) + 1) / (2 * math.exp(log_unit_radius))
+
+    factor = 1.2
+    extend = factor * log_max_radius
+    range_x = torch.arange(start=-extend, end=extend, step=0.01)
+    range_y = torch.arange(start=-extend, end=extend, step=0.01)
+    grid_x, grid_y = torch.meshgrid(range_x, range_y)
+    grid_x = grid_x.ravel()
+    grid_y = grid_y.ravel()
+
+    ts = torch.exp(torch.sqrt(grid_x ** 2 + grid_y ** 2))
+    phis = torch.atan(grid_x / grid_y)
+    #phis = torch.zeros_like(phis)
+
+    distances_close = torch.abs(distance_matrix(ts, centers[0], phis, centers[1]) - rhs)
+    distances_close = distances_close.min(axis=1)[0]
+
+    grid_x = grid_x[distances_close < 0.01]
+    grid_y = grid_y[distances_close < 0.01]
+
+    ax.plot(grid_x, grid_y, 'o', color="b", markersize=0.2)
+
+
 def opt_conv_draw(ax, ts_phis, color, size):
 
     tilts_logs = torch.log(ts_phis[0])
@@ -120,9 +149,9 @@ def opt_conv_draw(ax, ts_phis, color, size):
     ax.plot(xs, ys, 'o', color=color, markersize=size)
 
 
-def opt_cov_prepare_plot(cov_params: CoveringParams):
+def opt_cov_prepare_plot(cov_params: CoveringParams, title="Nearest neighbors"):
     fig, ax = plt.subplots()
-    plt.title("Nearest neighbors")
+    plt.title(title)
 
     log_max_radius = math.log(cov_params.t_max)
     log_unit_radius = math.log(cov_params.r_max)
@@ -147,12 +176,12 @@ def draw_in_center(ax, center, data, r_max):
     distances = distance_matrix(center[0, None], data[0], center[1, None], data[1])
     votes = (distances[0] < rhs)
     data_in = data[:, votes]
-    opt_conv_draw(ax, data_in, 'y', 2)
+    opt_conv_draw(ax, data_in, 'yellow', 2)
 
 
 def main_demo():
 
-    covering_params = CoveringParams.denser_covering()
+    covering_params = CoveringParams.log_1_8_covering()
 
     data_count = 5000
     data = torch.rand(2, data_count)
@@ -160,17 +189,19 @@ def main_demo():
     data[1] = data[1] * math.pi
 
     ax = opt_cov_prepare_plot(covering_params)
-    opt_conv_draw(ax, data, "b", 1.0)
-    covering_coords = covering_params.covering_coordinates()
-    opt_conv_draw(ax, covering_coords, "r", 3.0)
+    #opt_conv_draw(ax, data, "b", 1.0)
+    covering_centers = covering_params.covering_coordinates()
+    opt_conv_draw(ax, covering_centers, "r", 5.0)
 
-    winning_centers = vote(covering_coords, data, covering_params.r_max, fraction_th=0.6, iter_th=30)
+    opt_conv_draw_ellipses(ax, covering_params, covering_centers)
 
-    for i, wc in enumerate(winning_centers):
-        draw_in_center(ax, wc, data, covering_params.r_max)
-        opt_conv_draw(ax, wc, "b", 5.0)
+    winning_centers = vote(covering_centers, data, covering_params.r_max, fraction_th=0.6, iter_th=30)
 
-    draw_identity_data(ax, data, covering_params.r_max)
+    # for i, wc in enumerate(winning_centers):
+    #     draw_in_center(ax, wc, data, covering_params.r_max)
+    #     opt_conv_draw(ax, wc, "b", 5.0)
+    #
+    # draw_identity_data(ax, data, covering_params.r_max)
 
     plt.show()
 
