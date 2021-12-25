@@ -78,8 +78,6 @@ class Pipeline:
     singular_value_quantil = 1.0
     all_unrectified = False
 
-    scene_name = None
-    scene_type = None
     permutation_limit = None
     method = None
     file_name_suffix = None
@@ -148,23 +146,20 @@ class Pipeline:
         sift_edge_threshold = self.config["sift_edge_threshold"]
         sift_sigma = self.config["sift_sigma"]
 
-        use_hardnet = self.config["use_hardnet"]
-        use_rootfift = self.config["use_rootsift"]
-
         if feature_descriptor == "SIFT":
             feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
         elif feature_descriptor == "BRISK":
             feature_descriptor = cv.BRISK_create(n_features)
         elif feature_descriptor == "SUPERPOINT":
             feature_descriptor = SuperPointDescriptor(path="./superpoint_forked/superpoint_v1.pth", device=self.device)
-
-        if use_rootfift:
+        elif feature_descriptor == "ROOT_SIFT":
+            feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
             feature_descriptor = RootSIFT(feature_descriptor)
+        elif feature_descriptor == "HARD_NET":
+            feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
+            feature_descriptor = HardNetDescriptor(feature_descriptor, device=self.device)
 
-        if use_hardnet:
-            self.feature_descriptor = HardNetDescriptor(feature_descriptor, device=self.device)
-        else:
-            self.feature_descriptor = feature_descriptor
+        self.feature_descriptor = feature_descriptor
 
     @staticmethod
     def configure(config_file_name: str, args):
@@ -192,9 +187,7 @@ class Pipeline:
                 k = k.strip()
                 v = v.strip()
 
-                if k == "scene_name":
-                    pipeline.scene_name = v
-                elif k == "handle_antipodal_points":
+                if k == "handle_antipodal_points":
                     pipeline.handle_antipodal_points = v.lower() == "true"
                 elif k == "device":
                     if v == "cpu":
@@ -218,8 +211,6 @@ class Pipeline:
                     pipeline.permutation_limit = int(v)
                 elif k == "method":
                     pipeline.method = v
-                elif k == "scene_type":
-                    pipeline.scene_type = v
                 elif k == "file_name_suffix":
                     pipeline.file_name_suffix = v
                 elif k == "all_unrectified":
@@ -319,7 +310,7 @@ class Pipeline:
         print("device: {}".format(self.device))
 
         self.log()
-        self.scene_info = SceneInfo.read_scene(self.scene_name, self.scene_type, file_name_suffix=self.file_name_suffix)
+        self.scene_info = SceneInfo.read_scene(scene_name=self.config["scene_name"], type=self.config["scene_type"], file_name_suffix=self.file_name_suffix)
         self.setup_descriptor()
 
         if self.config["rectify_affine_affnet"]:
@@ -1204,7 +1195,7 @@ def append_all(pipeline, str):
     estimate_K = "estimatedK" if pipeline.estimate_k else "GTK"
     rectified = "rectified" if pipeline.rectify else "unrectified"
     timestamp = get_tmsp()
-    return "{}_{}_{}_{}_{}_{}_{}".format(str, pipeline.scene_type, pipeline.scene_name.replace("/", "_"), use_degensac, estimate_K, rectified, timestamp)
+    return "{}_{}_{}_{}_{}".format(str, use_degensac, estimate_K, rectified, timestamp)
 
 
 def main():
