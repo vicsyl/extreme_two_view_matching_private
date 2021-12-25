@@ -131,6 +131,7 @@ class CartesianConfig:
         "rectify_affine_affnet": Property("bool", default=False, cache=Property.cache_img_data, list_allowed=True),
 
         # AFFNET
+        # to be removed
         "affnet_invert_first": Property("bool", default=True, cache=Property.cache_img_data, list_allowed=True),
         # param for naive approach via "mean"
         "affnet_tilt_r_ln": Property("float", default=1.7, cache=Property.cache_img_data, list_allowed=True),
@@ -142,6 +143,7 @@ class CartesianConfig:
         "affnet_covering_type": Property("enum", default="dense_cover", cache=Property.cache_img_data, optional=False, list_allowed=True, allowed_values=["mean", "dense_cover", "dense_cover_original"]),
         "affnet_covering_fraction_th": Property("float", default=0.9, cache=Property.cache_img_data, optional=False, list_allowed=True),
         "affnet_covering_max_iter": Property("int", default=2, cache=Property.cache_img_data, optional=False, list_allowed=True),
+        "affnet_no_clustering": Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
 
         # SIFT
         "n_features": Property("int", None, optional=True, cache=Property.cache_img_data),

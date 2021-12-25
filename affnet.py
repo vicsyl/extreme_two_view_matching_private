@@ -31,7 +31,7 @@ def round_and_clamp_coords_torch(coords, max_0_excl, max_1_excl):
 
 # NOTE : also basically version of utils.get_kpts_normals, but for torch!!!
 # TODO there is some duplicate code with get_kpts_normals_indices
-def get_kpts_components_indices(components_indices_np, valid_components_dict, laffs_no_scale, device=torch.device('cpu')):
+def get_kpts_components_indices(components_indices_np, valid_components_dict, laffs_no_scale):
 
     Timer.start_check_point("get_kpts_components_indices")
 
@@ -357,7 +357,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
     return img_tilt, affine_transform
 
 
-def winninng_centers(covering_params: CoveringParams, data_all_ts, data_all_phis, config):
+def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis, config):
 
     covering_fraction_th = config["affnet_covering_fraction_th"]
     covering_max_iter = config["affnet_covering_max_iter"]
@@ -366,7 +366,7 @@ def winninng_centers(covering_params: CoveringParams, data_all_ts, data_all_phis
     covering_coords = covering_params.covering_coordinates()
     data = torch.vstack((data_all_ts, data_all_phis))
 
-    winning_centers = vote(covering_coords, data, covering_params.r_max,
+    ret_winning_centers = vote(covering_coords, data, covering_params.r_max,
                            fraction_th=covering_fraction_th,
                            iter_th=covering_max_iter)
 
@@ -375,7 +375,7 @@ def winninng_centers(covering_params: CoveringParams, data_all_ts, data_all_phis
         opt_conv_draw(ax, data, "b", 1.0)
         opt_conv_draw(ax, covering_coords, "r", 3.0)
 
-        for i, wc in enumerate(winning_centers):
+        for i, wc in enumerate(ret_winning_centers):
             draw_in_center(ax, wc, data, covering_params.r_max)
             opt_conv_draw(ax, wc, "b", 5.0)
 
@@ -383,23 +383,23 @@ def winninng_centers(covering_params: CoveringParams, data_all_ts, data_all_phis
 
         plt.show()
 
-    return winning_centers
+    return ret_winning_centers
 
 
 def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
 
-    covering_type = config.get("affnet_covering_type", "dense_cover")
+    covering_type = config["affnet_covering_type"]
     show_affnet = config.get("show_affnet", False)
 
     if covering_type == "dense_cover_original":
 
         covering_params = CoveringParams.dense_covering_original()
-        return winninng_centers(covering_params, data_all_ts, data_all_phis, config)
+        return winning_centers(covering_params, data_all_ts, data_all_phis, config)
 
     elif covering_type == "dense_cover":
 
         covering_params = CoveringParams.dense_covering_1_7()
-        return winninng_centers(covering_params, data_all_ts, data_all_phis, config)
+        return winning_centers(covering_params, data_all_ts, data_all_phis, config)
 
     # NOTE - naive approach
     elif covering_type == "mean":
@@ -425,7 +425,133 @@ def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, t
         raise Exception("Unexpected covering_type: {}".format(covering_type))
 
 
-def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), warp_image_show_transformation=False, params_key="", stats_map={}):
+def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
+                     mask_cmp, ts, phis,
+                     current_component, normal_index,
+                     config, params_key, stats_map,
+                     all_kps, all_descs, all_laffs):
+
+    show_affnet = config.get("show_affnet", False)
+    affnet_hard_net_filter = config.get("affnet_hard_net_filter", 1)
+    affnet_warp_image_show_transformation = config.get("affnet_warp_image_show_transformation", False)
+    covering = CoveringParams.get_effective_covering(config)
+    tilt_r_exp = covering.r_max
+    max_tilt_r = covering.t_max
+
+    # mark
+    ts_compponent, phis_component = ts[mask_cmp], phis[mask_cmp]
+
+    mask_in = ts_compponent < tilt_r_exp
+    ts_affnet_in = ts_compponent[mask_in]
+    ts_affnet_out = ts_compponent[~mask_in]
+    phis_affnet_in = phis_component[mask_in]
+    phis_affnet_out = phis_component[~mask_in]
+
+    if ts_affnet_out.shape[0] == 0:
+        print("Component no {} will be skipped from rectification, no features with a large tilt".format(current_component))
+        return
+
+    if current_component is not None:
+        mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
+    else:
+        mask_img_component = torch.ones(img_data.img.shape[:2])
+
+    ts_phis = get_covering_transformations(ts_compponent, phis_component,
+                                           ts_affnet_out, phis_affnet_out,
+                                           ts_affnet_in, phis_affnet_in,
+                                           img_name, current_component, normal_index, config)
+
+    append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warps_per_component"], len(ts_phis), stats_map)
+    for t_phi in ts_phis:
+
+        img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=True)
+        img_warped = k_to_img_np(img_warped_t)
+
+        if affnet_warp_image_show_transformation:
+            img_normal_component_title = "{} - warped component {}, normal {}".format(img_name,
+                                                                                      current_component,
+                                                                                      normal_index)
+            plt.figure(figsize=(6, 8))
+            plt.title(img_normal_component_title)
+            plt.imshow(img_warped)
+            plt.show()
+
+        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True,
+                                                                                    filter=affnet_hard_net_filter)
+        if len(kps_warped) == 0:
+            continue
+
+        aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
+
+        if affnet_warp_image_show_transformation:
+            img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv,
+                                                        dsize=(t_img_all.shape[2], t_img_all.shape[3]))
+            show_torch_img(img_warped_back_t, "warped back from caller")
+
+        Timer.start_check_point("affnet filtering keypoints")
+
+        kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
+        kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
+        kpt_s_back = kpt_s_back.squeeze(2)
+
+        laffs_final[0, :, :, 2] = kpt_s_back
+
+        kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
+        mask_cmp = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (
+                    kpt_s_back_int[:, 0] < img_data.img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
+        print("invalid back transformed pixels: {}/{}".format(mask_cmp.shape[0] - mask_cmp.sum(), mask_cmp.shape[0]))
+
+        kpt_s_back_int[~mask_cmp, 0] = 0
+        kpt_s_back_int[~mask_cmp, 1] = 0
+        if current_component is not None:
+            mask_cmp = (mask_cmp) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == current_component)
+        mask_cmp = mask_cmp.to(torch.bool)
+
+        kps = []
+        for i, kp in enumerate(kps_warped):
+            if mask_cmp[i]:
+                kp.pt = (kpt_s_back[i][0].item(), kpt_s_back[i][1].item())
+                kps.append(kp)
+        descs = descs_warped[mask_cmp]
+        laffs_final = laffs_final[:, mask_cmp]
+
+        all_kps.extend(kps)
+        all_descs = np.vstack((all_descs, descs))
+        all_laffs = torch.cat((all_laffs, laffs_final), 1)
+
+        scale_l_final = KF.get_laf_scale(laffs_final)
+        laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
+        _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(
+            laffs_final_no_scale[:, :, :, :2])
+
+        mask_in = ts_affnet_final < tilt_r_exp
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added"], ts_affnet_final.shape[1], stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_close"], mask_in.sum().item(), stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_compponent.shape[0], stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_img_size"], img_warped.shape[0] * img_warped.shape[1], stats_map)
+
+        Timer.end_check_point("affnet filtering keypoints")
+
+        if show_affnet:
+            img_normal_component_title = "{} - rectified features for component {}, normal {}".format(img_name,
+                                                                                                      current_component,
+                                                                                                      normal_index)
+            visualize_LAF_custom(t_img_all, laffs_final, title=img_normal_component_title, figsize=(8, 12))
+
+            ts_affnet_in = ts_affnet_final[mask_in]
+            ts_affnet_out = ts_affnet_final[~mask_in]
+            phis_affnet_in = phis_affnet_final[mask_in]
+            phis_affnet_out = phis_affnet_final[~mask_in]
+
+            label = "rectified: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
+            print("{}: count: {}".format(label, ts_affnet_final.shape))
+            plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
+                PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
+                PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
+            ], show_affnet)
+
+
+def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), params_key="", stats_map={}):
 
     if params_key is None or params_key == "":
         params_key = "default"
@@ -434,20 +560,29 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     Timer.start_check_point("affnet_init")
 
-    max_tilt_r = conf_map.get("affnet_max_tilt_r", 5.8)
-    tilt_r_exp = conf_map.get("affnet_tilt_r_ln", 1.7)
+    covering = CoveringParams.get_effective_covering(conf_map)
+    max_tilt_r = covering.t_max
+    tilt_r_exp = covering.r_max
+
+    # to be removed
     invert_first = conf_map.get("invert_first", True)
+    assert invert_first
+
     affnet_hard_net_filter = conf_map.get("affnet_hard_net_filter", 1)
     affnet_include_all_from_identity = conf_map.get("affnet_include_all_from_identity", False)
+    affnet_no_clustering = conf_map["affnet_no_clustering"]
 
     show_affnet = conf_map.get("show_affnet", False)
 
-    identity_kps, identity_descs, identity_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, filter=affnet_hard_net_filter)
-    # torch
-    kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, identity_laffs, device)
+    identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, filter=affnet_hard_net_filter)
 
-    laffs_scale = KF.get_laf_scale(identity_laffs)
-    laffs_no_scale = KF.scale_laf(identity_laffs, 1. / laffs_scale)
+    if affnet_no_clustering:
+        kpts_component_indices = torch.zeros((unrectified_laffs.shape[:2]))
+    else:
+        kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, unrectified_laffs)
+
+    laffs_scale = KF.get_laf_scale(unrectified_laffs)
+    laffs_no_scale = KF.scale_laf(unrectified_laffs, 1. / laffs_scale)
 
     affnet_lin_maps = laffs_no_scale[:, :, :, :2]
 
@@ -462,8 +597,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     mask_to_add = torch.ones_like(mask_in_or_no_component, dtype=torch.bool) if affnet_include_all_from_identity else mask_in_or_no_component
     all_kps = [kps for i, kps in enumerate(identity_kps) if mask_to_add[i]] # []
-    all_descs = identity_descs[mask_to_add] # np.zeros((0, 128), dtype=np.float32)
-    all_laffs = identity_laffs[:, mask_to_add] # orch.zeros(1, 0, 2, 3)
+    all_descs = identity_descs[mask_to_add]
+    all_laffs = unrectified_laffs[:, mask_to_add]
 
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_all"], len(identity_kps), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component"], mask_no_valid_component.sum().item(), stats_map)
@@ -494,117 +629,33 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         ], show_affnet)
 
         title = "{} - all unrectified affnet features".format(img_name)
-        visualize_LAF_custom(t_img_all, identity_laffs, title=title, figsize=(8, 12))
+        visualize_LAF_custom(t_img_all, unrectified_laffs, title=title, figsize=(8, 12))
         title = "{} - all unrectified affnet features - no valid component".format(img_name)
-        visualize_LAF_custom(t_img_all, identity_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
+        visualize_LAF_custom(t_img_all, unrectified_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
     Timer.end_check_point("affnet_init")
 
-    for current_component in img_data.valid_components_dict:
+    if affnet_no_clustering:
+        print("processing all components at once - no clustering")
+        mask_cmp = torch.ones_like(kpts_component_indices, dtype=torch.bool)
+        add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
+                         mask_cmp, ts, phis,
+                         None, None,
+                         conf_map, params_key, stats_map,
+                         all_kps, all_descs, all_laffs)
 
-        normal_index = img_data.valid_components_dict[current_component]
-        print("processing component->normal: {} -> {}".format(current_component, normal_index))
+    else:
+        for current_component in img_data.valid_components_dict:
 
-        mask_cmp = kpts_component_indices == current_component
+            normal_index = img_data.valid_components_dict[current_component]
+            print("processing component->normal: {} -> {}".format(current_component, normal_index))
+            mask_cmp = kpts_component_indices == current_component
 
-        ts_compponent, phis_component = ts[mask_cmp], phis[mask_cmp]
-
-        mask_in = ts_compponent < tilt_r_exp
-        ts_affnet_in = ts_compponent[mask_in]
-        ts_affnet_out = ts_compponent[~mask_in]
-        phis_affnet_in = phis_component[mask_in]
-        phis_affnet_out = phis_component[~mask_in]
-
-        if ts_affnet_out.shape[0] == 0:
-            print("Component no {} will be skipped from rectification, no features with a large tilt".format(current_component))
-            continue
-
-        mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
-
-        ts_phis = get_covering_transformations(ts_compponent, phis_component,
-                                               ts_affnet_out, phis_affnet_out,
-                                               ts_affnet_in, phis_affnet_in,
-                                               img_name, current_component, normal_index, conf_map)
-
-        for t_phi in ts_phis:
-
-            img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=invert_first)
-            img_warped = k_to_img_np(img_warped_t)
-
-            if warp_image_show_transformation:
-                img_normal_component_title = "{} - warped component {}, normal {}".format(img_name, current_component, normal_index)
-                plt.figure(figsize=(6, 8))
-                plt.title(img_normal_component_title)
-                plt.imshow(img_warped)
-                plt.show()
-
-            kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True, filter=affnet_hard_net_filter)
-            if len(kps_warped) == 0:
-                continue
-
-            aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
-
-            if warp_image_show_transformation:
-                img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv, dsize=(t_img_all.shape[2], t_img_all.shape[3]))
-                show_torch_img(img_warped_back_t, "warped back from caller")
-
-            Timer.start_check_point("affnet filtering keypoints")
-
-            kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
-            kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
-            kpt_s_back = kpt_s_back.squeeze(2)
-
-            laffs_final[0, :, :, 2] = kpt_s_back
-
-            kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
-            mask_cmp = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (kpt_s_back_int[:, 0] < img_data.img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
-            print("invalid back transformed pixels: {}/{}".format(mask_cmp.shape[0] - mask_cmp.sum(), mask_cmp.shape[0]))
-
-            kpt_s_back_int[~mask_cmp, 0] = 0
-            kpt_s_back_int[~mask_cmp, 1] = 0
-            mask_cmp = (mask_cmp) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == current_component)
-            mask_cmp = mask_cmp.to(torch.bool)
-
-            kps = []
-            for i, kp in enumerate(kps_warped):
-                if mask_cmp[i]:
-                    kp.pt = (kpt_s_back[i][0].item(), kpt_s_back[i][1].item())
-                    kps.append(kp)
-            descs = descs_warped[mask_cmp]
-            laffs_final = laffs_final[:, mask_cmp]
-
-            all_kps.extend(kps)
-            all_descs = np.vstack((all_descs, descs))
-            all_laffs = torch.cat((all_laffs, laffs_final), 1)
-
-            scale_l_final = KF.get_laf_scale(laffs_final)
-            laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
-            _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
-
-            mask_in = ts_affnet_final < tilt_r_exp
-            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added"], ts_affnet_final.shape[1], stats_map)
-            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_close"], mask_in.sum().item(), stats_map)
-            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_compponent.shape[0], stats_map)
-            print("affnet_warped_added: {}".format(ts_affnet_final.shape[1]))
-            print("affnet_warped_added_close: {}".format(mask_in.sum().item()))
-
-            Timer.end_check_point("affnet filtering keypoints")
-
-            if show_affnet:
-                img_normal_component_title = "{} - rectified features for component {}, normal {}".format(img_name, current_component, normal_index)
-                visualize_LAF_custom(t_img_all, laffs_final, title=img_normal_component_title, figsize=(8, 12))
-
-                ts_affnet_in = ts_affnet_final[mask_in]
-                ts_affnet_out = ts_affnet_final[~mask_in]
-                phis_affnet_in = phis_affnet_final[mask_in]
-                phis_affnet_out = phis_affnet_final[~mask_in]
-
-                label = "rectified: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
-                print("{}: count: {}".format(label, ts_affnet_final.shape))
-                plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
-                    PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
-                    PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
-                ], show_affnet)
+            add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
+                             mask_cmp, ts, phis,
+                             current_component, normal_index,
+                             conf_map, params_key, stats_map,
+                             all_kps, all_descs, all_laffs)
 
     if show_affnet:
         title = "{} - all features after rectification".format(img_name)
@@ -679,7 +730,6 @@ def decomposition_test():
         lambda_, psi, t, phi = decompose_lin_maps_lambda_psi_t_phi(lin_map, asserts=True)
         print("l: {}, psi: {}, t: {}, phi: {}".format(lambda_, psi, t, phi))
         return lambda_, psi, t, phi
-
 
     projected_lin_map, lambdas, R_psis, T_ts, R_phis = compose_lin_maps(t, phi)
     assert torch.all(projected_lin_map == lambdas * R_psis @ T_ts @ R_phis)

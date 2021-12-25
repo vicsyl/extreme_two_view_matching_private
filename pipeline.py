@@ -334,7 +334,6 @@ class Pipeline:
         intersection = set(self.matching_difficulties).intersection(set(scene_length_range))
         self.matching_difficulties = list(intersection)
 
-
     def log(self):
         print("Pipeline config:")
         attr_list = [attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and attr not in ["stats", "stats_map"]]
@@ -444,11 +443,9 @@ class Pipeline:
         if not self.rectify:
 
             Timer.end_check_point("processing img without rectification")
-
             cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
             if cached_img_data is not None:
                 return cached_img_data
-
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
             img_data = ImageData(img=img,
@@ -466,89 +463,104 @@ class Pipeline:
 
         else:
 
-            cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
-            if cached_img_data is not None:
-                return cached_img_data
+            rectify_affine_affnet = self.config["rectify_affine_affnet"]
+            affnet_no_clustering = self.config["affnet_no_clustering"]
+            if rectify_affine_affnet and affnet_no_clustering:
+                print("no prior clustering")
+                img_data = ImageData(img=img,
+                                     real_K=real_K,
+                                     key_points=None,
+                                     descriptions=None,
+                                     normals=None,
+                                     components_indices=None,
+                                     valid_components_dict=None)
+            else:
 
-            Timer.start_check_point("processing img from scratch")
+                cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
+                if cached_img_data is not None:
+                    return cached_img_data
 
-            depth_data_file_name = "{}.npy".format(img_name)
-            depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, device=torch.device('cpu'))
-            normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'))
+                Timer.start_check_point("processing img from scratch")
 
-            Timer.start_check_point("sky_mask")
-            non_sky_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
-            Timer.end_check_point("sky_mask")
+                depth_data_file_name = "{}.npy".format(img_name)
+                depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, device=torch.device('cpu'))
+                normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'))
 
-            Timer.start_check_point("quantil_mask")
-            quantil_mask = self.get_quantil_mask(img, img_name, self.singular_value_quantil, depth_data[2:4], s_values, depth_data, non_sky_mask)
-            filter_mask = non_sky_mask & quantil_mask
-            Timer.end_check_point("quantil_mask")
+                Timer.start_check_point("sky_mask")
+                non_sky_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+                Timer.end_check_point("sky_mask")
 
-            Timer.start_check_point("clustering")
-            normals_deviced = normals.to(self.device)
-            print("normals_deviced.device: {}".format(normals_deviced.device))
-            normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
-                                                                                   filter_mask=filter_mask,
-                                                                                   mean_shift=self.mean_shift,
-                                                                                   device=self.device,
-                                                                                   handle_antipodal_points=self.handle_antipodal_points)
-            Timer.end_check_point("clustering")
-            self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.all_combinations], img_name)
+                Timer.start_check_point("quantil_mask")
+                quantil_mask = self.get_quantil_mask(img, img_name, self.singular_value_quantil, depth_data[2:4], s_values, depth_data, non_sky_mask)
+                filter_mask = non_sky_mask & quantil_mask
+                Timer.end_check_point("quantil_mask")
 
-            show_or_save_clusters(normals,
-                                  normal_indices,
-                                  normals_clusters_repr,
-                                  img_processing_dir,
-                                  depth_data_file_name,
-                                  show=self.show_clusters,
-                                  save=self.save_clusters)
+                Timer.start_check_point("clustering")
+                normals_deviced = normals.to(self.device)
+                print("normals_deviced.device: {}".format(normals_deviced.device))
+                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
+                                                                                       filter_mask=filter_mask,
+                                                                                       mean_shift=self.mean_shift,
+                                                                                       device=self.device,
+                                                                                       handle_antipodal_points=self.handle_antipodal_points)
+                Timer.end_check_point("clustering")
+                self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.all_combinations], img_name)
 
-            if self.upsample_early:
-                normal_indices = possibly_upsample_normals(img, normal_indices)
+                show_or_save_clusters(normals,
+                                      normal_indices,
+                                      normals_clusters_repr,
+                                      img_processing_dir,
+                                      depth_data_file_name,
+                                      show=self.show_clusters,
+                                      save=self.save_clusters)
 
-            valid_normal_indices = []
-            for i, normal in enumerate(normals_clusters_repr):
-                angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
-                angle_degrees = angle_rad * 180 / math.pi
-                # print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
-                if angle_degrees >= Config.plane_threshold_degrees:
-                    print("WARNING: too sharp of an angle with the -z axis, skipping the rectification")
-                    continue
-                else:
-                    print("angle ok")
-                    valid_normal_indices.append(i)
+                if self.upsample_early:
+                    normal_indices = possibly_upsample_normals(img, normal_indices)
 
-            components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices,
-                                                                                 closing_size=self.connected_components_closing_size,
-                                                                                 flood_filling=self.connected_components_flood_fill,
-                                                                                 connectivity=self.connected_components_connectivity)
+                # LAST_MINUTE !!!
+                valid_normal_indices = []
+                for i, normal in enumerate(normals_clusters_repr):
+                    angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
+                    angle_degrees = angle_rad * 180 / math.pi
+                    # print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
+                    if angle_degrees >= Config.plane_threshold_degrees:
+                        print("WARNING: too sharp of an angle with the -z axis, skipping the rectification")
+                        continue
+                    else:
+                        print("angle ok")
+                        valid_normal_indices.append(i)
 
-            if not self.upsample_early:
-                assert np.all(components_indices < 256), "could not retype to np.uint8"
-                components_indices = components_indices.astype(dtype=np.uint8)
-                components_indices = possibly_upsample_normals(img, components_indices)
-                components_indices = components_indices.astype(dtype=np.uint32)
+                components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices,
+                                                                                     closing_size=self.connected_components_closing_size,
+                                                                                     flood_filling=self.connected_components_flood_fill,
+                                                                                     connectivity=self.connected_components_connectivity)
 
-            components_out_path = "{}/{}_cluster_connected_components".format(img_processing_dir, img_name)
-            get_and_show_components(components_indices,
-                                    valid_components_dict,
-                                    normals=normals_clusters_repr,
-                                    show=self.show_clustered_components,
-                                    save=self.save_clustered_components,
-                                    path=components_out_path,
-                                    file_name=depth_data_file_name[:-4])
+                if not self.upsample_early:
+                    assert np.all(components_indices < 256), "could not retype to np.uint8"
+                    components_indices = components_indices.astype(dtype=np.uint8)
+                    components_indices = possibly_upsample_normals(img, components_indices)
+                    components_indices = components_indices.astype(dtype=np.uint32)
 
-            img_data = ImageData(img=img,
-                                 real_K=real_K,
-                                 key_points=None,
-                                 descriptions=None,
-                                 normals=normals_clusters_repr,
-                                 components_indices=components_indices,
-                                 valid_components_dict=valid_components_dict)
+                components_out_path = "{}/{}_cluster_connected_components".format(img_processing_dir, img_name)
+                get_and_show_components(components_indices,
+                                        valid_components_dict,
+                                        normals=normals_clusters_repr,
+                                        show=self.show_clustered_components,
+                                        save=self.save_clustered_components,
+                                        path=components_out_path,
+                                        file_name=depth_data_file_name[:-4])
+
+                img_data = ImageData(img=img,
+                                     real_K=real_K,
+                                     key_points=None,
+                                     descriptions=None,
+                                     normals=normals_clusters_repr,
+                                     components_indices=components_indices,
+                                     valid_components_dict=valid_components_dict)
 
             fixed_rot_condition = self.config["recify_by_fixed_rotation"]
             finish_cond = self.get_stage_number() <= self.stages_map["before_rectification"]
+
             if fixed_rot_condition or finish_cond:
                 print("rectify_by_fixed_rotation: {}, finish before_rectification: {}".format(fixed_rot_condition, finish_cond))
                 print("process_image done")
@@ -563,7 +575,7 @@ class Pipeline:
                                                                                self.config,
                                                                                device=self.device,
                                                                                params_key=self.cache_map[Property.all_combinations],
-                                                                               stats_map = self.stats)
+                                                                               stats_map=self.stats)
 
             else:
 
@@ -1119,7 +1131,9 @@ class Pipeline:
                         print(traceback.format_exc(), file=sys.stdout)
                         continue
 
-                    if self.rectify:
+                    rectify_affine_affnet = self.config["rectify_affine_affnet"]
+                    affnet_no_clustering = self.config["affnet_no_clustering"]
+                    if self.rectify and (not rectify_affine_affnet or not affnet_no_clustering):
                         zero_around_z = self.config["recify_by_0_around_z"]
                         estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
 

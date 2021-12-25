@@ -3,7 +3,7 @@ import torch
 import math
 from dataclasses import dataclass
 from matplotlib.patches import Circle
-
+from utils import Timer
 
 @dataclass
 class CoveringParams:
@@ -66,6 +66,27 @@ class CoveringParams:
             phis_opt=[math.pi / 32.0] * bands,
             name="narrow_covering")
 
+    @staticmethod
+    def get_effective_covering(config):
+
+        covering_type = config["affnet_covering_type"]
+
+        if covering_type == "mean":
+            tilt_r_exp = config.get("affnet_tilt_r_ln", 1.7)
+            max_tilt_r = config.get("affnet_max_tilt_r", 5.8)
+            return CoveringParams(r_max=tilt_r_exp,
+                                  t_max=5.8,
+                                  ts_opt=None,
+                                  phis_opt=None,
+                                  name="mean like covering - r_max={}, t_max={}".format(tilt_r_exp, max_tilt_r))
+
+        elif covering_type == "dense_cover_original":
+            return CoveringParams.dense_covering_original()
+        elif covering_type == "dense_cover":
+            return CoveringParams.dense_covering_1_7()
+        else:
+            raise ValueError("Unknown covering type: {}".format(covering_type))
+
     def covering_coordinates(self):
         t_phi_list = []
         for index, t_opt in enumerate(self.ts_opt):
@@ -104,6 +125,8 @@ def draw_identity_data(ax, data, r):
 
 def vote(centers, data, r, fraction_th, iter_th):
 
+    Timer.start_check_point("vote_covering_centers")
+
     r = math.log(r)
     rhs = (math.exp(2 * r) + 1) / (2 * math.exp(r))
 
@@ -128,6 +151,8 @@ def vote(centers, data, r, fraction_th, iter_th):
         winning_center = centers[:, indices[0]]
         winning_centers.append((winning_center[0].item(), winning_center[1].item()))
         iter_finished += 1
+
+    Timer.end_check_point("vote_covering_centers")
 
     return torch.tensor(winning_centers)
 

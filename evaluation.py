@@ -886,8 +886,21 @@ def evaluate_per_img_stats(stats_map):
         m = stats_map["per_img_stats"]
         for configuration in m:
             print("configuration: {}".format(configuration))
+            sum_area = 0
+            sum_warps = 0
+            sum_components = 0
             for img in m[configuration]:
-                print("img: {}, props: ({})".format(img, m[configuration][img]))
+                areas = m[configuration][img].get("affnet_warped_img_size", [])
+                affnet_warps_per_component = m[configuration][img].get("affnet_warps_per_component", [])
+                sum_components += len(affnet_warps_per_component)
+                for warps in affnet_warps_per_component:
+                    sum_warps += warps
+                for area in areas:
+                    sum_area += area
+            avg_area = sum_area / len(m[configuration])
+            print("avg rectified warped imgs area: {}".format(avg_area))
+            avg_warps_per_component = sum_warps / sum_components
+            print("avg number of warps per component: {}".format(avg_warps_per_component))
 
 
 def get_all_diffs(maps_all_params):
