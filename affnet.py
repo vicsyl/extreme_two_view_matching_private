@@ -389,28 +389,18 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
 def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
 
     covering_type = config["affnet_covering_type"]
-    show_affnet = config.get("show_affnet", False)
-
-    if covering_type == "dense_cover_original":
-
-        covering_params = CoveringParams.dense_covering_original()
-        return winning_centers(covering_params, data_all_ts, data_all_phis, config)
-
-    elif covering_type == "dense_cover":
-
-        covering_params = CoveringParams.dense_covering_1_7()
-        return winning_centers(covering_params, data_all_ts, data_all_phis, config)
 
     # NOTE - naive approach
-    elif covering_type == "mean":
+    if covering_type == "mean":
 
         # only for this approach via taking means
-        max_tilt_r = config.get("affnet_max_tilt_r", 5.8)
-        tilt_r_exp = config.get("affnet_tilt_r_ln", 1.7)
+        max_tilt_r = covering.t_max
+        tilt_r_exp = covering.r_max
 
         t_mean_affnet = torch.mean(ts_out)
         phi_mean_affnet = torch.mean(phis_out)
 
+        show_affnet = config.get("show_affnet", False)
         if show_affnet:
             label = "unrectified: {}/{}".format(ts_in.shape[0], ts_out.shape[0])
             plot_space_of_tilts(label, img_name, component_index, normal_index, tilt_r_exp, max_tilt_r, [
@@ -422,7 +412,8 @@ def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, t
         return torch.hstack((t_mean_affnet, phi_mean_affnet)).unsqueeze(0)
 
     else:
-        raise Exception("Unexpected covering_type: {}".format(covering_type))
+        covering = CoveringParams.get_effective_covering(config)
+        return winning_centers(covering, data_all_ts, data_all_phis, config)
 
 
 def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,

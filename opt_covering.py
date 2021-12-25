@@ -53,17 +53,30 @@ class CoveringParams:
             name="narrow_covering")
 
     # CNN-ASSISTED COVERINGS IN THE SPACE OF TILTS:
-    # BEST AFFINE INVARIANT PERFORMANCES WITH THE SPEED OF CNNS (1.7, 5.8)
+    # BEST AFFINE INVARIANT PERFORMANCES WITH THE SPEED OF CNNS
+    # (1.7, 5.8) - BUT DENSE!
     @staticmethod
     def dense_covering_1_7():
         bands = 6
         lg_sp = torch.logspace(math.log(2.0, 10), math.log(6.2197, 10), bands)
-        #ts_opt = [2.2, 2.5, 2.9, 3.5, 4.6, 6.2197],
         return CoveringParams(
             r_max=1.7,
             t_max=5.8,
             ts_opt=lg_sp,
             phis_opt=[math.pi / 32.0] * bands,
+            name="narrow_covering")
+
+    # CNN-ASSISTED COVERINGS IN THE SPACE OF TILTS:
+    # BEST AFFINE INVARIANT PERFORMANCES WITH THE SPEED OF CNNS
+    # (1.7, 5.8) - BUT SPARSE!
+    @staticmethod
+    def sparse_covering_1_7():
+        bands = 6
+        return CoveringParams(
+            r_max=1.7,
+            t_max=5.8,
+            ts_opt=[2.88447, 6.2197],
+            phis_opt=[math.pi / 16.0] * 2,
             name="narrow_covering")
 
     @staticmethod
@@ -84,6 +97,8 @@ class CoveringParams:
             return CoveringParams.dense_covering_original()
         elif covering_type == "dense_cover":
             return CoveringParams.dense_covering_1_7()
+        elif covering_type == "sparse_cover":
+            return CoveringParams.sparse_covering_1_7()
         else:
             raise ValueError("Unknown covering type: {}".format(covering_type))
 
