@@ -357,42 +357,54 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
     return img_tilt, affine_transform
 
 
+def winninng_centers(covering_params: CoveringParams, data_all_ts, data_all_phis, config):
+
+    covering_fraction_th = config["affnet_covering_fraction_th"]
+    covering_max_iter = config["affnet_covering_max_iter"]
+    show_affnet = config.get("show_affnet", False)
+
+    covering_coords = covering_params.covering_coordinates()
+    data = torch.vstack((data_all_ts, data_all_phis))
+
+    winning_centers = vote(covering_coords, data, covering_params.r_max,
+                           fraction_th=covering_fraction_th,
+                           iter_th=covering_max_iter)
+
+    if show_affnet:
+        ax = opt_cov_prepare_plot(covering_params)
+        opt_conv_draw(ax, data, "b", 1.0)
+        opt_conv_draw(ax, covering_coords, "r", 3.0)
+
+        for i, wc in enumerate(winning_centers):
+            draw_in_center(ax, wc, data, covering_params.r_max)
+            opt_conv_draw(ax, wc, "b", 5.0)
+
+        draw_identity_data(ax, data, covering_params.r_max)
+
+        plt.show()
+
+    return winning_centers
+
+
 def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
 
     covering_type = config.get("affnet_covering_type", "dense_cover")
-
-    # TODO synchronize the other params already used (max_r, r)
-    covering_fraction_th = config.get("affnet_covering_fraction_th", 0.9)
-    covering_max_iter = config.get("affnet_covering_max_iter", 2)
-
     show_affnet = config.get("show_affnet", False)
 
-    if covering_type == "dense_cover":
+    if covering_type == "dense_cover_original":
 
-        covering_params = CoveringParams.narrow_covering()
-        covering_coords = covering_params.covering_coordinates()
-        data = torch.vstack((data_all_ts, data_all_phis))
+        covering_params = CoveringParams.dense_covering_original()
+        return winninng_centers(covering_params, data_all_ts, data_all_phis, config)
 
-        winning_centers = vote(covering_coords, data, covering_params.r_max, fraction_th=covering_fraction_th, iter_th=covering_max_iter)
+    elif covering_type == "dense_cover":
 
-        if show_affnet:
-            ax = opt_cov_prepare_plot(covering_params)
-            opt_conv_draw(ax, data, "b", 1.0)
-            opt_conv_draw(ax, covering_coords, "r", 3.0)
+        covering_params = CoveringParams.dense_covering_1_7()
+        return winninng_centers(covering_params, data_all_ts, data_all_phis, config)
 
-            for i, wc in enumerate(winning_centers):
-                draw_in_center(ax, wc, data, covering_params.r_max)
-                opt_conv_draw(ax, wc, "b", 5.0)
-
-            draw_identity_data(ax, data, covering_params.r_max)
-
-            plt.show()
-
-        return winning_centers
-
+    # NOTE - naive approach
     elif covering_type == "mean":
 
-        # obsolete
+        # only for this approach via taking means
         max_tilt_r = config.get("affnet_max_tilt_r", 5.8)
         tilt_r_exp = config.get("affnet_tilt_r_ln", 1.7)
 

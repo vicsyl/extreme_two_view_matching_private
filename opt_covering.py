@@ -28,7 +28,7 @@ class CoveringParams:
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
-            # TODO just pretty randomly populated
+            # NOTE just pretty randomly populated
             ts_opt=[2.2, 2.88447, 4.28, 6.2197],
             phis_opt=[math.pi / 8.0, math.pi / 10.0, math.pi / 12.0, math.pi / 16.0],
             name="log_1_8_covering_denser")
@@ -38,18 +38,32 @@ class CoveringParams:
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
-            # TODO just pretty randomly populated
+            # NOTE just pretty randomly populated
             ts_opt=[2.2, 2.5, 2.88447, 3.5, 4.28, 5.5, 6.2197],
             phis_opt=[math.pi / 16.0, math.pi / 20.0, math.pi / 24.0, math.pi / 28.0, math.pi / 32.0, math.pi / 36.0, math.pi / 40.0],
             name="log_1_8_covering_densest")
 
     @staticmethod
-    def narrow_covering():
+    def dense_covering_original():
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             ts_opt=[2.2, 2.5],
             phis_opt=[math.pi / 32.0, math.pi / 32.0],
+            name="narrow_covering")
+
+    # CNN-ASSISTED COVERINGS IN THE SPACE OF TILTS:
+    # BEST AFFINE INVARIANT PERFORMANCES WITH THE SPEED OF CNNS (1.7, 5.8)
+    @staticmethod
+    def dense_covering_1_7():
+        bands = 6
+        lg_sp = torch.logspace(math.log(2.0, 10), math.log(6.2197, 10), bands)
+        #ts_opt = [2.2, 2.5, 2.9, 3.5, 4.6, 6.2197],
+        return CoveringParams(
+            r_max=1.7,
+            t_max=5.8,
+            ts_opt=lg_sp,
+            phis_opt=[math.pi / 32.0] * bands,
             name="narrow_covering")
 
     def covering_coordinates(self):
@@ -59,6 +73,12 @@ class CoveringParams:
                 t_phi_list.append((t_opt, phi))
 
         return torch.tensor(t_phi_list).T
+
+    def covering_coordinates_count(self):
+        count = 0
+        for index in range(len(self.ts_opt)):
+            count = count + len(torch.arange(start=0.0, end=math.pi, step=self.phis_opt[index]))
+        return count
 
 
 def distance_matrix(t1, t2, phi1, phi2):
@@ -101,8 +121,6 @@ def vote(centers, data, r, fraction_th, iter_th):
         sorted, indices = torch.sort(votes_count, descending=True)
 
         data_in_mask = votes[indices[0]]
-        #data_in = filtered_data[:, data_in_mask]
-        #draw(ax, data_in, 'y', 2)
 
         filtered_data = filtered_data[:, ~data_in_mask]
         rect_fraction = 1 - filtered_data.shape[1] / data.shape[1]
@@ -122,21 +140,20 @@ def opt_conv_draw_ellipses(ax, cov_params, centers):
 
     factor = 1.2
     extend = factor * log_max_radius
-    range_x = torch.arange(start=-extend, end=extend, step=0.01)
-    range_y = torch.arange(start=-extend, end=extend, step=0.01)
+    range_x = torch.arange(start=-extend, end=extend, step=0.005)
+    range_y = torch.arange(start=-extend, end=extend, step=0.005)
     grid_x, grid_y = torch.meshgrid(range_x, range_y)
     grid_x = grid_x.ravel()
     grid_y = grid_y.ravel()
 
     ts = torch.exp(torch.sqrt(grid_x ** 2 + grid_y ** 2))
     phis = torch.atan(grid_x / grid_y)
-    #phis = torch.zeros_like(phis)
 
     distances_close = torch.abs(distance_matrix(ts, centers[0], phis, centers[1]) - rhs)
     distances_close = distances_close.min(axis=1)[0]
 
-    grid_x = grid_x[distances_close < 0.01]
-    grid_y = grid_y[distances_close < 0.01]
+    grid_x = grid_x[distances_close < 0.005]
+    grid_y = grid_y[distances_close < 0.005]
 
     ax.plot(grid_x, grid_y, 'o', color="b", markersize=0.2)
 
@@ -150,6 +167,7 @@ def opt_conv_draw(ax, ts_phis, color, size):
 
 
 def opt_cov_prepare_plot(cov_params: CoveringParams, title="Nearest neighbors"):
+
     fig, ax = plt.subplots()
     plt.title(title)
 
@@ -179,9 +197,11 @@ def draw_in_center(ax, center, data, r_max):
     opt_conv_draw(ax, data_in, 'yellow', 2)
 
 
-def main_demo():
+def demo():
 
-    covering_params = CoveringParams.log_1_8_covering()
+    #covering_params = CoveringParams.log_1_8_covering()
+    covering_params = CoveringParams.dense_covering_1_7()
+    print("count: {}".format(covering_params.covering_coordinates_count()))
 
     data_count = 5000
     data = torch.rand(2, data_count)
@@ -189,22 +209,24 @@ def main_demo():
     data[1] = data[1] * math.pi
 
     ax = opt_cov_prepare_plot(covering_params)
+
     #opt_conv_draw(ax, data, "b", 1.0)
+
     covering_centers = covering_params.covering_coordinates()
     opt_conv_draw(ax, covering_centers, "r", 5.0)
 
-    opt_conv_draw_ellipses(ax, covering_params, covering_centers)
+    #opt_conv_draw_ellipses(ax, covering_params, covering_centers)
 
     winning_centers = vote(covering_centers, data, covering_params.r_max, fraction_th=0.6, iter_th=30)
 
     # for i, wc in enumerate(winning_centers):
     #     draw_in_center(ax, wc, data, covering_params.r_max)
     #     opt_conv_draw(ax, wc, "b", 5.0)
-    #
-    # draw_identity_data(ax, data, covering_params.r_max)
+
+    #draw_identity_data(ax, data, covering_params.r_max)
 
     plt.show()
 
 
 if __name__ == "__main__":
-    main_demo()
+    demo()
