@@ -1206,7 +1206,7 @@ def main():
 
     Timer.start()
 
-    pipeline, config_map = Pipeline.configure("config_cluster.txt", args)
+    pipeline, config_map = Pipeline.configure("config.txt", args)
     all_configs = CartesianConfig.get_configs(config_map)
     print("first iterate through the configs:")
     for config, cache_map in all_configs:
