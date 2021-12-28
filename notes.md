@@ -542,3 +542,23 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * shall we sync on Monday?
 
 
+# notes from 12/28/2021
+
+# experiments
+
+* in progress
+  * the whole original DS
+  * Rodriquez approach on scene 1 - in progress
+
+# thesis content
+
+* used the official template, imported to overleaf
+* roughly divided into 2 parts: Toft approach and HardNet
+* reworking the first part   
+
+# questions
+
+* copying from the original paper 
+  * my own style / notation consistency 
+  * the source is listed in references
+

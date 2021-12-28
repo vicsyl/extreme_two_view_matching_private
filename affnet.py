@@ -419,7 +419,8 @@ def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, t
 def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                      mask_cmp, ts, phis,
                      current_component, normal_index,
-                     config, params_key, stats_map):
+                     config, params_key, stats_map,
+                     all_kps, all_descs, all_laffs):
 
     show_affnet = config.get("show_affnet", False)
     affnet_hard_net_filter = config.get("affnet_hard_net_filter", 1)
@@ -505,6 +506,10 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         descs = descs_warped[mask_cmp]
         laffs_final = laffs_final[:, mask_cmp]
 
+        all_kps.extend(kps)
+        all_descs = np.vstack((all_descs, descs))
+        all_laffs = torch.cat((all_laffs, laffs_final), 1)
+
         scale_l_final = KF.get_laf_scale(laffs_final)
         laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
         _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(
@@ -536,7 +541,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                 PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
             ], show_affnet)
 
-    return kps, descs, laffs_final
+    return all_kps, all_descs, all_laffs
 
 
 def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), params_key="", stats_map={}):
@@ -626,11 +631,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     if affnet_no_clustering:
         print("processing all components at once - no clustering")
         mask_cmp = torch.ones_like(kpts_component_indices, dtype=torch.bool)
-        kps_add, descs_add, laffs_add = add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
+        all_kps, all_descs, all_laffs = add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                          mask_cmp, ts, phis,
                          None, None,
-                         conf_map, params_key, stats_map)
-
+                         conf_map, params_key, stats_map,
+                         all_kps, all_descs, all_laffs)
 
     else:
         for current_component in img_data.valid_components_dict:
@@ -639,14 +644,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
             print("processing component->normal: {} -> {}".format(current_component, normal_index))
             mask_cmp = kpts_component_indices == current_component
 
-            kps_add, descs_add, laffs_add = add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
+            all_kps, all_descs, all_laffs = add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                              mask_cmp, ts, phis,
                              current_component, normal_index,
-                             conf_map, params_key, stats_map)
-
-    all_kps.extend(kps_add)
-    all_descs = np.vstack((all_descs, descs_add))
-    all_laffs = torch.cat((all_laffs, laffs_add), 1)
+                             conf_map, params_key, stats_map,
+                             all_kps, all_descs, all_laffs)
 
     if show_affnet:
         title = "{} - all features after rectification".format(img_name)
