@@ -376,11 +376,12 @@ def compute_normals_from_svd(
     real_focal_length_x = focal_length * f_factor_x
     real_focal_length_y = focal_length * f_factor_y
 
-    # or I need to handle odd numbers (see linspace)
+    # this is just to avoid handling odd numbers for linspace (see below)
+    # this should be safe as the depth maps are 512 x n*32
     assert depth_height % 2 == 0
     assert depth_width % 2 == 0
 
-    # TODO this can be done only once #performance
+    # NOTE this can be done only once #performance
     width_linspace = torch.linspace(-depth_width/2, depth_width/2 - 1, steps=depth_width).to(device)
     height_linspace = torch.linspace(-depth_height/2, depth_height/2 - 1, steps=depth_height).to(device)
 

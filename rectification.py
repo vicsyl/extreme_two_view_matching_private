@@ -99,7 +99,6 @@ def get_perspective_transform(img, R, K, K_inv, component_indices, index, clip_a
 
         new_coords = P @ coords
         new_coords = new_coords / new_coords[2, :]
-        #new_coords[2] = 1.0
 
         min_row = min(new_coords[1])
         max_row = max(new_coords[1])
@@ -167,7 +166,7 @@ def get_rectified_keypoints(normals,
 
         T, bounding_box = get_perspective_transform(img, R, K, K_inv, components_indices, component_index, clip_angle)
 
-        #TODO this is too defensive (and wrong) I think, I can warp only the plane
+        # NOTE this is to prevent out of memory errors, but actually never happens
         if bounding_box[0] * bounding_box[1] > 10**8:
             print("warping to an img that is too big, skipping")
             continue

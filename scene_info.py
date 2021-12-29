@@ -234,7 +234,8 @@ class SceneInfo:
             img_info_map = read_images(scene_name, lazy=lazy)
             cameras = read_cameras(scene_name)
             Timer.end_check_point("reading scene info")
-            return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name, type="orig", file_name_suffix=".jpg")
+            file_name_suffix = ".png" if scene_name[-1] in ["6", "7", "8"] else ".jpg"
+            return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name, type="orig", file_name_suffix=file_name_suffix)
         elif type == "google":
             return read_google_scene(scene_name, file_name_suffix, show_first)
         else:

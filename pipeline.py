@@ -395,6 +395,8 @@ class Pipeline:
 
         img_file_path = self.scene_info.get_img_file_path(img_name)
         img = cv.imread(img_file_path, None)
+        if img is None:
+            raise ValueError("img not found at {}".format(img_file_path))
         img = format_to_read_mode(read_mode, img)
         img = scale_img(max_size, img)
 
