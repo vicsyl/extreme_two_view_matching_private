@@ -65,6 +65,9 @@ def possibly_expand_normals(normals):
 @dataclass
 class Pipeline:
 
+    # NOTE to be removed - just fot visualizations
+    # counter = 0
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     stages = ["before_rectification", "before_matching", "final"]
@@ -479,6 +482,18 @@ class Pipeline:
                 depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, device=torch.device('cpu'))
                 normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'))
 
+                #NOTE this is just to get the #visualization
+                #'frame_0000001535_4' - just to first img from scene1
+                # self.counter += 1
+                # normals_np = normals.numpy()
+                # normals_np[:, :, 2] *= -1
+                # plt.imshow(normals)
+                # plt.show()
+                # cv.imwrite("thesis_work/normals_{}.png".format(self.counter), normals * 255)
+                # plt.imshow(img)
+                # plt.show()
+                # cv.imwrite("thesis_work/normals_original{}.png".format(self.counter), img)
+
                 Timer.start_check_point("sky_mask")
                 non_sky_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
                 Timer.end_check_point("sky_mask")
@@ -551,7 +566,7 @@ class Pipeline:
                                      components_indices=components_indices,
                                      valid_components_dict=valid_components_dict)
 
-            fixed_rot_condition = self.config["recify_by_fixed_rotation"]
+            fixed_rot_condition = self.config["rectify_by_fixed_rotation"]
             finish_cond = self.get_stage_number() <= self.stages_map["before_rectification"]
 
             if fixed_rot_condition or finish_cond:
@@ -668,7 +683,7 @@ class Pipeline:
         self.update_stats_map(["valid_normals", params_key, img_name], valid_normals)
 
     def get_quantil_mask(self, img, img_name, singular_value_quantil, h_w_size, s_values, depth_data, sky_mask_np):
-        if singular_value_quantil == 1.0:
+        if singular_value_quantil == 1.0: # and False: NOTE #visualizations
             mask = np.ones(h_w_size, dtype=bool)
         else:
             s_values_ratio = True
@@ -690,6 +705,9 @@ class Pipeline:
 
             show_sky_mask(img, mask, img_name, show=self.show_sky_mask, save=False, title="quantile mask")
             show_sky_mask(img, sky_mask_np & mask, img_name, show=self.show_sky_mask, save=False, title="quantile and sky mask")
+            # NOTE this is just to get the #visualization
+            # show_sky_mask(img, mask, "{}_sky_sv_mask.png".format(img_name), show=self.show_sky_mask, save=False, title="quantile mask")
+            # show_sky_mask(img, sky_mask_np & mask, "{}_sky_mask.png".format(img_name), show=self.show_sky_mask, save=False, title="quantile and sky mask")
 
         return mask
 
@@ -1127,12 +1145,12 @@ class Pipeline:
                     rectify_affine_affnet = self.config["rectify_affine_affnet"]
                     affnet_no_clustering = self.config["affnet_no_clustering"]
                     if self.rectify and (not rectify_affine_affnet or not affnet_no_clustering):
-                        zero_around_z = self.config["recify_by_0_around_z"]
+                        zero_around_z = self.config["rectify_by_0_around_z"]
                         estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
 
-                    if self.config["recify_by_fixed_rotation"]:
+                    if self.config["rectify_by_fixed_rotation"]:
 
-                        if self.config["recify_by_GT"]:
+                        if self.config["rectify_by_GT"]:
                             GT_R, _ = get_GT_R_t(img_pair, self.scene_info)
                             r_vec_full = KG.rotation_matrix_to_angle_axis(torch.from_numpy(GT_R)[None]).detach().cpu().numpy()[0]
                         else:

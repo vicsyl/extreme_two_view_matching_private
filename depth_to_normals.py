@@ -260,6 +260,8 @@ def show_sky_mask(img, filter_mask, img_name, show, save=False, path=None, title
     ax.imshow(img)
     ax = fig.add_subplot(122)
     ax.imshow(filter_mask)
+    #NOTE this is just to get the #visualization
+    #plt.savefig("thesis_work/{}".format(img_name))
     if save:
         plt.savefig(path)
     show_or_close(show)

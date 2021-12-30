@@ -1138,6 +1138,10 @@ def quantil_stats():
         for diff in all_diffs:
             if stats_map[key].__contains__(diff):
                 print("key: {}, diff: {}".format(key, diff))
+                # TODO #visualization
+                #sorted_foo = list(sorted(stats_map[key][diff].items(), key=lambda key_value: -max(len(key_value[1].normals1), len(key_value[1].normals2))))
+                #sorted_foo = list(map(lambda kv: (kv[0], [len(kv[1].normals1), len(kv[1].normals2)]), sorted_foo))
+                #DEBUG max(sorted_foo[0][1]) > 2
                 sorted_by_err_R = list(sorted(stats_map[key][diff].items(), key=lambda key_value: -key_value[1].error_R))
                 err_R_only_list = list(map(lambda kv: (kv[0], kv[1].error_R * 180 / math.pi, kv[1]), sorted_by_err_R))
                 count = len(err_R_only_list)

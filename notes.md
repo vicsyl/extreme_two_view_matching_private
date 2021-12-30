@@ -555,6 +555,7 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * used the official template, imported to overleaf
 * roughly divided into 2 parts: Toft approach and HardNet
 * reworking the first part   
+* comments in orange boxes
 
 # questions
 
@@ -562,3 +563,64 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
   * my own style / notation consistency 
   * the source is listed in references
 
+* could the chapter 2 be revised even if incomplete? 
+  * for the structure
+  * many things (the basic assumptions, steps of the pipeline, ...) are repeated
+  * the formalization in the equations? 
+
+
+
+* plan to the document
+
+* list of contributions 
+* experiments
+* graphs - line style, don't use yellow, 
+
+
+# plan for 12/29/2021
+
+* check the experiments, plan next one - sync with Dmytro 
+* content 
+  * list of contributions - OK
+  * notes (+plan) for Dmytro  
+  * results (optimize for throughput) (+ experiments)
+  * images (optimize for throughput)
+* email Dmytro  
+
+## high level plan
+* 12/29: 2nd chapter + results : 20+ pages)  
+* 12/30-31 - 3rd chaper ~30 pages
+* 1/1 - 3/1 - 40 pages
+* 4/1 - check it!!!
+
+
+# plan for the experiments
+
+## Finished (soon)
+* final variants of Rodriguez on scene 1 - will finish tonight 
+* toft DS complete on unrectified: done in 2 hours
+
+## To compute
+
+* toft DS complete (computationally expensive)
+  * best rectified version for SIFT
+  * best Rodriguez improvment
+  * (standard Rodriquez)
+  
+* other
+  * do not use google urban
+  * estimated K 
+  * other DS ?
+
+* what will bring value   
+
+
+
+
+
+
+
+
+
+
+  

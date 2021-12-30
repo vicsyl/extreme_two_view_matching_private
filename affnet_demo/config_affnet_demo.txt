@@ -5,9 +5,9 @@ permutation_limit = 1
 rotation_alpha1 = 1.0
 rotation_alpha2 = 1.0
 
-recify_by_fixed_rotation = False
-recify_by_0_around_z = False
-recify_by_GT = False
+rectify_by_fixed_rotation = False
+rectify_by_0_around_z = False
+rectify_by_GT = False
 
 singular_value_quantil = 1.0
 mean_shift = mean

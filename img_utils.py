@@ -6,6 +6,16 @@ import cv2 as cv
 import numpy as np
 
 
+# does not look work so well
+def simple_mask_to_colors(np_mask):
+    img = np_mask.astype(np.int) * 255
+    img = img[:, :, None].repeat(3, axis=2)
+    img[:, :, :] = 0
+    img[:, :, 1][np_mask] = 255
+    img[:, :, 0][np.logical_not(np_mask)] = 255
+    return img
+
+
 def show_point_cloud(points_x, points_y, points_z):
 
     fig = plt.figure()
@@ -84,6 +94,7 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
     for i in range(len(clustered_normals)):
         rel_normals = normals[normal_indices == i]
         ax.plot((rel_normals[::10, 0]), (rel_normals[::10, 2]), (rel_normals[::10, 1]), '.', color=cluster_color_names[i], markersize=0.5)
+        # NOTE comment this for better # visualizations
         ax.plot((-rel_normals[::10, 0]), (-rel_normals[::10, 2]), (-rel_normals[::10, 1]), '.', color=cluster_color_names[i], markersize=0.5)
 
     if len(clustered_normals.shape) == 1:
@@ -100,6 +111,9 @@ def show_and_save_normal_clusters_3d(normals, clustered_normals, normal_indices,
     ax.set_xlim(x_lim)
     ax.set_ylim(y_lim)
     ax.set_zlim(z_lim)
+    ax.set_xticks([-1, 0, 1])
+    ax.set_yticks([-1, 0, 1])
+    ax.set_zticks([-1, 0, 1])
 
     if show:
         for i in range(clustered_normals.shape[0] - 1):
