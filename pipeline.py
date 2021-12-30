@@ -77,7 +77,6 @@ class Pipeline:
         return self.stages_map[self.config["pipeline_final_step"]]
 
     mean_shift = "mean"
-    handle_antipodal_points = True
     singular_value_quantil = 1.0
     all_unrectified = False
 
@@ -190,9 +189,7 @@ class Pipeline:
                 k = k.strip()
                 v = v.strip()
 
-                if k == "handle_antipodal_points":
-                    pipeline.handle_antipodal_points = v.lower() == "true"
-                elif k == "device":
+                if k == "device":
                     if v == "cpu":
                         pipeline.device = torch.device("cpu")
                     elif v == "cuda":
@@ -510,7 +507,7 @@ class Pipeline:
                                                                                        filter_mask=filter_mask,
                                                                                        mean_shift=self.mean_shift,
                                                                                        device=self.device,
-                                                                                       handle_antipodal_points=self.handle_antipodal_points)
+                                                                                       handle_antipodal_points=self.config["handle_antipodal_points"])
                 Timer.end_check_point("clustering")
                 self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.all_combinations], img_name)
 

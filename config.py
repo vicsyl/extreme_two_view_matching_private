@@ -40,6 +40,7 @@ class Config:
 
 class Property:
 
+    # NOTES cache_img_data is most likely correct for majority of props
     cartesian_values = "cartesian_values"
     cache_normals = 0
     cache_clusters = 1
@@ -113,9 +114,14 @@ class CartesianConfig:
 
     props_handlers = {
 
+        # dataset
         "scene_name": Property("string", default=False, cache=Property.cache_img_data),
         "scene_type": Property("enum", default="orig", cache=Property.cache_img_data, allowed_values=["orig", "google"]),
 
+        # preprocessing
+        "handle_antipodal_points": Property("bool", default=False, cache=Property.cache_img_data),
+
+        # fginn
         "fginn": Property("bool", False, cache=Property.cache_img_data),
         "num_nn": Property("int", 2, cache=Property.cache_img_data),
         "fginn_spatial_th": Property("int", 100, cache=Property.cache_img_data),
