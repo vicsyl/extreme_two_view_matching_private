@@ -615,6 +615,16 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * what will bring value   
 
 
+# plan/notes for 12/30/2021
+
+## Plan 
+* reconcile the results (including the "low level results")
+* run what is planned 
+* add imgs
+* continue with the results section
+* revise the plan for the content (#pages)
+
+
 
 
 

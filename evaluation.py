@@ -1,16 +1,12 @@
 import argparse
-import math
 import pickle
-import traceback, sys
-import kornia.geometry as KG
+import sys
+import traceback
 from typing import List
 
-import cv2 as cv
-import numpy as np
-import torch
-from utils import *
-
 from scene_info import *
+from utils import *
+from graphs import convert_from_data
 
 """
 DISCLAIMER: the following methods have been adopted from https://github.com/ducha-aiki/ransac-tutorial-2020-data:
@@ -542,40 +538,61 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo,
     return count_sampson_gt, count_symmetrical_gt, count_sampson_estimated, count_symmetrical_estimated
 
 
-def evaluate_all_matching_stats(stats_map_all: dict, n_examples=10, special_diff=None):
+def tex_safe(s):
+    return s.replace("_", "\_")
+
+
+def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, n_examples=None, special_diff=None):
     print("Stats for all difficulties:")
-    keys_list = list(stats_map_all.keys())
+    parameters_keys_list = list(stats_map_all.keys())
 
     all_diffs = set()
-    for key in keys_list:
+    for key in parameters_keys_list:
         all_diffs = all_diffs.union(set(stats_map_all[key].keys()))
     all_diffs = list(all_diffs)
     all_diffs.sort()
 
-    for diff in all_diffs:
-        if special_diff is not None and special_diff != diff:
-            continue
-        for key in keys_list:
-            if stats_map_all[key].__contains__(diff): # and len(stats_map_all[key][diff]) > 0:
-                print_significant_instances(stats_map_all[key][diff], key, diff, n_examples=n_examples)
+    if n_examples is not None and n_examples > 0:
+        for diff in all_diffs:
+            if special_diff is not None and special_diff != diff:
+                continue
+            for key in parameters_keys_list:
+                if stats_map_all[key].__contains__(diff): # and len(stats_map_all[key][diff]) > 0:
+                    print_significant_instances(stats_map_all[key][diff], key, diff, n_examples=n_examples)
+
 
     angle_thresholds = [5, 10, 20]
+    accuracy_diff_acc_data_lists = [None] * len(angle_thresholds)
     for angle_threshold in angle_thresholds:
-        print("Accuracy ({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in keys_list])))
+
+        diff_acc_data_lists = [[] for _ in parameters_keys_list]
+        accuracy_diff_acc_data_lists.append(diff_acc_data_lists)
+
+        print("Accuracy ({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in parameters_keys_list])))
         for diff in all_diffs:
             value_list = []
-            for key in keys_list:
+            for i_param_list, key in enumerate(parameters_keys_list):
                 if stats_map_all[key].__contains__(diff) and len(stats_map_all[key][diff]) > 0:
                     difficulty, perc = evaluate_percentage_correct(stats_map_all[key][diff], diff, th_degrees=angle_threshold)
                     value_list.append("{:.3f}".format(perc))
+                    diff_acc_data_lists[i_param_list].append((float(diff), perc))
                 else:
                     value_list.append("--")
             print("{}\t{}".format(diff, "\t".join(value_list)))
 
-    print("Counts\t{}".format("\t".join([str(k) for k in keys_list])))
+    if tex_save_path_prefix is not None:
+        for i, angle_threshold in enumerate(angle_thresholds):
+            title = tex_safe("accuracy < {} for: {}".format(angle_thresholds[i], parameters_keys_list))
+            tex_safe_entries = [tex_safe(i) for i in parameters_keys_list]
+            graph = convert_from_data(title, tex_safe_entries, diff_acc_data_lists)
+            with open("{}_acc_{}.txt".format(tex_save_path_prefix, angle_threshold), "w") as f:
+                f.write("%TEX for accuracy < {} degrees for {} \n".format(angle_thresholds[i], parameters_keys_list))
+                f.write(graph)
+
+    print("Counts\t{}".format("\t".join([str(k) for k in parameters_keys_list])))
     for diff in all_diffs:
         value_list = []
-        for key in keys_list:
+        for key in parameters_keys_list:
             if stats_map_all[key].__contains__(diff):
                 value_list.append(str(len(stats_map_all[key][diff])))
             else:

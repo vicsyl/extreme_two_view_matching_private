@@ -950,6 +950,12 @@ class Pipeline:
         self.update_stats_map(["matching", key, difficulty, img_pair_name, "tentatives"], stats_struct.tentative_matches)
         self.update_stats_map(["matching", key, difficulty, img_pair_name, "inliers"], stats_struct.inliers)
 
+    def get_tex_file_name(self, difficulty):
+        tex_dir = "{}/tex".format(self.output_dir)
+        if not os.path.exists(tex_dir):
+            Path(tex_dir).mkdir(parents=True, exist_ok=True)
+        return "{}/tex_after_{}_{}".format(tex_dir, self.cache_map[Property.all_combinations], difficulty)
+
     def get_diff_stats_file(self, difficulty=None):
         diff_str = "all" if difficulty is None else str(difficulty)
         diff_stats_dir = "{}/stats/{}".format(self.output_dir, self.cache_map[Property.all_combinations])
@@ -1179,9 +1185,13 @@ class Pipeline:
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats, all=stats_counter % 100 == 0)
-                evaluate_all_matching_stats(self.stats_map, n_examples=30, special_diff=difficulty)
+                evaluate_all_matching_stats(self.stats_map)
 
                 Timer.log_stats()
+
+            if processed_pairs > 0:
+                evaluate_all_matching_stats(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(difficulty))
+                evaluate_stats(self.stats, all=True)
 
             stats_file_name = self.get_diff_stats_file(difficulty)
             with open(stats_file_name, "wb") as f:
@@ -1196,7 +1206,7 @@ class Pipeline:
         self.log()
         # These two are different approaches to stats
         evaluate_stats(self.stats, all=True)
-        evaluate_all_matching_stats(self.stats_map, n_examples=30)
+        evaluate_all_matching_stats(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100))
 
     def save_stats(self, key=""):
         file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())
@@ -1224,8 +1234,6 @@ def main():
     parser.add_argument('--output_dir', help='output dir')
     args = parser.parse_args()
 
-    Timer.start()
-
     pipeline, config_map = Pipeline.configure("config.txt", args)
     all_configs = CartesianConfig.get_configs(config_map)
     print("first iterate through the configs:")
@@ -1235,11 +1243,15 @@ def main():
 
     print("now start the pipeline:")
     for config, cache_map in all_configs:
+        Timer.start()
         pipeline.config = config
         pipeline.cache_map = cache_map
         pipeline.run()
+        print("Log stats for {}:".format(pipeline.get_stats_key()))
+        Timer.log_stats()
+        print("{} finished".format(pipeline.get_stats_key()))
 
-    Timer.log_stats()
+    print("process finished")
 
 
 if __name__ == "__main__":

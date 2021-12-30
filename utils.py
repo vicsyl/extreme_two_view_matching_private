@@ -359,6 +359,9 @@ class Timer:
 
     @staticmethod
     def start():
+        Timer.stats_times = {}
+        Timer.stats_counts = {}
+        Timer.stats_start_times = {}
         Timer.log("Starting the timer")
         Timer.start_time = time.time()
 

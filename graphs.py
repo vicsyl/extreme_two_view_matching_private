@@ -51,13 +51,33 @@ def convert_to_graph(title, style_data_list):
     return beginning_template
 
 
-def convert_csv(title, csv_in_str):
+def convert_from_data(title, entries_names, diff_acc_data_lists):
+
+    # NOTE: cycle list
 
     colors = ["red",
-              "green",
-              "yellow,",
               "blue",
-              "black"]
+              "green",
+              "black",
+              "magenta"]
+
+    #https://www.iro.umontreal.ca/~simardr/pgfplots.pdf
+    marks = [
+        "triangle", "diamond", "asterisk", "square", "o", "|"
+    ]
+
+    style_data_list = []
+    for i, entry_name in enumerate(entries_names):
+        style_data_list.append((Style(color=colors[i % len(colors)], mark=marks[i % len(marks)], entry_name=entry_name), []))
+
+    for i, diff_acc_data_list in enumerate(diff_acc_data_lists):
+        for diff_acc_data in diff_acc_data_list:
+            style_data_list[i][1].append((float(diff_acc_data[0]), diff_acc_data[1]))
+
+    return convert_to_graph(title, style_data_list)
+
+
+def convert_csv(title, csv_in_str):
 
     leave_out_1st = False
     for line in csv_in_str.splitlines():
@@ -68,19 +88,17 @@ def convert_csv(title, csv_in_str):
         leave_out_1st |= max(floats) > 1.0
         length = len(floats)
 
-    length = length - 1 if leave_out_1st else length
-
-    style_data_list = [None] * length
-    for i in range(length):
-        style_data_list[i] = (Style(color=colors[i % len(colors)], mark="square", entry_name="entry{}".format(i)), [])
+    start = 1 if leave_out_1st else 0
+    entries_names = [str(i) for i in range(length - start)]
+    diff_acc_data_lists = [[] for _ in entries_names]
 
     for diff, line in enumerate(csv_in_str.splitlines()):
         tokens = line.split("\t")
-        tokens_to_read = tokens[-length:]
+        tokens_to_read = tokens[start:]
         for i, t in enumerate(tokens_to_read):
-            style_data_list[i][1].append((float(diff), t))
+            diff_acc_data_lists[i].append((float(diff), t))
 
-    return convert_to_graph(title, style_data_list)
+    return convert_from_data(title, entries_names, diff_acc_data_lists)
 
 
 def main():
