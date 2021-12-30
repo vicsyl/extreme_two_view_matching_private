@@ -440,7 +440,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
     if ts_affnet_out.shape[0] == 0:
         print("Component no {} will be skipped from rectification, no features with a large tilt".format(current_component))
-        return
+        return all_kps, all_descs, all_laffs
 
     if current_component is not None:
         mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
