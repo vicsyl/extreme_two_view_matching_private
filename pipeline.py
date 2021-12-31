@@ -76,8 +76,6 @@ class Pipeline:
     def get_stage_number(self):
         return self.stages_map[self.config["pipeline_final_step"]]
 
-    mean_shift = "mean"
-    singular_value_quantil = 1.0
     all_unrectified = False
 
     permutation_limit = None
@@ -196,17 +194,6 @@ class Pipeline:
                         pipeline.device = torch.device("cuda")
                     else:
                         raise Exception("Unknown param value for 'device': {}".format(v))
-                elif k == "mean_shift":
-                    if v.lower() == "none":
-                        pipeline.mean_shift = None
-                    elif v.lower() == "mean":
-                        pipeline.mean_shift = "mean"
-                    elif v.lower() == "full":
-                        pipeline.mean_shift = "full"
-                    else:
-                        raise Exception("Unknown param value for 'mean_shift': {}".format(v))
-                elif k == "singular_value_quantil":
-                    pipeline.singular_value_quantil = float(v)
                 elif k == "permutation_limit":
                     pipeline.permutation_limit = int(v)
                 elif k == "method":
@@ -308,6 +295,9 @@ class Pipeline:
     def start(self):
         print("is torch.cuda.is_available(): {}".format(torch.cuda.is_available()))
         print("device: {}".format(self.device))
+
+        Clustering.angle_distance_threshold_degrees = self.config["angle_distance_threshold_degrees"]
+        Clustering.recompute(math.sqrt(self.config["singular_value_quantil"]))
 
         self.log()
         self.scene_info = SceneInfo.read_scene(scene_name=self.config["scene_name"], type=self.config["scene_type"], file_name_suffix=self.file_name_suffix)
@@ -477,7 +467,8 @@ class Pipeline:
 
                 depth_data_file_name = "{}.npy".format(img_name)
                 depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, device=torch.device('cpu'))
-                normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'), svd_weighted=self.config["svd_weighted"])
+                normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'),
+                                                             svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
 
                 #NOTE this is just to get the #visualization
                 #'frame_0000001535_4' - just to first img from scene1
@@ -496,7 +487,7 @@ class Pipeline:
                 Timer.end_check_point("sky_mask")
 
                 Timer.start_check_point("quantil_mask")
-                quantil_mask = self.get_quantil_mask(img, img_name, self.singular_value_quantil, depth_data[2:4], s_values, depth_data, non_sky_mask)
+                quantil_mask = self.get_quantil_mask(img, img_name, self.config["singular_value_quantil"], depth_data[2:4], s_values, depth_data, non_sky_mask)
                 filter_mask = non_sky_mask & quantil_mask
                 Timer.end_check_point("quantil_mask")
 
@@ -505,7 +496,7 @@ class Pipeline:
                 print("normals_deviced.device: {}".format(normals_deviced.device))
                 normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
                                                                                        filter_mask=filter_mask,
-                                                                                       mean_shift=self.mean_shift,
+                                                                                       mean_shift_type=self.config["mean_shift_type"],
                                                                                        device=self.device,
                                                                                        handle_antipodal_points=self.config["handle_antipodal_points"])
                 Timer.end_check_point("clustering")
@@ -637,7 +628,8 @@ class Pipeline:
             simple_weighing=True,
             smaller_window=False,
             device=torch.device('cpu'),
-            use_cache=True
+            use_cache=True,
+            svd_weighted_sigma=0.8
     ):
 
         Timer.start_check_point("compute_normals")
@@ -647,13 +639,13 @@ class Pipeline:
             cache_dir = "{}/cache/normals".format(self.output_dir)
             if not os.path.exists(cache_dir):
                 Path(cache_dir).mkdir(parents=True, exist_ok=True)
-            cache_file = "{}/{}_{}.npy".format(cache_dir, img_name, Config.svd_weighted_sigma)
+            cache_file = "{}/{}_{}.npy".format(cache_dir, img_name, svd_weighted_sigma)
             if os.path.isfile(cache_file):
                 with open(cache_file, "rb") as f:
                     ret = pickle.load(f)
         if ret is None:
             ret = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data,
-                                           simple_weighing, smaller_window, device)
+                                           simple_weighing, smaller_window, device, svd_weighted_sigma=svd_weighted_sigma)
             if use_cache:
                 with open(cache_file, "wb") as f:
                     pickle.dump(ret, f)
@@ -737,8 +729,6 @@ class Pipeline:
         counter = 0
         for sigma in [0.8, 1.2, 1.6]:
 
-            Config.svd_weighted_sigma = sigma
-
             orig_normals, s_values = self.compute_normals_possibly_cached(img_name,
                                                                           focal_length,
                                                                           orig_height,
@@ -747,7 +737,8 @@ class Pipeline:
                                                                           simple_weighing=True,
                                                                           smaller_window=(sigma == 0.0),
                                                                           device=torch.device('cpu'),
-                                                                          use_cache=use_normals_cache)
+                                                                          use_cache=use_normals_cache,
+                                                                          svd_weighted_sigma=sigma)
 
             print("orig_normals.device: {}".format(orig_normals.device))
 
@@ -811,7 +802,7 @@ class Pipeline:
                                 print("normals_deviced.device: {}".format(normals_deviced.device))
                                 normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
                                                                                                        filter_mask=filter_mask,
-                                                                                                       mean_shift=mean_shift,
+                                                                                                       mean_shift_type=mean_shift,
                                                                                                        adaptive=adaptive,
                                                                                                        return_all=True,
                                                                                                        device=self.device,

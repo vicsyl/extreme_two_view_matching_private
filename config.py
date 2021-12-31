@@ -11,7 +11,6 @@ class Config:
 
     svd_smoothing = False
     svd_smoothing_sigma = 1.33
-    svd_weighted_sigma = 0.8
     rectification_interpolation_key = "rectification_interpolation_key"
 
     # window size
@@ -111,6 +110,8 @@ class CartesianConfig:
     just_one_non_default = "just_one_non_default"
     cartesian = "cartesian"
 
+    angle_distance_threshold_degrees = "angle_distance_threshold_degrees"
+
     props_handlers = {
 
         # dataset
@@ -120,6 +121,10 @@ class CartesianConfig:
         # preprocessing
         "handle_antipodal_points": Property("bool", default=False, cache=Property.cache_img_data),
         "svd_weighted":  Property("bool", default=True, cache=Property.cache_img_data),
+        "mean_shift_type": Property("enum", optional=True, default="mean", cache=Property.cache_img_data, allowed_values=["mean", "full"]),
+        "singular_value_quantil": Property("float", default=1.0, cache=Property.cache_img_data),
+        angle_distance_threshold_degrees: Property("int", default=35, cache=Property.cache_img_data),
+        "svd_weighted_sigma": Property("float", default=0.8, cache=Property.cache_img_data),
 
         # fginn
         "fginn": Property("bool", False, cache=Property.cache_img_data),
@@ -235,7 +240,8 @@ class CartesianConfig:
             if config_combination == CartesianConfig.cartesian:
                 all_conf_cache_keys.append(get_new_config())
             else:
-                non_zeros = [c for (k, l, c) in comb_list if c > 0]
+                # NOTE it will always iterate through angle_distance_threshold_degrees and won't affect the combination type
+                non_zeros = [c for (k, l, c) in comb_list if c > 0 and k != CartesianConfig.angle_distance_threshold_degrees]
                 if config_combination == CartesianConfig.just_one_non_default and len(non_zeros) == 1:
                     all_conf_cache_keys.append(get_new_config())
                 elif config_combination == CartesianConfig.max_one_non_default and len(non_zeros) < 2:

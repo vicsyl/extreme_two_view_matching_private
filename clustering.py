@@ -146,7 +146,7 @@ def bilateral_filter(normals: torch.Tensor, filter_mask, filter_range=9, spatial
 
 def cluster(normals: torch.Tensor,
             filter_mask,
-            mean_shift=None,
+            mean_shift_type=None,
             adaptive=False,
             return_all=False,
             device=torch.device("cpu"),
@@ -155,7 +155,7 @@ def cluster(normals: torch.Tensor,
     """
     :param normals: Tensor(h, w, 3)
     :param filter_mask: (h, w)
-    :param mean_shift: boolean - if mean or mean-shift should be run after the binning (None/"full"/"mean")
+    :param mean_shift_type: boolean - if mean or mean-shift should be run after the binning (None/"full"/"mean")
     :return: normals: (n, 3), cluster_membership (h, w) - index of cluster or 3 for no cluster
     """
 
@@ -219,7 +219,7 @@ def cluster(normals: torch.Tensor,
                     return False
             return True
 
-        if mean_shift == "full":
+        if mean_shift_type == "full":
             th = Clustering.ms_distance_inter_cluster_threshold
         else:
             th = Clustering.distance_inter_cluster_threshold
@@ -227,11 +227,11 @@ def cluster(normals: torch.Tensor,
         distance_ok = is_distance_ok(n_centers[center_index, 0, 0], th)
 
         if distance_ok:
-            if mean_shift is None:
+            if mean_shift_type is None:
                 cluster_center = n_centers[center_index, 0, 0]
                 cluster_centers.append(cluster_center)
                 arg_mins[near_ones_per_cluster_center[center_index]] = len(cluster_centers) - 1
-            elif mean_shift == "mean":
+            elif mean_shift_type == "mean":
                 # near_ones_per_cluster_center needs recomputing
                 coords = torch.where(near_ones_per_cluster_center[center_index, :, :])
                 if handle_antipodal_points:
@@ -266,7 +266,7 @@ def cluster(normals: torch.Tensor,
                 coords = torch.where(neighborhood)
                 arg_mins[coords[0], coords[1]] = len(cluster_centers) - 1
 
-            elif mean_shift == "full":
+            elif mean_shift_type == "full":
 
                 if handle_antipodal_points:
                     raise Exception("handle_antipodal_points not implemented for full mean shift")

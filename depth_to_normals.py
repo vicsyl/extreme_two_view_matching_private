@@ -213,7 +213,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         show_and_save_normal_clusters_3d(normals, cluster_repr_normal_np, normal_indices_np, show, save, out_dir, img_name)
 
 
-def cluster_normals(normals, filter_mask=None, mean_shift=None, adaptive=False, return_all=False, device=torch.device("cpu"), handle_antipodal_points=True):
+def cluster_normals(normals, filter_mask=None, mean_shift_type=None, adaptive=False, return_all=False, device=torch.device("cpu"), handle_antipodal_points=True):
 
     # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
@@ -228,7 +228,7 @@ def cluster_normals(normals, filter_mask=None, mean_shift=None, adaptive=False, 
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices, valid_clusters = clustering.cluster(normals, filter_mask, mean_shift, adaptive, return_all, device=device, handle_antipodal_points=handle_antipodal_points)
+    cluster_repr_normal, normal_indices, valid_clusters = clustering.cluster(normals, filter_mask, mean_shift_type, adaptive, return_all, device=device, handle_antipodal_points=handle_antipodal_points)
 
     print("cluster_repr_normal.device: {}".format(cluster_repr_normal.device))
     print("normal_indices.device: {}".format(normal_indices.device))
@@ -359,7 +359,8 @@ def compute_normals_from_svd(
         simple_weighing=True,
         smaller_window=False,
         device=torch.device('cpu'),
-        svd_weighted=True
+        svd_weighted=True,
+        svd_weighted_sigma=0.8,
 ):
 
     window_size = 5
@@ -432,7 +433,7 @@ def compute_normals_from_svd(
         if smaller_window:
             w_diag = torch.diag_embed(get_smaller_window_coeffs())
         else:
-            w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=Config.svd_weighted_sigma))
+            w_diag = torch.diag_embed(get_gauss_weighted_coeffs_for_window(window_size=window_size, sigma=svd_weighted_sigma))
         # TODO why is this necessary?
         w_diag = w_diag.to(device)
         print("w_diag device: {}".format(w_diag.device))
