@@ -166,6 +166,9 @@ class CartesianConfig:
         # IMG preprocessing
         "img_read_mode": Property("enum", default=None, optional=True, list_allowed=False, allowed_values=["RGB", "GRAY"]),
         "img_max_size": Property("int", default=None, optional=True, list_allowed=False),
+
+        #special
+        "sequential_files_limit": Property("int", default=None, optional=True, list_allowed=False),
     }
 
     @staticmethod

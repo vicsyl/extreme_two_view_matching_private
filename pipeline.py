@@ -78,7 +78,6 @@ class Pipeline:
 
     all_unrectified = False
 
-    permutation_limit = None
     method = None
     file_name_suffix = None
     output_dir = None
@@ -97,7 +96,6 @@ class Pipeline:
 
     # ! FIXME not really compatible with matching pairs
     chosen_depth_files = None
-    sequential_files_limit = None
 
     show_input_img = False
 
@@ -194,8 +192,6 @@ class Pipeline:
                         pipeline.device = torch.device("cuda")
                     else:
                         raise Exception("Unknown param value for 'device': {}".format(v))
-                elif k == "permutation_limit":
-                    pipeline.permutation_limit = int(v)
                 elif k == "method":
                     pipeline.method = v
                 elif k == "file_name_suffix":
@@ -829,10 +825,12 @@ class Pipeline:
 
         self.start()
 
-        file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
-        for idx, depth_data_file_name in enumerate(file_names):
+        file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(None, self.chosen_depth_files)
+        file_names_permuted = [file_names[two_hundred_permutation[i]] for i in range(self.config["sequential_files_limit"])]
+        for idx, depth_data_file_name in enumerate(file_names_permuted):
             self.process_image(depth_data_file_name[:-4], idx % 2)
 
+        evaluate_normals_stats(self.stats)
         self.save_stats("sequential")
 
     def show_and_read_img_from_path(self, img_name, img_file_path):
@@ -919,8 +917,8 @@ class Pipeline:
 
         self.start()
 
-        file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(self.sequential_files_limit, self.chosen_depth_files)
-        file_names_permuted = [file_names[two_hundred_permutation[i]] for i in range(self.permutation_limit)]
+        file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(None, self.chosen_depth_files)
+        file_names_permuted = [file_names[two_hundred_permutation[i]] for i in range(self.config["sequential_files_limit"])]
         for i, depth_data_file_name in enumerate(file_names_permuted):
             img_name = depth_data_file_name[:-4]
             img = self.show_and_read_img(img_name)
