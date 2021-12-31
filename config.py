@@ -11,7 +11,6 @@ class Config:
 
     svd_smoothing = False
     svd_smoothing_sigma = 1.33
-    svd_weighted = True
     svd_weighted_sigma = 0.8
     rectification_interpolation_key = "rectification_interpolation_key"
 
@@ -120,6 +119,7 @@ class CartesianConfig:
 
         # preprocessing
         "handle_antipodal_points": Property("bool", default=False, cache=Property.cache_img_data),
+        "svd_weighted":  Property("bool", default=True, cache=Property.cache_img_data),
 
         # fginn
         "fginn": Property("bool", False, cache=Property.cache_img_data),

@@ -358,7 +358,8 @@ def compute_normals_from_svd(
         depth_data,
         simple_weighing=True,
         smaller_window=False,
-        device=torch.device('cpu')
+        device=torch.device('cpu'),
+        svd_weighted=True
 ):
 
     window_size = 5
@@ -424,7 +425,7 @@ def compute_normals_from_svd(
     # (-1, -1, -1) -> ((h - window_size // 2) * (w - window_size // 2), window_size ** 2, 3)
     centered = centered.permute(2, 1, 0)
 
-    if Config.svd_weighted:
+    if svd_weighted:
         # the understanding of how the input to SVD becomes 3x3 instead of 25x3
         # https://www.cs.auckland.ac.nz/courses/compsci369s1c/lectures/GG-notes/CS369-LeastSquares.pdf
         # slides 29 and 36

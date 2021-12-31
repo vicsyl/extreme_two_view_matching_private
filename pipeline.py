@@ -477,7 +477,7 @@ class Pipeline:
 
                 depth_data_file_name = "{}.npy".format(img_name)
                 depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, device=torch.device('cpu'))
-                normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'))
+                normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'), svd_weighted=self.config["svd_weighted"])
 
                 #NOTE this is just to get the #visualization
                 #'frame_0000001535_4' - just to first img from scene1
