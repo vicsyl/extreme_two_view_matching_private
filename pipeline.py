@@ -76,8 +76,6 @@ class Pipeline:
     def get_stage_number(self):
         return self.stages_map[self.config["pipeline_final_step"]]
 
-    all_unrectified = False
-
     method = None
     file_name_suffix = None
     output_dir = None
@@ -196,8 +194,6 @@ class Pipeline:
                     pipeline.method = v
                 elif k == "file_name_suffix":
                     pipeline.file_name_suffix = v
-                elif k == "all_unrectified":
-                    pipeline.all_unrectified = v.lower() == "true"
                 elif k == "rectify":
                     pipeline.rectify = v.lower() == "true"
                 elif k == "use_degensac":
@@ -592,7 +588,7 @@ class Pipeline:
                                                      save=self.save_rectification,
                                                      out_prefix=rectification_path_prefix,
                                                      rotation_factor=rotation_factor,
-                                                     all_unrectified=self.all_unrectified
+                                                     all_unrectified=self.config[CartesianConfig.all_unrectified]
                                                      )
 
             Timer.end_check_point("processing img from scratch")
@@ -1080,7 +1076,7 @@ class Pipeline:
                                                 show=self.show_rectification,
                                                 save=self.save_rectification,
                                                 out_prefix=rectification_path_prefix,
-                                                all_unrectified=self.all_unrectified
+                                                all_unrectified=self.config[CartesianConfig.all_unrectified]
                                                 )
 
         img_data.key_points = kps

@@ -112,6 +112,7 @@ class CartesianConfig:
 
     angle_distance_threshold_degrees = "angle_distance_threshold_degrees"
     filter_sky = "filter_sky"
+    all_unrectified = "all_unrectified"
 
     props_handlers = {
 
@@ -126,6 +127,7 @@ class CartesianConfig:
         "singular_value_quantil": Property("float", default=1.0, cache=Property.cache_img_data),
         angle_distance_threshold_degrees: Property("int", default=35, cache=Property.cache_img_data),
         filter_sky: Property("bool", default=True, cache=Property.cache_img_data),
+        all_unrectified: Property("bool", default=False, cache=Property.cache_img_data),
         "svd_weighted_sigma": Property("float", default=0.8, cache=Property.cache_img_data),
 
         # fginn
