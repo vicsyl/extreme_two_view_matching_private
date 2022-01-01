@@ -1170,7 +1170,7 @@ class Pipeline:
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats, all=stats_counter % 100 == 0)
-                evaluate_all_matching_stats_even_normalized(self.stats_map, scene_info=self.scene_info)
+                evaluate_all_matching_stats_even_normalized(self.stats_map)
 
                 Timer.log_stats()
 
