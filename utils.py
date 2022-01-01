@@ -347,6 +347,7 @@ class Timer:
 
     log_enabled = False
     start_time = None
+    global_start_time = None
 
     stats_times = {}
     stats_counts = {}
@@ -364,6 +365,8 @@ class Timer:
         Timer.stats_start_times = {}
         Timer.log("Starting the timer")
         Timer.start_time = time.time()
+        if Timer.global_start_time is None:
+            Timer.global_start_time = time.time()
 
     @staticmethod
     def start_check_point(label, parameter=None):
@@ -396,6 +399,7 @@ class Timer:
     def log_stats():
         end = time.time()
         print("Time elapsed from start: {:.4f}., ".format(end - Timer.start_time))
+        print("Global time elapsed from start: {:.4f}., ".format(end - Timer.global_start_time))
         print("Statistics: ")
         for key in Timer.stats_times:
             print("{} called {} times and it took {:.4f} secs. on average".format(key, Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))

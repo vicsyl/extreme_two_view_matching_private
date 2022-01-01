@@ -624,8 +624,21 @@ descs1 = get_local_descriptors(img1, kps1, descriptor)
 * continue with the results section
 * revise the plan for the content (#pages)
 
+# plan/notes for 12/31/2021
+* I restarted the experiments on preprocessing (angles between estimated normals), should be ready tomorrow morning
+* handle antipodal points - ....
+* k-means => simply didn't work - I can mention it like that
+  
+* algoritm 1 -> how can it be improved? 
+* algoritm 2 -> I will rewrite to equations (I think it will be better) 
+
+Go to the document....
+* estimate K on Toft DS?
 
 
+https://openreview.net/pdf?id=TVHS5Y4dNvM
+https://carbon.now.sh/
+https://arxiv.org/pdf/1711.07064.pdf
 
 
 

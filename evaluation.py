@@ -542,8 +542,19 @@ def tex_safe(s):
     return s.replace("_", "\_")
 
 
-def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, n_examples=None, special_diff=None):
-    print("Stats for all difficulties:")
+def evaluate_all_matching_stats_even_normalized(stats_map_all: dict, tex_save_path_prefix=None, n_examples=None, special_diff=None, scene_info: SceneInfo=None):
+    evaluate_all_matching_stats(stats_map_all, tex_save_path_prefix, n_examples, special_diff)
+    if scene_info is not None:
+        tex_save_path_prefix = tex_save_path_prefix + "_normalized" if tex_save_path_prefix is not None else None
+        evaluate_all_matching_stats(stats_map_all, tex_save_path_prefix, n_examples=None, special_diff=None, scene_info=scene_info)
+
+
+def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, n_examples=None, special_diff=None, scene_info: SceneInfo=None):
+    if scene_info is None:
+        print("Stats for all difficulties unnormalized:")
+    else:
+        print("Stats for all difficulties normalized:")
+
     parameters_keys_list = list(stats_map_all.keys())
 
     all_diffs = set()
@@ -568,17 +579,18 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
         diff_acc_data_lists = [[] for _ in parameters_keys_list]
         accuracy_diff_acc_data_lists.append(diff_acc_data_lists)
 
-        print("Accuracy ({}º)\t{}".format(angle_threshold, "\t".join([str(k) for k in parameters_keys_list])))
+        print("Accuracy({}º) {}".format(angle_threshold, " ".join([str(k) for k in parameters_keys_list])))
         for diff in all_diffs:
             value_list = []
             for i_param_list, key in enumerate(parameters_keys_list):
                 if stats_map_all[key].__contains__(diff) and len(stats_map_all[key][diff]) > 0:
-                    difficulty, perc = evaluate_percentage_correct(stats_map_all[key][diff], diff, th_degrees=angle_threshold)
+                    all_len_const = len(scene_info.img_pairs_lists[diff]) if scene_info is not None else None
+                    difficulty, perc = evaluate_percentage_correct(stats_map_all[key][diff], diff, th_degrees=angle_threshold, all_len_const=all_len_const)
                     value_list.append("{:.3f}".format(perc))
                     diff_acc_data_lists[i_param_list].append((float(diff), perc))
                 else:
                     value_list.append("--")
-            print("{}\t{}".format(diff, "\t".join(value_list)))
+            print("{} {}".format(diff, " ".join(value_list)))
 
     if tex_save_path_prefix is not None:
         for i, angle_threshold in enumerate(angle_thresholds):
@@ -589,15 +601,43 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
                 f.write("%TEX for accuracy < {} degrees for {} \n".format(angle_thresholds[i], parameters_keys_list))
                 f.write(graph)
 
-    print("Counts\t{}".format("\t".join([str(k) for k in parameters_keys_list])))
+    print("Counts {}".format(" ".join([str(k) for k in parameters_keys_list])))
     for diff in all_diffs:
         value_list = []
         for key in parameters_keys_list:
-            if stats_map_all[key].__contains__(diff):
-                value_list.append(str(len(stats_map_all[key][diff])))
+            if scene_info is not None:
+                value_list.append(str(len(scene_info.img_pairs_lists[diff])))
             else:
-                value_list.append("0")
-        print("{}\t{}".format(diff, "\t".join(value_list)))
+                if stats_map_all[key].__contains__(diff):
+                    value_list.append(str(len(stats_map_all[key][diff])))
+                else:
+                    value_list.append("0")
+        print("{} {}".format(diff, " ".join(value_list)))
+
+    if scene_info is not None:
+        print("Failed pairs")
+        failed_pairs = {}
+        for key in parameters_keys_list:
+            failed_pairs[key] = set()
+        for diff in all_diffs:
+            for key in parameters_keys_list:
+                if stats_map_all[key].__contains__(diff):
+                    relevant_set = set(stats_map_all[key][diff])
+                else:
+                    relevant_set = set()
+                all_from_diff = set([SceneInfo.get_key_from_pair(p) for p in scene_info.img_pairs_lists[diff]])
+                failed_pairs[key] = failed_pairs[key].union((all_from_diff - relevant_set))
+
+        all_failed_pairs = set()
+        for key in failed_pairs:
+            print("Failed pairs for {}:".format(key))
+            print("matching_pairs = [{}]".format(", ".join(failed_pairs[key])))
+            all_failed_pairs = all_failed_pairs.union(failed_pairs[key])
+
+        # NOTE I don't think there is a good use case for this
+        # print("All failed pairs:")
+        # print("matching_pairs = [{}]".format(", ".join(all_failed_pairs)))
+
 
 
 # def evaluate(stats_map: dict, scene_info: SceneInfo):
@@ -673,12 +713,12 @@ def print_significant_instances(stats_map, difficulty, key, n_examples=10):
         print("{}: {}".format(k, v.error_R))
 
 
-def evaluate_percentage_correct(stats_map, difficulty, th_degrees=5):
+def evaluate_percentage_correct(stats_map, difficulty, th_degrees=5, all_len_const=None):
 
     rad_th = th_degrees * math.pi / 180
     filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
     filtered_len = len(filtered)
-    all_len = len(stats_map.items())
+    all_len = all_len_const if all_len_const is not None else len(stats_map.items())
     perc = filtered_len/all_len
     return difficulty, perc
 

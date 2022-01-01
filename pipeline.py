@@ -1171,12 +1171,12 @@ class Pipeline:
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats, all=stats_counter % 100 == 0)
-                evaluate_all_matching_stats(self.stats_map)
+                evaluate_all_matching_stats_even_normalized(self.stats_map, scene_info=self.scene_info)
 
                 Timer.log_stats()
 
             if processed_pairs > 0:
-                evaluate_all_matching_stats(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(difficulty))
+                evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(difficulty), scene_info=self.scene_info)
                 evaluate_stats(self.stats, all=True)
 
             stats_file_name = self.get_diff_stats_file(difficulty)
@@ -1192,7 +1192,7 @@ class Pipeline:
         self.log()
         # These two are different approaches to stats
         evaluate_stats(self.stats, all=True)
-        evaluate_all_matching_stats(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100))
+        evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100), scene_info=self.scene_info)
 
     def save_stats(self, key=""):
         file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())

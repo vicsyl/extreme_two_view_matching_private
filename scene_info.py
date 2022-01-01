@@ -215,6 +215,10 @@ class SceneInfo:
     def get_key(img1_name: str, img2_name: str):
         return "{}_{}".format(img1_name, img2_name)
 
+    @staticmethod
+    def get_key_from_pair(img_pair: ImagePairEntry):
+        return SceneInfo.get_key(img_pair.img1, img_pair.img2)
+
     def find_img_pair_from_imgs(self, img1_name, img2_name):
         return self.find_img_pair_from_key(SceneInfo.get_key(img1_name, img2_name))
 
