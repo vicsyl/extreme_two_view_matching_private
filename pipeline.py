@@ -479,7 +479,10 @@ class Pipeline:
                 # cv.imwrite("thesis_work/normals_original{}.png".format(self.counter), img)
 
                 Timer.start_check_point("sky_mask")
-                non_sky_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+                if self.config[CartesianConfig.filter_sky]:
+                    non_sky_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
+                else:
+                    non_sky_mask = np.ones(normals.shape[0:2], dtype=bool)
                 Timer.end_check_point("sky_mask")
 
                 Timer.start_check_point("quantil_mask")

@@ -111,6 +111,7 @@ class CartesianConfig:
     cartesian = "cartesian"
 
     angle_distance_threshold_degrees = "angle_distance_threshold_degrees"
+    filter_sky = "filter_sky"
 
     props_handlers = {
 
@@ -124,6 +125,7 @@ class CartesianConfig:
         "mean_shift_type": Property("enum", optional=True, default="mean", cache=Property.cache_img_data, allowed_values=["mean", "full"]),
         "singular_value_quantil": Property("float", default=1.0, cache=Property.cache_img_data),
         angle_distance_threshold_degrees: Property("int", default=35, cache=Property.cache_img_data),
+        filter_sky: Property("bool", default=True, cache=Property.cache_img_data),
         "svd_weighted_sigma": Property("float", default=0.8, cache=Property.cache_img_data),
 
         # fginn
