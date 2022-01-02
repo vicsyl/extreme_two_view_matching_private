@@ -538,10 +538,6 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo,
     return count_sampson_gt, count_symmetrical_gt, count_sampson_estimated, count_symmetrical_estimated
 
 
-def tex_safe(s):
-    return s.replace("_", "\_")
-
-
 def evaluate_all_matching_stats_even_normalized(stats_map_all: dict, tex_save_path_prefix=None, n_examples=None, special_diff=None, scene_info: SceneInfo=None):
     evaluate_all_matching_stats(stats_map_all, tex_save_path_prefix, n_examples, special_diff)
     if scene_info is not None:
@@ -594,9 +590,8 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
 
     if tex_save_path_prefix is not None:
         for i, angle_threshold in enumerate(angle_thresholds):
-            title = tex_safe("accuracy < {} for: {}".format(angle_thresholds[i], parameters_keys_list))
-            tex_safe_entries = [tex_safe(i) for i in parameters_keys_list]
-            graph = convert_from_data(title, tex_safe_entries, diff_acc_data_lists)
+            title = "accuracy < {} for: {}".format(angle_thresholds[i], parameters_keys_list)
+            graph = convert_from_data(title, parameters_keys_list, diff_acc_data_lists)
             with open("{}_acc_{}.txt".format(tex_save_path_prefix, angle_threshold), "w") as f:
                 f.write("%TEX for accuracy < {} degrees for {} \n".format(angle_thresholds[i], parameters_keys_list))
                 f.write(graph)

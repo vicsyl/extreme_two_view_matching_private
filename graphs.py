@@ -1,5 +1,10 @@
 from dataclasses import dataclass
 
+# TODO
+# - especially for tables format the numbers like {:.3} or something
+# - join the tables somehow
+
+
 
 @dataclass
 class Style:
@@ -10,9 +15,13 @@ class Style:
 
 #%overleaf.com/learn/latex/Pgfplots_package
 
-def convert_to_graph(title, style_data_list):
+def underscores_to_spaces(s):
+    return s.replace("_", " ")
 
-    beginning_template = """
+
+def convert_to_graph(title, style_data_list, together=True):
+
+    graph = """
 \\begin{figure}[H]
 \\centering
 \\begin{tikzpicture}
@@ -20,9 +29,9 @@ def convert_to_graph(title, style_data_list):
     width=\\textwidth,
     height=8cm,
     % scale only axis,
-    title={""" + title + """},
+    title={""" + underscores_to_spaces(title) + """},
     xlabel={Difficulty},
-    ylabel={Accuracy (error < 5$^{\\circ}$)},
+    ylabel={Accuracy (error in estimated relative rotation < 5$^{\\circ}$)},
     xmin=0, xmax=17,
     ymin=0, ymax=1,
     xtick={0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17},
@@ -38,16 +47,17 @@ def convert_to_graph(title, style_data_list):
         style: Style = plot[0]
         data = plot[1]
         data_str = " ".join(["({},{})".format(str(d[0]), str(d[1])) for d in data])
-        beginning_template = beginning_template + """
+        graph = graph + """
         \\addplot[
         color=""" + style.color + """,
         mark=""" + style.mark + """,
         ]
         coordinates { """ + data_str + """
         };
-        \\addlegendentry{""" + style.entry_name + "}\n"
+        \\addlegendentry{""" + underscores_to_spaces(style.entry_name) + "}\n"
 
-    beginning_template = beginning_template + """
+
+    graph = graph + """
     \\end{axis}
 \\end{tikzpicture}
 \\caption{""" + title + """} 
@@ -55,10 +65,35 @@ def convert_to_graph(title, style_data_list):
 \\end{figure}
 """
 
-    return beginning_template
+    table = """ 
+\\begin{table}[h!]
+\\begin{center}
+\\begin{tabular}{|| """ + "|".join([" c " for _ in range(len(style_data_list) + 1)]) + """||} 
+ \\hline
+difficulty & """ + " & ".join([str(sd[0].entry_name.replace("_", "\\_")) for sd in style_data_list]) + """\\\\
+\\hline
+"""
+    diffs = len(style_data_list[0][1])
+    for diff in range(diffs):
+        table = table + str(diff) + " & "
+        table = table + " & ".join([str(sd[1][diff][1]) for sd in style_data_list]) + """\\\\
+\\hline
+"""
+    table = table + """
+\\end{tabular}
+\\end{center}
+\\caption{""" + title + """} 
+\\end{table}
+"""
+
+# \\label{table:tabular_""" + title.replace(" ", "\\_") + """}
+    if together:
+        return graph + "\n\n" + table
+    else:
+        return graph, table
 
 
-def convert_from_data(title, entries_names, diff_acc_data_lists):
+def convert_from_data(title, entries_names, diff_acc_data_lists, together=True):
 
     # NOTE: cycle list
 
@@ -81,7 +116,7 @@ def convert_from_data(title, entries_names, diff_acc_data_lists):
         for diff_acc_data in diff_acc_data_list:
             style_data_list[i][1].append((float(diff_acc_data[0]), diff_acc_data[1]))
 
-    return convert_to_graph(title, style_data_list)
+    return convert_to_graph(title, style_data_list, together)
 
 
 def is_numeric_my(s):
@@ -89,7 +124,7 @@ def is_numeric_my(s):
     return len(set1) > 0 and set1.issubset(set(list("0123456789.")))
 
 
-def convert_csv(title, csv_in_str):
+def convert_csv(title, csv_in_str, together=True):
 
     leave_out_1st_column = False
     leave_out_1st_row = False
@@ -134,7 +169,7 @@ def convert_csv(title, csv_in_str):
             if len(t) > 0:
                 diff_acc_data_lists[i].append((float(diff), t))
 
-    return convert_from_data(title, entries, diff_acc_data_lists)
+    return convert_from_data(title, entries, diff_acc_data_lists, together)
 
 
 # K 554
@@ -280,6 +315,53 @@ def affnet_2_major_variants():
 0.035	0.016
 0.026	"""))
 
+# ablation
+def ablation_high_svd_weighting():
+    print(convert_csv("SVD weighting on scene 1",
+                      """Accuracy (5º)	plain_SVD	weighted_SVD
+0	0.9	0.905
+1	0.8	0.82
+2	0.66	0.69
+3	0.61	0.635
+4	0.545	0.555
+5	0.47	0.505
+6	0.395	0.4
+7	0.39	0.405
+8	0.285	0.335
+9	0.255	0.3
+10	0.17	0.2
+11	0.2	0.255
+12	0.105	0.22
+13	0.09	0.175
+14	0	0.01
+15	0	0
+16	0	0
+17	0	0.005""", together=False)[0])
+
+
+# ablation
+def ablation_high_handle_ap():
+    print(convert_csv("Handling of antipodal points on scene 1",
+                      """Accuracy (5º)	with_antipodal_points_handling	without_antipodal_points_handling
+0	0.91	0.905
+1	0.795	0.82
+2	0.665	0.69
+3	0.625	0.635
+4	0.53	0.555
+5	0.475	0.505
+6	0.38	0.4
+7	0.41	0.405
+8	0.33	0.335
+9	0.29	0.3
+10	0.19	0.2
+11	0.22	0.255
+12	0.18	0.22
+13	0.12	0.175
+14	0.01	0.01
+15	0	0
+16	0	0
+17	0.016	0.005""", together=False)[0])
+
 
 def test():
 
@@ -333,4 +415,4 @@ def test():
 
 
 if __name__ == '__main__':
-    affnet_2_major_variants()
+    ablation_high_handle_ap()

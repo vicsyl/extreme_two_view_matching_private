@@ -120,7 +120,6 @@ class Pipeline:
     estimate_k = False
     focal_point_mean_factor = 0.5
 
-    rectify = True
     clip_angle = None
 
     knn_ratio_threshold = 0.85
@@ -194,8 +193,6 @@ class Pipeline:
                     pipeline.method = v
                 elif k == "file_name_suffix":
                     pipeline.file_name_suffix = v
-                elif k == "rectify":
-                    pipeline.rectify = v.lower() == "true"
                 elif k == "use_degensac":
                     pipeline.use_degensac = v.lower() == "true"
                 elif k == "estimate_k":
@@ -280,7 +277,8 @@ class Pipeline:
         elif pipeline.output_dir is None:
             pipeline.output_dir = append_all(pipeline, pipeline.output_dir_prefix)
 
-        assert not pipeline.planes_based_matching or pipeline.rectify, "rectification must be on for planes_based_matching"
+        # NOTE planes_based_matching not really used anymore
+        #assert not pipeline.planes_based_matching or pipeline.rectify, "rectification must be on for planes_based_matching"
 
         return pipeline, config
 
@@ -415,7 +413,7 @@ class Pipeline:
 
         img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
 
-        if not self.rectify:
+        if not self.config[CartesianConfig.rectify]:
 
             Timer.end_check_point("processing img without rectification")
             cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
@@ -1135,7 +1133,7 @@ class Pipeline:
 
                     rectify_affine_affnet = self.config["rectify_affine_affnet"]
                     affnet_no_clustering = self.config["affnet_no_clustering"]
-                    if self.rectify and (not rectify_affine_affnet or not affnet_no_clustering):
+                    if self.config[CartesianConfig.rectify] and (not rectify_affine_affnet or not affnet_no_clustering):
                         zero_around_z = self.config["rectify_by_0_around_z"]
                         estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
 
@@ -1208,9 +1206,8 @@ def get_tmsp():
 def append_all(pipeline, str):
     use_degensac = "DEGENSAC" if pipeline.use_degensac else "RANSAC"
     estimate_K = "estimatedK" if pipeline.estimate_k else "GTK"
-    rectified = "rectified" if pipeline.rectify else "unrectified"
     timestamp = get_tmsp()
-    return "{}_{}_{}_{}_{}".format(str, use_degensac, estimate_K, rectified, timestamp)
+    return "{}_{}_{}_{}_{}".format(str, use_degensac, estimate_K, timestamp)
 
 
 def main():
