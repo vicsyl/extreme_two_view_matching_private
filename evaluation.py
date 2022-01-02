@@ -713,8 +713,11 @@ def evaluate_percentage_correct(stats_map, difficulty, th_degrees=5, all_len_con
     filtered = list(filter(lambda key_value: key_value[1].error_R < rad_th, stats_map.items()))
     filtered_len = len(filtered)
     all_len = all_len_const if all_len_const is not None else len(stats_map.items())
-    perc = filtered_len/all_len
-    return difficulty, perc
+    if all_len == 0:
+        return difficulty, 0.0
+    else:
+        perc = filtered_len/all_len
+        return difficulty, perc
 
 
 def compare_stats_maps(stats_map1: dict, stats_map2: dict, difficulty, n_worst_examples=None, th_degrees=5):
