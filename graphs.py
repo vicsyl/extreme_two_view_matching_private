@@ -19,7 +19,31 @@ def underscores_to_spaces(s):
     return s.replace("_", " ")
 
 
-def convert_to_graph(title, style_data_list, together=True):
+def convert_to_graph(title, style_data_list, together=True, matching=True):
+
+    matching_ticks = """xlabel={Difficulty},
+    ylabel={Accuracy (error in estimated relative rotation < 5$^{\\circ}$)},
+    xmin=0, xmax=17,
+    ymin=0, ymax=1,
+    xtick={0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17},
+    ytick={0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1},"""
+    normals_ticks = """xlabel={parameter $\\alpha_{\\theta}$ [deg.]},
+    ylabel={Absolute difference from the right angle [deg.]},
+    xmin=15, xmax=35,
+    ymin=0, ymax=15,
+    xtick={15,20,25,30,35},
+    ytick={0,2,4,6,8,10,12,14},"""
+    ticks = matching_ticks if matching else normals_ticks
+
+    def get_x_label(data):
+
+        label_map = {0: 15, 1:20, 2:25, 3:30, 4:35}
+
+        if matching:
+            return str(data)
+        else:
+            return str(label_map[data])
+
 
     graph = """
 \\begin{figure}[H]
@@ -30,12 +54,7 @@ def convert_to_graph(title, style_data_list, together=True):
     height=8cm,
     % scale only axis,
     title={""" + underscores_to_spaces(title) + """},
-    xlabel={Difficulty},
-    ylabel={Accuracy (error in estimated relative rotation < 5$^{\\circ}$)},
-    xmin=0, xmax=17,
-    ymin=0, ymax=1,
-    xtick={0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17},
-    ytick={0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1},
+    """ + ticks + """
     legend pos=north east,
     ymajorgrids=true,
     xmajorgrids=true,
@@ -46,7 +65,7 @@ def convert_to_graph(title, style_data_list, together=True):
     for plot in style_data_list:
         style: Style = plot[0]
         data = plot[1]
-        data_str = " ".join(["({},{})".format(str(d[0]), str(d[1])) for d in data])
+        data_str = " ".join(["({},{})".format(get_x_label(d[0]), str(d[1])) for d in data])
         graph = graph + """
         \\addplot[
         color=""" + style.color + """,
@@ -93,7 +112,7 @@ difficulty & """ + " & ".join([str(sd[0].entry_name.replace("_", "\\_")) for sd 
         return graph, table
 
 
-def convert_from_data(title, entries_names, diff_acc_data_lists, together=True):
+def convert_from_data(title, entries_names, diff_acc_data_lists, together=True, matching=True):
 
     # NOTE: cycle list
 
@@ -116,7 +135,7 @@ def convert_from_data(title, entries_names, diff_acc_data_lists, together=True):
         for diff_acc_data in diff_acc_data_list:
             style_data_list[i][1].append((float(diff_acc_data[0]), diff_acc_data[1]))
 
-    return convert_to_graph(title, style_data_list, together)
+    return convert_to_graph(title, style_data_list, together, matching)
 
 
 def is_numeric_my(s):
@@ -124,7 +143,7 @@ def is_numeric_my(s):
     return len(set1) > 0 and set1.issubset(set(list("0123456789.")))
 
 
-def convert_csv(title, csv_in_str, together=True):
+def convert_csv(title, csv_in_str, together=True, matching=True):
 
     leave_out_1st_column = False
     leave_out_1st_row = False
@@ -169,7 +188,7 @@ def convert_csv(title, csv_in_str, together=True):
             if len(t) > 0:
                 diff_acc_data_lists[i].append((float(diff), t))
 
-    return convert_from_data(title, entries, diff_acc_data_lists, together)
+    return convert_from_data(title, entries, diff_acc_data_lists, together, matching)
 
 
 # K 554
@@ -363,6 +382,56 @@ def ablation_high_handle_ap():
 17	0.016	0.005""", together=False)[0])
 
 
+# ablation = low
+def ablation_low_quantile():
+    print(convert_csv("Different quantiles for filtering based on singular values ratio",  """	quantile=1.0	quantile=0.8	quantile=0.6	quantile=0.4
+15	8.708	8.87	8.358	9.975
+20	6.08	5.869	5.241	5.635
+25	4.835	5.303	5.249	5.828
+30	5.032	5.572	6.308	7.087
+35	3.78	4.084	4.565	5.52""", together=False, matching=False)[0])
+
+
+# ablation = low
+def ablation_low_mean_shift():
+    print(convert_csv("Different refinements of the initial bucket centers",  """	mean	mean-shift	no refinement
+15	8.708	9.079	8.486
+20	6.08	7.338	5.999
+25	4.835	5.594	6.276
+30	5.032	4.54	8.714
+35	3.78	3.82	1.408""", together=False, matching=False)[0])
+
+
+# ablation = low
+def ablation_low_sigma():
+    print(convert_csv("Different values of $\\sigma$ for SVD weighting",  """	$\\sigma$=0.6	$\\sigma$=0.8	$\\sigma$=1.0	$\\sigma$=1.2
+15	12.71	8.708	7.756	7.493
+20	10.686	6.08	5.202	5.215
+25	9.648	4.835	5.402	6.561
+30	7.761	5.032	6.531	7.968
+35	5.772	3.78	5.074	6.223""", together=False, matching=False)[0])
+
+
+# ablation = low
+def ablation_low_ap():
+    print(convert_csv("Handling of antipodal points",  """	antipodal points off	antipodal points on
+15	8.708	10.479
+20	6.08	6.247
+25	4.835	5.04
+30	5.032	4.811
+35	3.78	3.23""", together=False, matching=False)[0])
+
+
+# ablation = low
+def ablation_low_svd_weighting():
+    print(convert_csv("simple SVD and weighted SVD",  """	weighted svd	unweighted svd
+15	8.708	8.261
+20	6.08	7.37
+25	4.835	9.728
+30	5.032	11.437
+35	3.78	9.087""", together=False, matching=False)[0])
+
+
 def test():
 
     print("Basic use case")
@@ -415,4 +484,4 @@ def test():
 
 
 if __name__ == '__main__':
-    ablation_high_handle_ap()
+    ablation_low_svd_weighting()

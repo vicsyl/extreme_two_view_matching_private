@@ -640,6 +640,12 @@ https://openreview.net/pdf?id=TVHS5Y4dNvM
 https://carbon.now.sh/
 https://arxiv.org/pdf/1711.07064.pdf
 
+pseudo_code:
+
+
+     
+https://github.com/ducha-aiki/ransac-tutorial-2020-data/blob/52810309d8341d538e24a13577c44ae2b4a5ec77/metrics.py#L5
+https://github.com/ducha-aiki/ransac-tutorial-2020-data/blob/master/create_H_submission.py
 
 
 

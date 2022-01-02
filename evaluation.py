@@ -6,7 +6,6 @@ from typing import List
 
 from scene_info import *
 from utils import *
-from graphs import convert_from_data
 
 """
 DISCLAIMER: the following methods have been adopted from https://github.com/ducha-aiki/ransac-tutorial-2020-data:
@@ -588,13 +587,13 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
                     value_list.append("--")
             print("{} {}".format(diff, " ".join(value_list)))
 
-    if tex_save_path_prefix is not None:
-        for i, angle_threshold in enumerate(angle_thresholds):
-            title = "accuracy < {} for: {}".format(angle_thresholds[i], parameters_keys_list)
-            graph = convert_from_data(title, parameters_keys_list, diff_acc_data_lists)
-            with open("{}_acc_{}.txt".format(tex_save_path_prefix, angle_threshold), "w") as f:
-                f.write("%TEX for accuracy < {} degrees for {} \n".format(angle_thresholds[i], parameters_keys_list))
-                f.write(graph)
+    # if tex_save_path_prefix is not None:
+    #     for i, angle_threshold in enumerate(angle_thresholds):
+    #         title = "accuracy < {} for: {}".format(angle_thresholds[i], parameters_keys_list)
+    #         graph = convert_from_data(title, parameters_keys_list, diff_acc_data_lists)
+    #         with open("{}_acc_{}.txt".format(tex_save_path_prefix, angle_threshold), "w") as f:
+    #             f.write("%TEX for accuracy < {} degrees for {} \n".format(angle_thresholds[i], parameters_keys_list))
+    #             f.write(graph)
 
     print("Counts {}".format(" ".join([str(k) for k in parameters_keys_list])))
     for diff in all_diffs:
