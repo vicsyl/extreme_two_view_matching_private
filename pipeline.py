@@ -1207,7 +1207,7 @@ def append_all(pipeline, str):
     use_degensac = "DEGENSAC" if pipeline.use_degensac else "RANSAC"
     estimate_K = "estimatedK" if pipeline.estimate_k else "GTK"
     timestamp = get_tmsp()
-    return "{}_{}_{}_{}_{}".format(str, use_degensac, estimate_K, timestamp)
+    return "{}_{}_{}_{}".format(str, use_degensac, estimate_K, timestamp)
 
 
 def main():
