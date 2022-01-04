@@ -621,7 +621,9 @@ def match_homography(img_data1,
     src_pts, dst_pts = split_points(tentative_matches, img_data1.key_points, img_data2.key_points)
 
     print("inlier th: {}".format(ransac_th))
-    H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransac_th, maxIters=ransac_iters, confidence=ransac_conf)
+    H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.USAC_MAGSAC, 5.0, maxIters=ransac_iters, confidence=ransac_conf)
+
+    #np.logspace(np.log2(1.0), np.log2(20), 10, base=2.0)):
 
     # # TODO threshold and prob params left to default values
     # if find_fundamental:
