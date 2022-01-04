@@ -424,7 +424,8 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
     show_affnet = config.get("show_affnet", False)
     affnet_hard_net_filter = config.get("affnet_hard_net_filter", 1)
-    affnet_warp_image_show_transformation = config.get("affnet_warp_image_show_transformation", False)
+    # CONTINUE
+    affnet_warp_image_show_transformation = config.get("affnet_warp_image_show_transformation", True)
     covering = CoveringParams.get_effective_covering(config)
     tilt_r_exp = covering.r_max
     max_tilt_r = covering.t_max
@@ -455,7 +456,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
     append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warps_per_component"], len(ts_phis), stats_map)
     for t_phi in ts_phis:
 
-        img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=True)
+        img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=True, warp_image_show_transformation=affnet_warp_image_show_transformation)
         img_warped = k_to_img_np(img_warped_t)
 
         if affnet_warp_image_show_transformation:

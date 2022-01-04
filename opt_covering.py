@@ -178,7 +178,7 @@ def opt_conv_draw_ellipses(ax, cov_params, centers):
     log_unit_radius = math.log(cov_params.r_max)
     rhs = (math.exp(2 * log_unit_radius) + 1) / (2 * math.exp(log_unit_radius))
 
-    factor = 1.2
+    factor = 1.5
     extend = factor * log_max_radius
     range_x = torch.arange(start=-extend, end=extend, step=0.005)
     range_y = torch.arange(start=-extend, end=extend, step=0.005)
@@ -187,15 +187,15 @@ def opt_conv_draw_ellipses(ax, cov_params, centers):
     grid_y = grid_y.ravel()
 
     ts = torch.exp(torch.sqrt(grid_x ** 2 + grid_y ** 2))
-    phis = torch.atan(grid_x / grid_y)
+    phis = torch.atan(grid_y / grid_x)
 
     distances_close = torch.abs(distance_matrix(ts, centers[0], phis, centers[1]) - rhs)
     distances_close = distances_close.min(axis=1)[0]
 
-    grid_x = grid_x[distances_close < 0.005]
-    grid_y = grid_y[distances_close < 0.005]
+    grid_x = grid_x[distances_close < 0.004]
+    grid_y = grid_y[distances_close < 0.004]
 
-    ax.plot(grid_x, grid_y, 'o', color="b", markersize=0.2)
+    ax.plot(grid_x, grid_y, 'o', color="b", markersize=0.15)
 
 
 def opt_conv_draw(ax, ts_phis, color, size):
@@ -216,7 +216,7 @@ def opt_cov_prepare_plot(cov_params: CoveringParams, title="Nearest neighbors"):
 
     ax.set_aspect(1.0)
 
-    factor = 1.2
+    factor = 1.5
     ax.set_xlim((-factor * log_max_radius, factor * log_max_radius))
     ax.set_ylim((-factor * log_max_radius, factor * log_max_radius))
 
@@ -224,6 +224,29 @@ def opt_cov_prepare_plot(cov_params: CoveringParams, title="Nearest neighbors"):
     ax.add_artist(circle)
     circle = Circle((0, 0), log_unit_radius, color='r', fill=False)
     ax.add_artist(circle)
+
+    return ax
+
+
+def opt_cov_prepare_plot_again(ax, cov_params: CoveringParams):
+
+    log_max_radius = math.log(cov_params.t_max)
+    log_unit_radius = math.log(cov_params.r_max)
+
+    # fig, ax = plt.subplots()
+    # plt.title(title)
+    #
+    #
+    # ax.set_aspect(1.0)
+    #
+    # factor = 1.2
+    # ax.set_xlim((-factor * log_max_radius, factor * log_max_radius))
+    # ax.set_ylim((-factor * log_max_radius, factor * log_max_radius))
+
+    circle = Circle((0, 0), log_max_radius, color='r', linewidth=1, fill=False)
+    ax.add_artist(circle)
+    # circle = Circle((0, 0), log_unit_radius, color='r', linewidth=3, fill=False)
+    # ax.add_artist(circle)
 
     return ax
 
@@ -237,27 +260,27 @@ def draw_in_center(ax, center, data, r_max):
     opt_conv_draw(ax, data_in, 'yellow', 2)
 
 
-def demo():
+def demo(covering_params):
 
-    #covering_params = CoveringParams.log_1_8_covering()
-    covering_params = CoveringParams.dense_covering_1_7()
     print("count: {}".format(covering_params.covering_coordinates_count()))
 
-    data_count = 5000
-    data = torch.rand(2, data_count)
-    data[0] = torch.abs(data[0] * 5.0 + 1)
-    data[1] = data[1] * math.pi
+    # data_count = 5000
+    # data = torch.rand(2, data_count)
+    # data[0] = torch.abs(data[0] * 5.0 + 1)
+    # data[1] = data[1] * math.pi
 
     ax = opt_cov_prepare_plot(covering_params)
 
     #opt_conv_draw(ax, data, "b", 1.0)
 
     covering_centers = covering_params.covering_coordinates()
-    opt_conv_draw(ax, covering_centers, "r", 5.0)
+    opt_conv_draw(ax, covering_centers, "black", 5.0)
 
-    #opt_conv_draw_ellipses(ax, covering_params, covering_centers)
+    opt_conv_draw_ellipses(ax, covering_params, covering_centers)
 
-    winning_centers = vote(covering_centers, data, covering_params.r_max, fraction_th=0.6, iter_th=30)
+    ax = opt_cov_prepare_plot_again(ax, covering_params)
+
+    #winning_centers = vote(covering_centers, data, covering_params.r_max, fraction_th=0.6, iter_th=30)
 
     # for i, wc in enumerate(winning_centers):
     #     draw_in_center(ax, wc, data, covering_params.r_max)
@@ -268,5 +291,43 @@ def demo():
     plt.show()
 
 
+def demo_new(covering_params):
+
+    print("count: {}".format(covering_params.covering_coordinates_count()))
+
+    ax = opt_cov_prepare_plot(covering_params)
+
+    #opt_conv_draw(ax, data, "b", 1.0)
+
+    covering_centers = covering_params.covering_coordinates()
+    opt_conv_draw(ax, covering_centers, "black", 3.0)
+
+    opt_conv_draw_ellipses(ax, covering_params, covering_centers)
+
+    ax = opt_cov_prepare_plot_again(ax, covering_params)
+
+    plt.show()
+
+
+    ax = opt_cov_prepare_plot(covering_params)
+
+    #opt_conv_draw(ax, data, "b", 1.0)
+
+    covering_centers = covering_params.covering_coordinates()
+    opt_conv_draw(ax, covering_centers[:, :1], "black", 3.0)
+
+    opt_conv_draw_ellipses(ax, covering_params, covering_centers[:, :1])
+
+    ax = opt_cov_prepare_plot_again(ax, covering_params)
+
+    plt.show()
+
+
+def main():
+    #covering_params = CoveringParams.log_1_8_covering()
+    covering_params = CoveringParams.sparse_covering_1_7()
+    demo_new(covering_params)
+
+
 if __name__ == "__main__":
-    demo()
+    main()
