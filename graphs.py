@@ -54,6 +54,7 @@ def convert_to_graph(title, style_data_list, together=True, matching=True):
     height=8cm,
     % scale only axis,
     title={""" + underscores_to_spaces(title) + """},
+    legend cell align={left},
     """ + ticks + """
     legend pos=north east,
     ymajorgrids=true,
@@ -119,7 +120,7 @@ def convert_from_data(title, entries_names, diff_acc_data_lists, together=True, 
     colors = ["red",
               "blue",
               "green",
-              "black",
+              "violet",
               "magenta"]
 
     #https://www.iro.umontreal.ca/~simardr/pgfplots.pdf
@@ -239,28 +240,49 @@ def morphology_csv():
 
 
 # B373
-def feature_descriptors():
-    print(convert_csv("Different feature descriptors",
-                      """Accuracy	unrectified BRISK	unrectified SuperPoint	rectified BRISK	rectified SuperPoint
-0	0.89	0.94	0.91	0.975
-1	0.66	0.9	0.715	0.89
-2	0.405	0.805	0.585	0.815
-3	0.25	0.57	0.47	0.65
-4	0.16	0.455	0.42	0.475
-5	0.085	0.265	0.335	0.34
-6	0.015	0.245	0.28	0.3
-7	0.035	0.08	0.23	0.21
-8	0	0.04	0.205	0.125
-9	0.01	0.015	0.145	0.135
-10	0.01	0	0.095	0.075
-11	0.005	0	0.125	0.04
-12	0.005	0	0.09	0.03
-13	0.01	0	0.085	0.005
-14	0	0	0	0
-15	0	0	0.005	0
-16	0	0	0	0
-17	0	0	0	0
-                      """))
+def features():
+    print(convert_csv("Different features on scene 1",
+                      """Accuracy	SIFT rectified 	SIFT unrectified	RootSIFT rectified	RootSIFT unrectified	HardNet rectified	HardNet unrectified	unrectified BRISK	unrectified SuperPoint	rectified BRISK	rectified SuperPoint
+0	0.905	0.915	0.965	0.975	0.923	0.929	0.89	0.94	0.91	0.975
+1	0.82	0.79	0.855	0.895	0.903	0.882	0.66	0.9	0.715	0.89
+2	0.69	0.68	0.68	0.755	0.892	0.882	0.405	0.805	0.585	0.815
+3	0.635	0.43	0.6	0.475	0.817	0.713	0.25	0.57	0.47	0.65
+4	0.555	0.27	0.535	0.31	0.766	0.587	0.16	0.455	0.42	0.475
+5	0.505	0.175	0.49	0.195	0.697	0.4	0.085	0.265	0.335	0.34
+6	0.4	0.12	0.35	0.15	0.585	0.343	0.015	0.245	0.28	0.3
+7	0.405	0.02	0.37	0.04	0.608	0.217	0.035	0.08	0.23	0.21
+8	0.335	0.025	0.31	0.01	0.552	0.213	0	0.04	0.205	0.125
+9	0.3	0.015	0.285	0.01	0.522	0.075	0.01	0.015	0.145	0.135
+10	0.2	0	0.135	0	0.484	0.025	0.01	0	0.095	0.075
+11	0.255	0	0.2	0	0.402	0	0.005	0	0.125	0.04
+12	0.22	0	0.135	0	0.387	0	0.005	0	0.09	0.03
+13	0.175	0	0.135	0.005	0.35	0.015	0.01	0	0.085	0.005
+14	0.01	0.01	0.015	0	0.085	0	0	0	0	0
+15	0	0.005	0.005	0	0.015	0.005	0	0	0.005	0
+16	0	0	0	0	0	0.01	0	0	0	0
+17	0.005	0.016	0	0	0.005	0.016	0	0	0	0"""))
+
+#     print(convert_csv("Different feature descriptors",
+#                       """Accuracy	unrectified BRISK	unrectified SuperPoint	rectified BRISK	rectified SuperPoint
+# 0	0.89	0.94	0.91	0.975
+# 1	0.66	0.9	0.715	0.89
+# 2	0.405	0.805	0.585	0.815
+# 3	0.25	0.57	0.47	0.65
+# 4	0.16	0.455	0.42	0.475
+# 5	0.085	0.265	0.335	0.34
+# 6	0.015	0.245	0.28	0.3
+# 7	0.035	0.08	0.23	0.21
+# 8	0	0.04	0.205	0.125
+# 9	0.01	0.015	0.145	0.135
+# 10	0.01	0	0.095	0.075
+# 11	0.005	0	0.125	0.04
+# 12	0.005	0	0.09	0.03
+# 13	0.01	0	0.085	0.005
+# 14	0	0	0	0
+# 15	0	0	0.005	0
+# 16	0	0	0	0
+# 17	0	0	0	0
+#                       """))
 
 
 # B483
@@ -431,6 +453,27 @@ def ablation_low_svd_weighting():
 30	5.032	11.437
 35	3.78	9.087""", together=False, matching=False)[0])
 
+# all_ds
+def all_ds():
+    print(convert_csv("test",  """0.894375	0.875625
+0.699375	0.625
+0.535625	0.483125
+0.349375	0.369375
+0.240625	0.291875
+0.1675	0.243125
+0.088125	0.181875
+0.046875	0.155625
+0.029375	0.14
+0.0125	0.11625
+0.006875	0.075
+0.0025	0.058125
+0.004375	0.045625
+0.004957507082	0.03187252125
+0.004210526316	0.003341687552
+0	0
+0.002114164905	0.001057082452
+0.007841269841	0.001507936508""", together=False, matching=True)[0])
+
 
 def test():
 
@@ -484,4 +527,4 @@ def test():
 
 
 if __name__ == '__main__':
-    ablation_low_svd_weighting()
+    features()
