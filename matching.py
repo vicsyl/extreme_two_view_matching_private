@@ -399,20 +399,20 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                                   ransac_iters=ransac_iters)
 
         else:
-            return match_epipolar(image_data1.img,
-                                  image_data1.descriptions,
-                                  image_data1.real_K,
-                                  image_data2.img,
-                                  image_data2.descriptions,
-                                  image_data2.real_K,
-                                  find_fundamental,
-                                  img_pair,
-                                  out_dir,
-                                  show, save,
-                                  ratio_thresh=ratio_thresh,
-                                  ransac_th=ransac_th,
-                                  ransac_conf=ransac_conf,
-                                  ransac_iters=ransac_iters)
+            return match_homography(image_data1.img,
+                                    image_data1.descriptions,
+                                    image_data1.real_K,
+                                    image_data2.img,
+                                    image_data2.descriptions,
+                                    image_data2.real_K,
+                                    find_fundamental,
+                                    img_pair,
+                                    out_dir,
+                                    show, save,
+                                    ratio_thresh=ratio_thresh,
+                                    ransac_th=ransac_th,
+                                    ransac_conf=ransac_conf,
+                                    ransac_iters=ransac_iters)
 
 
     # (id1, id2) => (homography, inlier_kps1, inlier_dsc1, inlier_kps2, inlier_dsc2)
@@ -605,7 +605,56 @@ def show_save_matching(img1,
         show_or_close(show)
 
 
-def match_epipolar(img_data1,
+def match_homography(img_data1,
+                     img_data2,
+                     find_fundamental, img_pair, out_dir, show, save, ratio_thresh,
+                     ransac_th, ransac_conf, ransac_iters, cfg):
+
+    Timer.start_check_point("matching")
+
+    save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
+
+    tentative_matches = find_correspondences(img_data1,
+                                             img_data2,
+                                             cfg, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
+
+    src_pts, dst_pts = split_points(tentative_matches, img_data1.key_points, img_data2.key_points)
+
+    print("inlier th: {}".format(ransac_th))
+    H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, ransac_th, maxIters=ransac_iters, confidence=ransac_conf)
+
+    # # TODO threshold and prob params left to default values
+    # if find_fundamental:
+    #     F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.USAC_MAGSAC, ransacReprojThreshold=ransac_th, confidence=ransac_conf, maxIters=ransac_iters)
+    #     if F is None or inlier_mask is None:
+    #         print("WARNING: F:{} or inlier mask:{} are None".format(F, inlier_mask))
+    #         raise ValueError("None")
+    #     print("F:\n{}".format(F))
+    #     E = img_data2.real_K.T @ F @ img_data1.real_K
+    # else:
+    #     # NOTE previously default RANSAC params used here; no iters param
+    #     E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, img_data1.real_K, None, img_data2.real_K, None, cv.RANSAC, prob=ransac_conf, threshold=ransac_th)
+    #     if E is None or inlier_mask is None:
+    #         print("WARNING: E:{} or inlier mask:{} are None".format(E, inlier_mask))
+    #         raise ValueError("None")
+
+    Timer.end_check_point("matching")
+
+    show_save_matching(img_data1.img,
+                       img_data1.key_points,
+                       img_data2.img,
+                       img_data2.key_points,
+                       tentative_matches,
+                       inlier_mask,
+                       out_dir,
+                       save_suffix,
+                       show,
+                       save)
+
+    return H, inlier_mask, src_pts, dst_pts, tentative_matches
+
+
+def match_epipolar_old(img_data1,
                    img_data2,
                    find_fundamental, img_pair, out_dir, show, save, ratio_thresh,
                    ransac_th, ransac_conf, ransac_iters, cfg):
@@ -751,7 +800,7 @@ def img_correspondences(scene_info: SceneInfo, output_dir, descriptor, normals_d
             img1, K_1, kps1, descs1 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img1, normal_indices1, normals1, descriptor, out_dir, rectify)
             img2, K_2, kps2, descs2 = prepare_data_for_keypoints_and_desc(scene_info, img_pair.img2, normal_indices2, normals2, descriptor, out_dir, rectify)
 
-            return match_epipolar(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True, ratio_thresh=0.85)
+            return match_homography(img1, kps1, descs1, K_1, img2, kps2, descs2, K_2, scene_info.img_info_map, img_pair, out_dir, show=True, save=True, ratio_thresh=0.85)
 
 
 def main():

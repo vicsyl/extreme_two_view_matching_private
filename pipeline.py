@@ -24,7 +24,7 @@ import argparse
 from config import *
 from connected_components import get_connected_components, get_and_show_components
 from depth_to_normals import *
-from matching import match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
+from matching import match_homography, match_find_F_degensac, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from scene_info import SceneInfo
 from utils import Timer
@@ -399,7 +399,6 @@ class Pipeline:
 
         orig_height = img.shape[0]
         orig_width = img.shape[1]
-        real_K = self.scene_info.get_img_K(img_name, img)
         if self.estimate_k:
             focal_length = (orig_width + orig_height) * self.focal_point_mean_factor
             K_for_rectification = np.array([
@@ -407,7 +406,9 @@ class Pipeline:
                 [0,            focal_length, orig_height / 2.0],
                 [0,            0,            1]
             ])
+            real_K = K_for_rectification
         else:
+            real_K = self.scene_info.get_img_K(img_name, img)
             K_for_rectification = real_K
             focal_length = real_K[0, 0]
 
@@ -429,7 +430,7 @@ class Pipeline:
                              components_indices=None,
                              valid_components_dict=None)
 
-            Pipeline.save_img_data(img_data, img_data_path, img_name)
+            #Pipeline.save_img_data(img_data, img_data_path, img_name)
 
             Timer.end_check_point("processing img without rectification")
             return img_data
@@ -591,7 +592,7 @@ class Pipeline:
 
             Timer.end_check_point("processing img from scratch")
 
-            Pipeline.save_img_data(img_data, img_data_path, img_name)
+            #Pipeline.save_img_data(img_data, img_data_path, img_name)
 
             return img_data
 
@@ -994,7 +995,7 @@ class Pipeline:
 
         else:
             # NOTE using img_datax.real_K for a call to findE
-            E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
+            E, inlier_mask, src_pts, dst_pts, tentative_matches = match_homography(
                 image_data_list[0], image_data_list[1],
                 find_fundamental=self.estimate_k,
                 img_pair=img_pair,
@@ -1133,27 +1134,27 @@ class Pipeline:
 
                     rectify_affine_affnet = self.config["rectify_affine_affnet"]
                     affnet_no_clustering = self.config["affnet_no_clustering"]
-                    if self.config[CartesianConfig.rectify] and (not rectify_affine_affnet or not affnet_no_clustering):
-                        zero_around_z = self.config["rectify_by_0_around_z"]
-                        estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
+                    # if self.config[CartesianConfig.rectify] and (not rectify_affine_affnet or not affnet_no_clustering):
+                    #     zero_around_z = self.config["rectify_by_0_around_z"]
+                    #     estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
 
-                    if self.config["rectify_by_fixed_rotation"]:
-
-                        if self.config["rectify_by_GT"]:
-                            GT_R, _ = get_GT_R_t(img_pair, self.scene_info)
-                            r_vec_full = KG.rotation_matrix_to_angle_axis(torch.from_numpy(GT_R)[None]).detach().cpu().numpy()[0]
-                        else:
-                            r_vec_full = estimated_r_vec
-
-                        for idx, image_data_item in enumerate(image_data):
-                            if idx == 0:
-                                r_vec = r_vec_full / 2
-                                img_name = img_pair.img1
-                            else:
-                                r_vec = -r_vec_full / 2
-                                img_name = img_pair.img2
-
-                            self.rectify_by_fixed_rotation_update(image_data_item, r_vec, img_name)
+                    # if self.config["rectify_by_fixed_rotation"]:
+                    #
+                    #     if self.config["rectify_by_GT"]:
+                    #         GT_R, _ = get_GT_R_t(img_pair, self.scene_info)
+                    #         r_vec_full = KG.rotation_matrix_to_angle_axis(torch.from_numpy(GT_R)[None]).detach().cpu().numpy()[0]
+                    #     else:
+                    #         r_vec_full = estimated_r_vec
+                    #
+                    #     for idx, image_data_item in enumerate(image_data):
+                    #         if idx == 0:
+                    #             r_vec = r_vec_full / 2
+                    #             img_name = img_pair.img1
+                    #         else:
+                    #             r_vec = -r_vec_full / 2
+                    #             img_name = img_pair.img2
+                    #
+                    #         self.rectify_by_fixed_rotation_update(image_data_item, r_vec, img_name)
 
                     if self.get_stage_number() >= self.stages_map["final"]:
                         self.do_matching(image_data, img_pair, matching_out_dir, stats_map_diff, difficulty)
@@ -1168,12 +1169,16 @@ class Pipeline:
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats, all=stats_counter % 100 == 0)
-                evaluate_all_matching_stats_even_normalized(self.stats_map)
+                evaluate_all_matching_stats_even_normalized(self.stats_map,
+                                                            n_examples=30)
 
                 Timer.log_stats()
 
             if processed_pairs > 0:
-                evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(difficulty), scene_info=self.scene_info)
+                evaluate_all_matching_stats_even_normalized(self.stats_map,
+                                                            tex_save_path_prefix=self.get_tex_file_name(difficulty),
+                                                            n_examples=30,
+                                                            scene_info=self.scene_info)
                 evaluate_stats(self.stats, all=True)
 
             stats_file_name = self.get_diff_stats_file(difficulty)
@@ -1189,7 +1194,10 @@ class Pipeline:
         self.log()
         # These two are different approaches to stats
         evaluate_stats(self.stats, all=True)
-        evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100), scene_info=self.scene_info)
+        evaluate_all_matching_stats_even_normalized(self.stats_map,
+                                                    tex_save_path_prefix=self.get_tex_file_name(100),
+                                                    n_examples=30,
+                                                    scene_info=self.scene_info)
 
     def save_stats(self, key=""):
         file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())

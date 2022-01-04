@@ -305,6 +305,28 @@ class Stats:
         self.kpts2 = None
 
 
+def get_visible_part_mean_absolute_reprojection_error(img1, img2, H_gt, H):
+    '''We reproject the image 1 mask to image2 and back to get the visible part mask.
+    Then we average the reprojection absolute error over that area'''
+    h,w = img1.shape[:2]
+    mask1 = np.ones((h,w))
+    mask1in2 = cv2.warpPerspective(mask1, H_gt, img2.shape[:2][::-1])
+    mask1inback = cv2.warpPerspective(mask1in2, np.linalg.inv(H_gt), img1.shape[:2][::-1]) > 0
+    xi = np.arange(w)
+    yi = np.arange(h)
+    xg, yg = np.meshgrid(xi,yi)
+    coords = np.concatenate([xg.reshape(*xg.shape,1), yg.reshape(*yg.shape,1)], axis=-1)
+    shape_orig = coords.shape
+    xy_rep_gt = cv2.perspectiveTransform(coords.reshape(-1, 1,2).astype(np.float32), H_gt.astype(np.float32)).squeeze(1)
+    xy_rep_estimated = cv2.perspectiveTransform(coords.reshape(-1, 1,2).astype(np.float32),
+                                                H.astype(np.float32)).squeeze(1)
+    #error = np.abs(xy_rep_gt-xy_rep_estimated).sum(axis=1).reshape(xg.shape) * mask1inback
+    error = np.sqrt(((xy_rep_gt-xy_rep_estimated)**2).sum(axis=1)).reshape(xg.shape) * mask1inback
+    mean_error = error.sum() / mask1inback.sum()
+    return mean_error
+
+
+
 def evaluate_matching(scene_info,
                       E,
                       img_data_list,
@@ -323,7 +345,16 @@ def evaluate_matching(scene_info,
     src_pts_inliers = src_tentatives_2d[inlier_mask[:, 0] == [1]]
     dst_pts_inliers = dst_tentatives_2d[inlier_mask[:, 0] == [1]]
 
-    error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers, img_data_list)
+    #MAE = get_visible_part_mean_absolute_reprojection_error(img1, img2, H_gt, H_est)
+    H_est = E
+
+    H_gt = np.loadtxt("EVD/{}.txt".format(img_pair.img1.replace("1", "h")))
+
+    MAE = get_visible_part_mean_absolute_reprojection_error(img_data_list[0].img, img_data_list[1].img, H_gt, H_est)
+
+    #error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers, img_data_list)
+    error_R, error_T = MAE, 0
+
     inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
 
     if is_rectified_condition(img_data_list[0]):
@@ -331,18 +362,18 @@ def evaluate_matching(scene_info,
         print("Matching stats in evaluation:")
         print("unique plane correspondence counts of tentatives:\n{}".format(np.vstack((unique.T, counts)).T))
 
-    count_sampson_gt, \
-    count_symmetrical_gt, \
-    count_sampson_estimated, \
-    count_symmetrical_estimated = evaluate_tentatives_agains_ground_truth(scene_info,
-                                                                          img_pair,
-                                                                          img_data_list,
-                                                                          src_tentatives_2d,
-                                                                          dst_tentatives_2d,
-                                                                          [ransac_th, 0.1, 0.5, 1, 3],
-                                                                          E, inliers)
+    # count_sampson_gt, \
+    # count_symmetrical_gt, \
+    # count_sampson_estimated, \
+    # count_symmetrical_estimated = evaluate_tentatives_agains_ground_truth(scene_info,
+    #                                                                       img_pair,
+    #                                                                       img_data_list,
+    #                                                                       src_tentatives_2d,
+    #                                                                       dst_tentatives_2d,
+    #                                                                       [ransac_th, 0.1, 0.5, 1, 3],
+    #                                                                       E, inliers)
 
-    stats = Stats(inliers_against_gt=count_symmetrical_gt,
+    stats = Stats(inliers_against_gt=0,
                   tentatives_1=src_tentatives_2d,
                   tentatives_2=dst_tentatives_2d,
                   error_R=error_R,
@@ -539,9 +570,9 @@ def evaluate_tentatives_agains_ground_truth(scene_info: SceneInfo,
 
 def evaluate_all_matching_stats_even_normalized(stats_map_all: dict, tex_save_path_prefix=None, n_examples=None, special_diff=None, scene_info: SceneInfo=None):
     evaluate_all_matching_stats(stats_map_all, tex_save_path_prefix, n_examples, special_diff)
-    if scene_info is not None:
-        tex_save_path_prefix = tex_save_path_prefix + "_normalized" if tex_save_path_prefix is not None else None
-        evaluate_all_matching_stats(stats_map_all, tex_save_path_prefix, n_examples=None, special_diff=None, scene_info=scene_info)
+    # if scene_info is not None:
+    #     tex_save_path_prefix = tex_save_path_prefix + "_normalized" if tex_save_path_prefix is not None else None
+    #     evaluate_all_matching_stats(stats_map_all, tex_save_path_prefix, n_examples=None, special_diff=None, scene_info=scene_info)
 
 
 def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, n_examples=None, special_diff=None, scene_info: SceneInfo=None):
@@ -703,8 +734,13 @@ def print_significant_instances(stats_map, difficulty, key, n_examples=10):
     for k, v in sorted_by_err_R[:n_examples]:
         print("{}: {}".format(k, v.error_R))
     print("{} best examples for {} for diff={}".format(n_examples, key, difficulty))
+    sum = 0.0
     for k, v in sorted_by_err_R[-n_examples:]:
+        sum = sum + v.error_R
         print("{}: {}".format(k, v.error_R))
+
+    print("sum: {}".format(sum))
+    print("avg: {}".format(sum/len(sorted_by_err_R)))
 
 
 def evaluate_percentage_correct(stats_map, difficulty, th_degrees=5, all_len_const=None):
