@@ -109,3 +109,17 @@ def rectify_img(K, normal, img, patch_mask):
     rect_patch = H @ patch_mask
     return rect_img, rect_patch
 
+
+# def aff_net_and_depth(img, depth_map):
+#
+#     patches = detect_planar_surfaces(img, depth_map)
+#
+#     kpts, descs, shapes = HardNet.detectAndCompute(img)
+#
+#     for patch in patches():
+#         to_cover = restrict(shapes, patch)
+#         kpts_p, descs_p = greedy_cover_selection(patch, to_cover)
+#         kpts = kpts.union(kpts_p)
+#         descs = descs.union(descs_p)
+#
+#     return kpts, descs

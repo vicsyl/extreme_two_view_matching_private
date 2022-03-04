@@ -421,6 +421,13 @@ class Pipeline:
                 return cached_img_data
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
+            cp_img = img.copy()
+            cv.drawKeypoints(cp_img, kps, cp_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            plt.figure(figsize=(20, 20))
+            plt.title("New visos")
+            plt.imshow(cp_img)
+            plt.show()
+
             img_data = ImageData(img=img,
                              real_K=real_K,
                              key_points=kps,
@@ -467,10 +474,10 @@ class Pipeline:
                 # normals_np[:, :, 2] *= -1
                 # plt.imshow(normals)
                 # plt.show()
-                # cv.imwrite("thesis_work/normals_{}.png".format(self.counter), normals * 255)
+                # #cv.imwrite("thesis_work/normals_{}.png".format(self.counter), normals * 255)
                 # plt.imshow(img)
                 # plt.show()
-                # cv.imwrite("thesis_work/normals_original{}.png".format(self.counter), img)
+                # #cv.imwrite("thesis_work/normals_original{}.png".format(self.counter), img)
 
                 Timer.start_check_point("sky_mask")
                 if self.config[CartesianConfig.filter_sky]:

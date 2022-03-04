@@ -1,14 +1,9 @@
-import math
-from dataclasses import dataclass
-
 import kornia as KR
 import kornia.feature as KF
-import torch
-from matplotlib.patches import Circle
 
 from kornia_utils import *
-from utils import Timer, update_stats_map_static, append_update_stats_map_static
 from opt_covering import *
+from utils import update_stats_map_static, append_update_stats_map_static
 
 
 @dataclass
@@ -389,6 +384,7 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
 def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
 
     covering_type = config["affnet_covering_type"]
+    covering = CoveringParams.get_effective_covering(config)
 
     # NOTE - naive approach
     if covering_type == "mean":
@@ -412,7 +408,6 @@ def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, t
         return torch.hstack((t_mean_affnet, phi_mean_affnet)).unsqueeze(0)
 
     else:
-        covering = CoveringParams.get_effective_covering(config)
         return winning_centers(covering, data_all_ts, data_all_phis, config)
 
 
