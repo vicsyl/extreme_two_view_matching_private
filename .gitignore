@@ -16,5 +16,5 @@ persist_do_not_commit
 .DS_Store
 docs/offline_notes.txt
 *.pyc
-poc.py
+*poc.py
 config.txt

@@ -112,7 +112,8 @@ def get_kpts_normals(components_indices, valid_components_dict, kpts_2d):
 
     kpts_2d = np.array(kpts_2d)
 
-    kpts_ints = np.round(kpts_2d).astype(np.int)
+    # 'np.int32' avoids warning
+    kpts_ints = np.round(kpts_2d).astype(np.int32)
 
     np.clip(kpts_ints[:, 0], 0, components_indices.shape[1] - 1, out=kpts_ints[:, 0])
     np.clip(kpts_ints[:, 1], 0, components_indices.shape[0] - 1, out=kpts_ints[:, 1])

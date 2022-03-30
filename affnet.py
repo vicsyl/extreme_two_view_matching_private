@@ -490,6 +490,9 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         kpt_s_back_int[~mask_cmp, 0] = 0
         kpt_s_back_int[~mask_cmp, 1] = 0
         if current_component is not None:
+            #TODO fixme :
+            # (processing image) frame_0000000630_2_frame_0000001530_1 couldn't be processed, skipping the matching pair
+            # /extreme-two-view-matching2/work/pipeline_RANSAC_GTK_2022_03_15_14_42_42_038886_0244a61_boruvka/out ...
             mask_cmp = (mask_cmp) & (img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]] == current_component)
         mask_cmp = mask_cmp.to(torch.bool)
 
