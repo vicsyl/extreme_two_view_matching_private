@@ -115,6 +115,8 @@ class CartesianConfig:
     all_unrectified = "all_unrectified"
     rectify = "rectify"
 
+    affnet_custom_depth_lafs = "affnet_custom_depth_lafs"
+
     props_handlers = {
 
         # dataset
@@ -161,6 +163,7 @@ class CartesianConfig:
         "affnet_covering_fraction_th": Property("float", default=0.9, cache=Property.cache_img_data, optional=False, list_allowed=True),
         "affnet_covering_max_iter": Property("int", default=2, cache=Property.cache_img_data, optional=False, list_allowed=True),
         "affnet_no_clustering": Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
+        affnet_custom_depth_lafs: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
 
         # SIFT
         "n_features": Property("int", None, optional=True, cache=Property.cache_img_data),

@@ -5,7 +5,6 @@ from datetime import datetime
 from hard_net_descriptor import HardNetDescriptor
 from rootsift_descriptor import RootSIFT
 from normals_rotations import *
-
 import kornia.geometry as KG
 import cv2 as cv
 import pickle
@@ -301,7 +300,8 @@ class Pipeline:
         if self.matching_pairs is not None:
             self.matching_difficulties = scene_length_range
 
-        self.depth_input_dir = self.scene_info.depth_input_dir()
+        self.depth_reader = DepthReader(self.scene_info.depth_input_dir())
+
         intersection = set(self.matching_difficulties).intersection(set(scene_length_range))
         self.matching_difficulties = list(intersection)
 
@@ -413,7 +413,16 @@ class Pipeline:
 
         img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
 
+        # without rectification at all
         if not self.config[CartesianConfig.rectify]:
+
+            if self.config[CartesianConfig.affnet_custom_depth_lafs]:
+                # get depth data - normals - lafs
+                depth_map = self.depth_reader.read_depth_data(img_name)
+                normals, _ = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_map, device=torch.device('cpu'),
+                                                             svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
+                affnet_hard_net_filter = self.config.get("affnet_hard_net_filter", 1)
+                self.feature_descriptor.set_normals(normals, real_K, affnet_hard_net_filter)
 
             Timer.end_check_point("processing img without rectification")
             cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
@@ -462,8 +471,7 @@ class Pipeline:
 
                 Timer.start_check_point("processing img from scratch")
 
-                depth_data_file_name = "{}.npy".format(img_name)
-                depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, device=torch.device('cpu'))
+                depth_data = self.depth_reader.read_depth_data(img_name)
                 normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'),
                                                              svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
 
@@ -502,6 +510,8 @@ class Pipeline:
                 Timer.end_check_point("clustering")
                 self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.all_combinations], img_name)
 
+                # to be redesigned and removed
+                depth_data_file_name = "{}.npy".format(img_name)
                 show_or_save_clusters(normals,
                                       normal_indices,
                                       normals_clusters_repr,
@@ -673,6 +683,8 @@ class Pipeline:
 
     def get_quantil_mask(self, img, img_name, singular_value_quantil, h_w_size, s_values, depth_data, sky_mask_np):
         if singular_value_quantil == 1.0: # and False: NOTE #visualizations
+            # NOTE this works by accident as h_w_size is not a tuple with dimensions, but Tensor(0, 1, h, w),
+            # which gives mask = array(True) (!!)
             mask = np.ones(h_w_size, dtype=bool)
         else:
             s_values_ratio = True
@@ -716,8 +728,7 @@ class Pipeline:
             assert abs(real_K[0, 2] * 2 - orig_width) < 0.5
             assert abs(real_K[1, 2] * 2 - orig_height) < 0.5
 
-        depth_data_file_name = "{}.npy".format(img_name)
-        depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, height=None, width=None, device=torch.device('cpu'))
+        depth_data = self.depth_reader.read_depth_data(img_name)
         print("depth_data device {}".format(depth_data.device))
 
         img_processing_dir = self.get_and_create_img_processing_dir()
@@ -870,7 +881,7 @@ class Pipeline:
         globs_and_prefixes = [("depth_data/megadepth_ds/depths/*_orig.npy", "gt"),
                               ("depth_data/megadepth_ds/depths/*_o.npy", "estimated")]
 
-        self.depth_input_dir = "depth_data/megadepth_ds/depths"
+        depth_reader = DepthReader("depth_data/megadepth_ds/depths")
         imgs_base = "depth_data/megadepth_ds/imgs"
 
         for glob_str, prefix in globs_and_prefixes:
@@ -901,7 +912,7 @@ class Pipeline:
                         if not os.path.exists(sky_cache_dir):
                             Path(sky_cache_dir).mkdir(parents=True, exist_ok=True)
                         sky_cache_files = ["{}/{}.npy".format(sky_cache_dir, img_name), "{}/{}.npy".format(sky_cache_dir, img_name[:-5])]
-                        depth_data = read_depth_data(depth_data_file_name, self.depth_input_dir, height=None, width=None, device=torch.device('cpu'))
+                        depth_data = depth_reader.read_depth_data(depth_data_file_name[:-4])
                         sky_mask = (depth_data[0, 0] != 0.0).to(torch.int).numpy()
                         for sky_cache_file in sky_cache_files:
                             with open(sky_cache_file, "wb") as f:

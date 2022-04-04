@@ -88,7 +88,7 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     def assert_decomposition():
         d = torch.diag_embed(s)
         product = lambdas.view(1, -1, 1, 1) * U @ d @ V
-        close_cond = torch.allclose(product, l_maps, atol=1e-05)
+        close_cond = torch.allclose(product, l_maps, rtol=1e-04, atol=1e-05)
         assert close_cond
 
     assert_decomposition()
@@ -183,21 +183,6 @@ def prepare_plot(max_radius: float, unit_radius: float, ax):
     circle = Circle((0, 0), log_unit_radius, color='r', fill=False)
     ax.add_artist(circle)
 
-
-# TODO export somehow?
-# def get_normals(normals, K):
-#
-#     Hs = get_rectification_homographies(normals, K)
-#     Hs_as_affine = Hs[:, :, :2, :2]
-#     det_Hs = torch.det(Hs_as_affine).sqrt().unsqueeze(2).unsqueeze(3)
-#     Hs_as_affine = Hs_as_affine / det_Hs
-#
-#     # TODO CONTINUE asserts=False did not work on the whole set of normals (index 3081)
-#     # TODO invert=?
-#     _, _, ts_h, phis_h = decompose_lin_maps(Hs_as_affine, asserts=True)
-#
-#     return ts_h, phis_h
-#
 
 def get_aff_map(t, phi, component_mask, invert_first):
 
@@ -722,7 +707,7 @@ def decomposition_test():
         print("l: {}, psi: {}, t: {}, phi: {}".format(lambda_, psi, t, phi))
         return lambda_, psi, t, phi
 
-    projected_lin_map, lambdas, R_psis, T_ts, R_phis = compose_lin_maps(t, phi)
+    projected_lin_map, lambdas, R_psis, T_ts, R_phis = compose_lin_maps(t, phi, lambdas=None, psis=None)
     assert torch.all(projected_lin_map == lambdas * R_psis @ T_ts @ R_phis)
 
     print("decomposition scalar and matrices: lambda, R_1, T, R_2: \n {} \n {} \n {} \n {}".format(lambdas, R_psis, T_ts, R_phis))
@@ -742,6 +727,20 @@ def decomposition_test():
     print(" inverse: {}:".format(projected_lin_map_inv))
 
     lambdas_inv, psis_inv, ts_inv, phis_inv = dec_and_print(projected_lin_map_inv)
+
+
+def show_sets_of_linear_maps(data_list, label="compare"):
+
+    covering = CoveringParams.dense_covering_original()
+
+    colors = ["b", "y", "r", "g"]
+    assert len(data_list) <= 4, "list of linear maps cannot have more than 4 items"
+    point_styles = []
+    for idx, data in enumerate(data_list):
+        lambdas, psis, ts, phis = decompose_lin_maps_lambda_psi_t_phi(data, asserts=False)
+        point_styles.append(PointsStyle(ts=ts, phis=phis, color=colors[idx], size=0.5))
+
+    plot_space_of_tilts(label, "img_name", 0, 0, covering.r_max, covering.t_max, point_styles)
 
 
 if __name__ == "__main__":

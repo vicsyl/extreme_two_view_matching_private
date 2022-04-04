@@ -269,6 +269,7 @@ def read_depth_data_np(directory, limit=None):
     return data_map
 
 
+# TODO duplicated - remove
 def read_depth_data_from_path(file_path, height=None, width=None, device=torch.device("cpu")):
     depth_data_np = np.load(file_path).astype(np.float64)
     depth_data = torch.from_numpy(depth_data_np).to(device)
@@ -278,6 +279,29 @@ def read_depth_data_from_path(file_path, height=None, width=None, device=torch.d
     return depth_data
 
 
+class DepthReader:
+
+    def __init__(self, input_dir):
+        self.input_dir = input_dir
+
+    def read_depth_data(self, img_name, height=None, width=None, device=torch.device("cpu")):
+        depth_data_file_name = "{}.npy".format(img_name)
+        file_path = '{}/{}'.format(self.input_dir, depth_data_file_name)
+        if not os.path.isfile(file_path):
+            raise Exception("ERROR: {} doesn't exist, skipping".format(file_path))
+        return DepthReader.read_depth_data_from_path(file_path, height, width, device)
+
+    @staticmethod
+    def read_depth_data_from_path(file_path, height=None, width=None, device=torch.device("cpu")):
+        depth_data_np = np.load(file_path).astype(np.float64)
+        depth_data = torch.from_numpy(depth_data_np).to(device)
+        depth_data = depth_data.view(1, 1, depth_data.shape[0], depth_data.shape[1])
+        if height is not None and width is not None:
+            depth_data = upsample_bilinear(depth_data, height, width)
+        return depth_data
+
+
+# TODO - duplicated - remove
 def read_depth_data(filename, directory, height=None, width=None, device=torch.device("cpu")):
     file_path = '{}/{}'.format(directory, filename)
     if not os.path.isfile(file_path):
