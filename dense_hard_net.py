@@ -6,7 +6,7 @@ import torch
 class NormalHardNet(KF.HardNet):
 
     def __init__(self):
-        KF.HardNet.__init__(self, pretrained=False)
+        KF.HardNet.__init__(self, pretrained=True)
 
     # def forward(self, input: torch.Tensor) -> torch.Tensor:
     #     x_norm: torch.Tensor = self._normalize_input(input)
@@ -19,7 +19,7 @@ class NormalHardNet(KF.HardNet):
 class DenseHardNet(KF.HardNet):
 
     def __init__(self):
-        KF.HardNet.__init__(self, pretrained=False)
+        KF.HardNet.__init__(self, pretrained=True)
 
     """Version of the HardNet to performs dense descriptor extraction
     """
