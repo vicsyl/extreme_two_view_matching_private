@@ -1,7 +1,7 @@
 import torch
 
 
-def get_rotation_matrices_torch(unit_rotation_vectors, angs_rads):
+def get_rotation_matrices_torch(unit_rotation_vectors, angs_rads, device):
     """
     :param unit_rotation_vectors:
     :param angs_rads:
@@ -14,7 +14,7 @@ def get_rotation_matrices_torch(unit_rotation_vectors, angs_rads):
     def batch_scalar_to_3x3(data):
         return data[:, :, None].repeat(1, 3, 3)
 
-    K = torch.zeros(unit_rotation_vectors.shape[0], 3, 3)
+    K = torch.zeros(unit_rotation_vectors.shape[0], 3, 3, device=device)
 
     K[:, 0, 0] = 0.0
     K[:, 0, 1] = -unit_rotation_vectors[:, 2]
@@ -59,7 +59,7 @@ def get_rectification_rotations(normals, device):
             det = torch.linalg.det(R)
             assert torch.all((det - 1.0).abs() < 0.0001)
 
-    R = get_rotation_matrices_torch(unit_rotation_vectors, thetas)
+    R = get_rotation_matrices_torch(unit_rotation_vectors, thetas, device)
     check_R(R)
     return R
 
