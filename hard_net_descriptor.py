@@ -137,7 +137,7 @@ class HardNetDescriptor:
         in_img_mask = torch.logical_and(in_img_mask, kps_long[:, 1] < timg.shape[2])
         kps_long = kps_long[in_img_mask]
 
-        normals = HardNetDescriptor.resample_normals_to_img_size(self.custom_normals, timg.shape[2:])
+        normals = HardNetDescriptor.resample_normals_to_img_size(self.custom_normals, timg.shape[2:]).to(self.device)
         normals = normals[kps_long[:, 1], kps_long[:, 0]]
 
         Rs = get_rectification_rotations(normals)
