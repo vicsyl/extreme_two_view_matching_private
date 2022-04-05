@@ -141,9 +141,9 @@ class HardNetDescriptor:
         normals = normals[kps_long[:, 1], kps_long[:, 0]]
 
         Rs = get_rectification_rotations(normals, self.device)
-        K_torch = torch.from_numpy(self.custom_K).to(dtype=torch.float32)
+        K_torch = torch.from_numpy(self.custom_K).to(dtype=torch.float32, device=self.device)
         Hs = K_torch @ Rs @ torch.inverse(K_torch)
-        Hs_pure, affines = decompose_homographies(Hs)
+        Hs_pure, affines = decompose_homographies(Hs, self.device)
 
         affines = affines[None, :, :2, :]
         visualise = False
@@ -151,7 +151,7 @@ class HardNetDescriptor:
             self.visualize_lafs(affines.clone(), cv2_sift_kpts, timg)
 
         affines[:, :, :, :2] = torch.inverse(affines[:, :, :, :2])
-        locations = torch.tensor([list(cv_kpt.pt) for cv_kpt in cv2_sift_kpts])
+        locations = torch.tensor([list(cv_kpt.pt) for cv_kpt in cv2_sift_kpts], device=self.device)
         affines[0, :, :, 2] = locations
         return affines
 

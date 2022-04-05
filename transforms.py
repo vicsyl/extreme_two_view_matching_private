@@ -64,7 +64,7 @@ def get_rectification_rotations(normals, device):
     return R
 
 
-def decompose_homographies(Hs):
+def decompose_homographies(Hs, device):
     """
     :param Hs:(B, 3, 3)
     :return: pure_homographies(B, 3, 3), affine(B, 3, 3)
@@ -74,8 +74,8 @@ def decompose_homographies(Hs):
     assert three1 == 3
     assert three2 == 3
 
-    def batched_eye(B, D):
-        eye = torch.eye(D)[None].repeat(B, 1, 1)
+    def batched_eye_deviced(B, D):
+        eye = torch.eye(D, device=device)[None].repeat(B, 1, 1)
         return eye
 
     KR = Hs[:, :2, :2]
@@ -84,12 +84,12 @@ def decompose_homographies(Hs):
     a_t = Hs[:, 2:3, :2] @ torch.inverse(KR)
     b = a_t @ KRt + Hs[:, 2:3, 2:3]
 
-    pure_homographies1 = torch.cat((batched_eye(B, 2), torch.zeros(B, 2, 1)), dim=2)
+    pure_homographies1 = torch.cat((batched_eye_deviced(B, 2), torch.zeros(B, 2, 1, device=device)), dim=2)
     pure_homographies2 = torch.cat((a_t, b), dim=2)
     pure_homographies = torch.cat((pure_homographies1, pure_homographies2), dim=1)
 
     affines1 = torch.cat((KR, -KRt), dim=2)
-    affines2 = torch.cat((torch.zeros(B, 1, 2), torch.ones(B, 1, 1)), dim=2)
+    affines2 = torch.cat((torch.zeros(B, 1, 2, device=device), torch.ones(B, 1, 1, device=device)), dim=2)
     affines = torch.cat((affines1, affines2), dim=1)
 
     assert torch.all(affines[:, 2, :2] == 0)
