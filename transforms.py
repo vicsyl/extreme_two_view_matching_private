@@ -28,7 +28,7 @@ def get_rotation_matrices_torch(unit_rotation_vectors, angs_rads, device):
     K[:, 2, 1] = unit_rotation_vectors[:, 0]
     K[:, 2, 2] = 0.0
 
-    a = torch.eye(3).repeat(unit_rotation_vectors.shape[0], 1, 1)
+    a = torch.eye(3, device=device).repeat(unit_rotation_vectors.shape[0], 1, 1)
     b = batch_scalar_to_3x3(torch.sin(angs_rads)) * K
     c = batch_scalar_to_3x3(1.0 - torch.cos(angs_rads)) * K @ K
 
