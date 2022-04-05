@@ -36,7 +36,7 @@ def get_rotation_matrices_torch(unit_rotation_vectors, angs_rads):
     return R
 
 
-def get_rectification_rotations(normals):
+def get_rectification_rotations(normals, device):
     """
     :param normals:
     :return:
@@ -45,7 +45,7 @@ def get_rectification_rotations(normals):
     # now the normals will be "from" me, "inside" the surfaces
     normals = -normals
 
-    z = torch.tensor([[0.0, 0.0, 1.0]]).repeat(normals.shape[0], 1)
+    z = torch.tensor([[0.0, 0.0, 1.0]], device=device).repeat(normals.shape[0], 1)
     assert torch.all(normals[:, 2] > 0)
 
     rotation_vectors = torch.cross(z, normals, dim=1)

@@ -140,7 +140,7 @@ class HardNetDescriptor:
         normals = HardNetDescriptor.resample_normals_to_img_size(self.custom_normals, timg.shape[2:]).to(self.device)
         normals = normals[kps_long[:, 1], kps_long[:, 0]]
 
-        Rs = get_rectification_rotations(normals)
+        Rs = get_rectification_rotations(normals, self.device)
         K_torch = torch.from_numpy(self.custom_K).to(dtype=torch.float32)
         Hs = K_torch @ Rs @ torch.inverse(K_torch)
         Hs_pure, affines = decompose_homographies(Hs)
