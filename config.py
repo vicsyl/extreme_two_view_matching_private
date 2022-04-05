@@ -157,8 +157,8 @@ class CartesianConfig:
         # param for naive approach via "mean"
         "affnet_max_tilt_r": Property("float", default=5.8, cache=Property.cache_img_data, list_allowed=True),
         "affnet_hard_net_filter": Property("int", default=None, optional=True, cache=Property.cache_img_data, list_allowed=False),
-        "affnet_compute_laffs": Property("bool", default=False, optional=False, cache=Property.cache_img_data, list_allowed=False),
-        "show_affnet": Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=False),
+        "affnet_compute_laffs": Property("bool", default=False, optional=False, cache=Property.cache_img_data, list_allowed=True),
+        "show_affnet": Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=True),
         "affnet_include_all_from_identity": Property("bool", default=False, optional=True, cache=Property.cache_img_data),
         "affnet_covering_type": Property("enum", default="dense_cover", cache=Property.cache_img_data, optional=False, list_allowed=True, allowed_values=["mean", "dense_cover", "sparse_cover", "dense_cover_original"]),
         "affnet_covering_fraction_th": Property("float", default=0.9, cache=Property.cache_img_data, optional=False, list_allowed=True),
