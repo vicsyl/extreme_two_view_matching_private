@@ -130,7 +130,7 @@ class HardNetDescriptor:
 
     def get_lafs_from_normals(self, cv2_sift_kpts, timg):
 
-        kps_long = torch.tensor([[kp.pt[0] + 0.5, kp.pt[1] + 0.5] for kp in cv2_sift_kpts], dtype=torch.long)
+        kps_long = torch.tensor([[kp.pt[0] + 0.5, kp.pt[1] + 0.5] for kp in cv2_sift_kpts], dtype=torch.long, device=self.device)
         in_img_mask = kps_long[:, 0] >= 0
         in_img_mask = torch.logical_and(in_img_mask, kps_long[:, 0] < timg.shape[3])
         in_img_mask = torch.logical_and(in_img_mask, kps_long[:, 1] >= 0)
