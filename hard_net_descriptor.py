@@ -18,7 +18,7 @@ DISCLAIMER: taken from https://github.com/kornia/kornia-examples/blob/master/MKD
 
 class HardNetDescriptor:
 
-    def __init__(self, sift_descriptor, filter=None, device: torch.device=torch.device('cpu')):
+    def __init__(self, sift_descriptor, compute_laffs, filter=None, device: torch.device=torch.device('cpu')):
         self.sift_descriptor = sift_descriptor
         self.hardnet = KF.HardNet(True)
         self.device = device
@@ -28,6 +28,7 @@ class HardNetDescriptor:
         self.custom_normals = None
         self.custom_K = None
         self.filter = filter
+        self.compute_laffs = compute_laffs
 
     @staticmethod
     def set_device_eval_to_nets(nets: list, device):
@@ -68,7 +69,7 @@ class HardNetDescriptor:
         if self.filter is not None:
             kps = kps[::self.filter]
 
-        ret = self.get_local_descriptors(img, kps, compute_laffs=give_laffs)
+        ret = self.get_local_descriptors(img, kps, give_laffs=give_laffs)
         if len(ret) != 2:
             # corner case
             descs = np.zeros(0)
@@ -82,7 +83,7 @@ class HardNetDescriptor:
         else:
             return kps, descs
 
-    def get_local_descriptors(self, img, cv2_sift_kpts, compute_laffs=False):
+    def get_local_descriptors(self, img, cv2_sift_kpts, give_laffs=False):
         if len(cv2_sift_kpts) == 0:
             return np.array([])
 
@@ -105,7 +106,7 @@ class HardNetDescriptor:
                 self.custom_K = None
             else:
                 lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
-                if compute_laffs:
+                if self.compute_laffs or give_laffs:
                     # We will estimate affine shape of the feature and re-orient the keypoints with the OriNet
                     # self.affine.eval()
                     # orienter.eval()

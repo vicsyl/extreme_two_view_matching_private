@@ -151,8 +151,9 @@ class Pipeline:
             feature_descriptor = RootSIFT(feature_descriptor)
         elif feature_descriptor == "HARD_NET":
             affnet_hard_net_filter = self.config.get("affnet_hard_net_filter", None)
+            affnet_compute_laffs = self.config.get("affnet_compute_laffs", False)
             feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
-            feature_descriptor = HardNetDescriptor(feature_descriptor, filter=affnet_hard_net_filter, device=self.device)
+            feature_descriptor = HardNetDescriptor(feature_descriptor, affnet_compute_laffs, filter=affnet_hard_net_filter, device=self.device)
 
         self.feature_descriptor = feature_descriptor
 
@@ -1191,7 +1192,8 @@ class Pipeline:
                 Timer.log_stats()
 
             if processed_pairs > 0:
-                evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(difficulty), scene_info=self.scene_info)
+                norm_scene_info = self.scene_info if self.matching_pairs is None else None
+                evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(difficulty), scene_info=norm_scene_info)
                 evaluate_stats(self.stats, all=True)
 
             stats_file_name = self.get_diff_stats_file(difficulty)
@@ -1207,7 +1209,8 @@ class Pipeline:
         self.log()
         # These two are different approaches to stats
         evaluate_stats(self.stats, all=True)
-        evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100), scene_info=self.scene_info)
+        norm_scene_info = self.scene_info if self.matching_pairs is None else None
+        evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100), scene_info=norm_scene_info)
 
     def save_stats(self, key=""):
         file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())
