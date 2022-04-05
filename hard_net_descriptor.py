@@ -18,7 +18,7 @@ DISCLAIMER: taken from https://github.com/kornia/kornia-examples/blob/master/MKD
 
 class HardNetDescriptor:
 
-    def __init__(self, sift_descriptor, device: torch.device=torch.device('cpu')):
+    def __init__(self, sift_descriptor, filter=None, device: torch.device=torch.device('cpu')):
         self.sift_descriptor = sift_descriptor
         self.hardnet = KF.HardNet(True)
         self.device = device
@@ -27,7 +27,7 @@ class HardNetDescriptor:
         self.set_device_eval_to_nets([self.hardnet, self.affine, self.orienter], self.device)
         self.custom_normals = None
         self.custom_K = None
-        self.filter = None
+        self.filter = filter
 
     @staticmethod
     def set_device_eval_to_nets(nets: list, device):
@@ -55,12 +55,11 @@ class HardNetDescriptor:
             data_in = F.interpolate(data_in, size=to_size, scale_factor=None, mode='nearest', align_corners=None)
         return data_in
 
-    def set_normals(self, custom_normals, custom_K, filter=None):
+    def set_normals(self, custom_normals, custom_K):
         self.custom_normals = custom_normals
         self.custom_K = custom_K
-        self.filter = filter
 
-    def detectAndCompute(self, img, mask=None, give_laffs=False, filter=None):
+    def detectAndCompute(self, img, mask=None, give_laffs=False):
         Timer.start_check_point("HardNet.detectAndCompute")
         # NOTE this is just how it was called before (see SuperPoint.detectAndCompute)
         assert mask is None
@@ -68,8 +67,6 @@ class HardNetDescriptor:
         kps = self.sift_descriptor.detect(img, None)
         if self.filter is not None:
             kps = kps[::self.filter]
-        elif filter is not None:
-            kps = kps[::filter]
 
         ret = self.get_local_descriptors(img, kps, compute_laffs=give_laffs)
         if len(ret) != 2:
@@ -101,6 +98,7 @@ class HardNetDescriptor:
                 raise Exception("Unexpected shape of the img: {}".format(img.shape))
             timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.).to(self.device)
 
+            Timer.start_check_point("HardNet.lafs_computation")
             if self.custom_normals is not None:
                 lafs_to_use = self.get_lafs_from_normals(cv2_sift_kpts, timg)
                 self.custom_normals = None
@@ -115,6 +113,8 @@ class HardNetDescriptor:
                     lafs_to_use = self.orienter(lafs2, timg)
                 else:
                     lafs_to_use = lafs
+
+            Timer.end_check_point("HardNet.lafs_computation")
 
             patches = KF.extract_patches_from_pyramid(timg, lafs_to_use, 32)
 
@@ -146,7 +146,7 @@ class HardNetDescriptor:
         Hs_pure, affines = decompose_homographies(Hs)
 
         affines = affines[None, :, :2, :]
-        visualise = True
+        visualise = False
         if visualise:
             self.visualize_lafs(affines.clone(), cv2_sift_kpts, timg)
 

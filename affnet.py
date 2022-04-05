@@ -403,7 +403,6 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                      all_kps, all_descs, all_laffs):
 
     show_affnet = config.get("show_affnet", False)
-    affnet_hard_net_filter = config.get("affnet_hard_net_filter", 1)
     affnet_warp_image_show_transformation = config.get("affnet_warp_image_show_transformation", False)
     covering = CoveringParams.get_effective_covering(config)
     tilt_r_exp = covering.r_max
@@ -447,8 +446,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
             plt.imshow(img_warped)
             plt.show()
 
-        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True,
-                                                                                    filter=affnet_hard_net_filter)
+        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True)
         if len(kps_warped) == 0:
             continue
 
@@ -544,13 +542,12 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     invert_first = conf_map.get("invert_first", True)
     assert invert_first
 
-    affnet_hard_net_filter = conf_map.get("affnet_hard_net_filter", 1)
     affnet_include_all_from_identity = conf_map.get("affnet_include_all_from_identity", False)
     affnet_no_clustering = conf_map["affnet_no_clustering"]
 
     show_affnet = conf_map.get("show_affnet", False)
 
-    identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, filter=affnet_hard_net_filter)
+    identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True)
 
     if affnet_no_clustering:
         kpts_component_indices = torch.zeros((unrectified_laffs.shape[:2]))

@@ -150,8 +150,9 @@ class Pipeline:
             feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
             feature_descriptor = RootSIFT(feature_descriptor)
         elif feature_descriptor == "HARD_NET":
+            affnet_hard_net_filter = self.config.get("affnet_hard_net_filter", None)
             feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
-            feature_descriptor = HardNetDescriptor(feature_descriptor, device=self.device)
+            feature_descriptor = HardNetDescriptor(feature_descriptor, filter=affnet_hard_net_filter, device=self.device)
 
         self.feature_descriptor = feature_descriptor
 
@@ -421,8 +422,7 @@ class Pipeline:
                 depth_map = self.depth_reader.read_depth_data(img_name)
                 normals, _ = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_map, device=torch.device('cpu'),
                                                              svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
-                affnet_hard_net_filter = self.config.get("affnet_hard_net_filter", 1)
-                self.feature_descriptor.set_normals(normals, real_K, affnet_hard_net_filter)
+                self.feature_descriptor.set_normals(normals, real_K)
 
             Timer.end_check_point("processing img without rectification")
             cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
@@ -826,7 +826,7 @@ class Pipeline:
                                                       normal_indices,
                                                       normals_clusters_repr,
                                                       img_processing_dir,
-                                                      "{}: {} ".format(depth_data_file_name, params_key),
+                                                      "{}: {} ".format(img_name, params_key),
                                                       show=self.show_clusters,
                                                       save=self.save_clusters)
         print("counter: {}".format(counter))
