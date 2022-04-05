@@ -80,8 +80,8 @@ def decompose_homographies(Hs):
 
     KR = Hs[:, :2, :2]
     KRt = -Hs[:, :2, 2:3]
-    # t = torch.linalg.inv(KR) @ KRt # for the sake of completeness - this is unused
-    a_t = Hs[:, 2:3, :2] @ torch.linalg.inv(KR)
+    # t = torch.inverse(KR) @ KRt # for the sake of completeness - this is unused
+    a_t = Hs[:, 2:3, :2] @ torch.inverse(KR)
     b = a_t @ KRt + Hs[:, 2:3, 2:3]
 
     pure_homographies1 = torch.cat((batched_eye(B, 2), torch.zeros(B, 2, 1)), dim=2)

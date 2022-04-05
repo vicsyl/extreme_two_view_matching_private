@@ -142,7 +142,7 @@ class HardNetDescriptor:
 
         Rs = get_rectification_rotations(normals)
         K_torch = torch.from_numpy(self.custom_K).to(dtype=torch.float32)
-        Hs = K_torch @ Rs @ torch.linalg.inv(K_torch)
+        Hs = K_torch @ Rs @ torch.inverse(K_torch)
         Hs_pure, affines = decompose_homographies(Hs)
 
         affines = affines[None, :, :2, :]
@@ -150,7 +150,7 @@ class HardNetDescriptor:
         if visualise:
             self.visualize_lafs(affines.clone(), cv2_sift_kpts, timg)
 
-        affines[:, :, :, :2] = torch.linalg.inv(affines[:, :, :, :2])
+        affines[:, :, :, :2] = torch.inverse(affines[:, :, :, :2])
         locations = torch.tensor([list(cv_kpt.pt) for cv_kpt in cv2_sift_kpts])
         affines[0, :, :, 2] = locations
         return affines
@@ -163,7 +163,7 @@ class HardNetDescriptor:
         lafs_to_use_test = self.orienter(lafs2_test, timg)
 
         lafs_to_use_test = lafs_to_use_test[:, :, :, :2]
-        lafs_to_use_inv_vis = torch.linalg.inv(lafs_to_use_test)
+        lafs_to_use_inv_vis = torch.inverse(lafs_to_use_test)
 
         def swap(data):
             swap = data.clone()
@@ -179,7 +179,7 @@ class HardNetDescriptor:
         show_sets_of_linear_maps([affines_swap], label="affine swap(x<->y)")
         show_sets_of_linear_maps([lafs_to_use_inv_vis], label="lafs (inv)")
 
-        affines2x3 = torch.linalg.inv(affines2x3)
+        affines2x3 = torch.inverse(affines2x3)
         show_sets_of_linear_maps([affines2x3], label="inverse affine")
         affines_swap2 = swap(affines2x3)
         show_sets_of_linear_maps([affines_swap2], label="inv affine swap(x<->y)")
