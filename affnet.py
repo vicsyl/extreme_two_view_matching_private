@@ -73,6 +73,14 @@ def compose_lin_maps(ts, phis, lambdas, psis):
 
 # TODO handle CUDA
 def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
+    """
+    :param l_maps: torch.Tensor(D1, D2, 2, 2)
+        - i.e. it can be either (B, C, 2, 2) => e.g. (1, 1000, 2, 2) or
+        (H, W, 2, 2) => it should work independently
+    :param asserts: if additional asserts should be performed (rotation matrix invariants, ts matrix structure)
+    :return: lambdas, psis, ts, phis
+    """
+
 
     assert len(l_maps.shape) == 4
     Timer.start_check_point("decompose_lin_maps")
@@ -87,7 +95,7 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
 
     def assert_decomposition():
         d = torch.diag_embed(s)
-        product = lambdas.view(1, -1, 1, 1) * U @ d @ V
+        product = lambdas[:, :, None, None] * U @ d @ V
         close_cond = torch.allclose(product, l_maps, rtol=1e-04, atol=1e-05)
         assert close_cond
 
@@ -120,7 +128,7 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
         assert torch.allclose(torch.abs(dets_v), torch.tensor(1.0), atol=1e-07)
 
     # it could be that det U[:, :, i] == det V[:, :, i] == -1, therefore I need to negate row(U, 0) and column(V, 0) -> two reflections
-    factor_rows_columns = torch.where(dets_v > 0.0, 1.0, -1.0).view(1, -1, 1)
+    factor_rows_columns = torch.where(dets_v > 0.0, 1.0, -1.0)[:, :, None]
     U[:, :, :, 0] = factor_rows_columns * U[:, :, :, 0]
     V[:, :, 0, :] = factor_rows_columns * V[:, :, 0, :]
 
@@ -217,7 +225,10 @@ def get_aff_map(t, phi, component_mask, invert_first):
 def plot_space_of_tilts(label, img_name, valid_component, normal_index, tilt_r, max_tilt_r, point_styles: list, really_show=True):
     if really_show:
         fig, ax = plt.subplots()
-        plt.title("{}: {} - component {} / normal {}".format(label, img_name, valid_component, normal_index))
+        if img_name is None:
+            plt.title(label)
+        else:
+            plt.title("{}: {} - component {} / normal {}".format(label, img_name, valid_component, normal_index))
         prepare_plot(max_tilt_r, tilt_r, ax)
         for point_style in point_styles:
             draw(point_style.ts, point_style.phis, point_style.color, point_style.size, ax)
@@ -337,7 +348,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
     return img_tilt, affine_transform
 
 
-def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis, config):
+def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis, config, return_cover_idxs=False, valid_px_mask=None):
 
     covering_fraction_th = config["affnet_covering_fraction_th"]
     covering_max_iter = config["affnet_covering_max_iter"]
@@ -347,8 +358,13 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
     data = torch.vstack((data_all_ts, data_all_phis))
 
     ret_winning_centers = vote(covering_coords, data, covering_params.r_max,
-                           fraction_th=covering_fraction_th,
-                           iter_th=covering_max_iter)
+                               fraction_th=covering_fraction_th,
+                               iter_th=covering_max_iter,
+                               rerurn_cover_idxs=return_cover_idxs,
+                               valid_px_mask=valid_px_mask)
+    if return_cover_idxs:
+        cover_idxs = ret_winning_centers[1]
+        ret_winning_centers = ret_winning_centers[0]
 
     if show_affnet:
         ax = opt_cov_prepare_plot(covering_params)
@@ -363,13 +379,16 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
 
         plt.show()
 
-    return ret_winning_centers
+    if return_cover_idxs:
+        return ret_winning_centers, cover_idxs
+    else:
+        return ret_winning_centers
 
 
 def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
 
     covering_type = config["affnet_covering_type"]
-    covering = CoveringParams.get_effective_covering(config)
+    covering = CoveringParams.get_effective_covering_by_cfg(config)
 
     # NOTE - naive approach
     if covering_type == "mean":
@@ -404,7 +423,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
     show_affnet = config.get("show_affnet", False)
     affnet_warp_image_show_transformation = config.get("affnet_warp_image_show_transformation", False)
-    covering = CoveringParams.get_effective_covering(config)
+    covering = CoveringParams.get_effective_covering_by_cfg(config)
     tilt_r_exp = covering.r_max
     max_tilt_r = covering.t_max
 
@@ -534,7 +553,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     Timer.start_check_point("affnet_init")
 
-    covering = CoveringParams.get_effective_covering(conf_map)
+    covering = CoveringParams.get_effective_covering_by_cfg(conf_map)
     max_tilt_r = covering.t_max
     tilt_r_exp = covering.r_max
 
@@ -737,7 +756,7 @@ def show_sets_of_linear_maps(data_list, label="compare"):
         lambdas, psis, ts, phis = decompose_lin_maps_lambda_psi_t_phi(data, asserts=False)
         point_styles.append(PointsStyle(ts=ts, phis=phis, color=colors[idx], size=0.5))
 
-    plot_space_of_tilts(label, "img_name", 0, 0, covering.r_max, covering.t_max, point_styles)
+    plot_space_of_tilts(label, None, 0, 0, covering.r_max, covering.t_max, point_styles)
 
 
 if __name__ == "__main__":

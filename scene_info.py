@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from utils import Timer, quaternions_to_R
 from img_utils import show_or_close
 
+
 def add_google_image(img_name, image_info_map, calibration_file):
 
     if not image_info_map.__contains__(img_name):

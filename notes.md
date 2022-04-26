@@ -650,6 +650,42 @@ https://github.com/ducha-aiki/ransac-tutorial-2020-data/blob/master/create_H_sub
 
 
 
+# plan/notes for 4/6/2022
 
+### depth map driven lafs
+* demo
+
+### results 
+* depth map driven lafs
+* compute laffs 
+  * (HardNet vs. HardNet + Affnet (vs. HardNet H/A rectification + AffNet))
+  * the best scenario was actually 
+    * cluster via depth maps
+    * take AffNet lafs per cluster
+    * cover the lafs with affine rectification transforms
+    * after rectification again use AffNet lafs 
+    * => rectification (~accounts for perspective distortions) vs. AffNet driven normalization for HardNet 
+
+### discuss the "dense AffNet"
+
+### further, plans
+* replace AffNet with  “affine shape from normals from depth” in rectification pipeline in space of tilts
+  * depth -> normal -> H -> affine -> phis, ts 
+    * do this for clustering (probably not) or for covering the space of tilts?   
+* CrowdDriven (Mapillary, OpenSfM)
 
   
+
+TODO:
+# visualizations
+* cluster colors
+* coverings
+
+# math
+* upsampling formula
+* make upright (maybe delve into the paper)
+
+# other 
+* enrollment form
+* "productionize" and run 2a
+* motivations -> + licenses (??) 

@@ -80,10 +80,8 @@ class CoveringParams:
             name="narrow_covering")
 
     @staticmethod
-    def get_effective_covering(config):
-
+    def get_effective_covering_by_cfg(config):
         covering_type = config["affnet_covering_type"]
-
         if covering_type == "mean":
             tilt_r_exp = config.get("affnet_tilt_r_ln", 1.7)
             max_tilt_r = config.get("affnet_max_tilt_r", 5.8)
@@ -92,8 +90,12 @@ class CoveringParams:
                                   ts_opt=None,
                                   phis_opt=None,
                                   name="mean like covering - r_max={}, t_max={}".format(tilt_r_exp, max_tilt_r))
+        else:
+            return CoveringParams.get_effective_covering(covering_type)
 
-        elif covering_type == "dense_cover_original":
+    @staticmethod
+    def get_effective_covering(covering_type):
+        if covering_type == "dense_cover_original":
             return CoveringParams.dense_covering_original()
         elif covering_type == "dense_cover":
             return CoveringParams.dense_covering_1_7()
@@ -130,6 +132,17 @@ def distance_matrix(t1, t2, phi1, phi2):
     return dist
 
 
+def distance_matrix_concise(centers, data):
+    """
+    :param centers:
+    :param data:
+    :return:
+    """
+    t1, phi1 = centers[0], centers[1]
+    t2, phi2 = data[0], data[1]
+    return distance_matrix(t1, t2, phi1, phi2)
+
+
 def draw_identity_data(ax, data, r):
 
     r = math.log(r)
@@ -138,15 +151,27 @@ def draw_identity_data(ax, data, r):
     opt_conv_draw(ax, in_data, 'c', 2)
 
 
-def vote(centers, data, r, fraction_th, iter_th):
+def vote(centers, data, r, fraction_th, iter_th, rerurn_cover_idxs=False, valid_px_mask=None):
+
+    # NOTE: filtered_data works as index-less data points, whereas cover_idx are filters across all indices
+    # if everything is done across all indices, it may get simpler
 
     Timer.start_check_point("vote_covering_centers")
 
+    if valid_px_mask is None:
+        valid_px_mask = torch.ones(data.shape[1], dtype=torch.bool)
+
     r = math.log(r)
-    rhs = (math.exp(2 * r) + 1) / (2 * math.exp(r))
+    r_ball_distance = (math.exp(2 * r) + 1) / (2 * math.exp(r))
 
     data_around_identity_mask = data[0] < math.exp(r)
-    filtered_data = data[:, ~data_around_identity_mask]
+    init_filter = ~data_around_identity_mask & valid_px_mask
+    filtered_data = data[:, init_filter]
+
+    if rerurn_cover_idxs:
+        cover_idx = torch.ones(data.shape[1]) * -1
+        valid_identity_filter = data_around_identity_mask & valid_px_mask
+        cover_idx[valid_identity_filter] = 0
 
     iter_finished = 0
     winning_centers = []
@@ -154,11 +179,17 @@ def vote(centers, data, r, fraction_th, iter_th):
     while rect_fraction < fraction_th and iter_finished < iter_th:
 
         distances = distance_matrix(centers[0], filtered_data[0], centers[1], filtered_data[1])
-        votes = (distances < rhs)
+        votes = (distances < r_ball_distance)
         votes_count = votes.sum(axis=1)
         sorted, indices = torch.sort(votes_count, descending=True)
 
         data_in_mask = votes[indices[0]]
+        if rerurn_cover_idxs:
+            distances_all = distance_matrix_concise(centers[:, indices[0]:indices[0] + 1], data)
+            votes_all = (distances_all < r_ball_distance)
+            # & on bools?
+            votes_new = votes_all[0] & (cover_idx == -1)
+            cover_idx[votes_new] = iter_finished + 1
 
         filtered_data = filtered_data[:, ~data_in_mask]
         rect_fraction = 1 - filtered_data.shape[1] / data.shape[1]
@@ -169,7 +200,10 @@ def vote(centers, data, r, fraction_th, iter_th):
 
     Timer.end_check_point("vote_covering_centers")
 
-    return torch.tensor(winning_centers)
+    if rerurn_cover_idxs:
+        return torch.tensor(winning_centers), cover_idx
+    else:
+        return torch.tensor(winning_centers)
 
 
 def opt_conv_draw_ellipses(ax, cov_params, centers):

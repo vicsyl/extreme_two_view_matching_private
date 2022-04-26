@@ -43,7 +43,7 @@ class HardNetDescriptor:
     def resample_normals_to_img_size(data_in, to_size):
         """
         :param data_in: torch.Tensor(H, W, 3)
-        :param to_size: (H2, W2)
+        :param to_size: torch.Tensor(H2, W2)
         :return:
         """
         #NOTE I may want to check the aspect ratio
@@ -166,21 +166,8 @@ class HardNetDescriptor:
         lafs_to_use_test = lafs_to_use_test[:, :, :, :2]
         lafs_to_use_inv_vis = torch.inverse(lafs_to_use_test)
 
-        def swap(data):
-            swap = data.clone()
-            swap[:, :, 0, :] = data[:, :, 1, :]
-            swap[:, :, 1, :] = data[:, :, 0, :]
-            return swap
-
         # SHOW ME
         affines2x3 = affines2x3[:, :, :, :2]
         show_sets_of_linear_maps([affines2x3, lafs_to_use_inv_vis], label="both")
-        show_sets_of_linear_maps([affines2x3], label="affine")
-        affines_swap = swap(affines2x3)
-        show_sets_of_linear_maps([affines_swap], label="affine swap(x<->y)")
-        show_sets_of_linear_maps([lafs_to_use_inv_vis], label="lafs (inv)")
-
-        affines2x3 = torch.inverse(affines2x3)
-        show_sets_of_linear_maps([affines2x3], label="inverse affine")
-        affines_swap2 = swap(affines2x3)
-        show_sets_of_linear_maps([affines_swap2], label="inv affine swap(x<->y)")
+        show_sets_of_linear_maps([affines2x3], label="affine maps from depth maps")
+        show_sets_of_linear_maps([lafs_to_use_inv_vis], label="lafs from AffNet")

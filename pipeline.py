@@ -1,33 +1,20 @@
-import math
-from dataclasses import dataclass
-from pathlib import Path
+#import sys
 from datetime import datetime
-from hard_net_descriptor import HardNetDescriptor
-from rootsift_descriptor import RootSIFT
-from normals_rotations import *
-import kornia.geometry as KG
-import cv2 as cv
-import pickle
-import traceback
-import sys
 
-import sys
+from hard_net_descriptor import HardNetDescriptor
+from normals_rotations import *
+from rootsift_descriptor import RootSIFT
+
 sys.path.append("./superpoint_forked")
 
 from superpoint import SuperPointDescriptor
-
-import numpy as np
-import torch
-import argparse
 
 from config import *
 from connected_components import get_connected_components, get_and_show_components
 from depth_to_normals import *
 from matching import match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
-from scene_info import SceneInfo
-from utils import Timer
-from img_utils import show_or_close, get_degrees_between_normals
+from img_utils import get_degrees_between_normals
 from evaluation import *
 from sky_filter import get_nonsky_mask
 from clustering import Clustering, bilateral_filter
@@ -451,6 +438,7 @@ class Pipeline:
             Timer.end_check_point("processing img without rectification")
             return img_data
 
+        # rectify
         else:
 
             rectify_affine_affnet = self.config["rectify_affine_affnet"]
