@@ -72,12 +72,8 @@ class DenseAffNet(nn.Module):
         Returns:
             laf_out shape [BxNx2x3]
         """
-
-        # xy = self.features(self._normalize_input(patches)).view(-1, 3)
         xy = self.features(self._normalize_input(img))
         BB, CH, HH, WW = xy.shape
-
-        # my
         assert BB == 1
 
         xy = xy.permute(0, 2, 3, 1).view(-1, 3)
@@ -91,9 +87,6 @@ class DenseAffNet(nn.Module):
         print("shape: {}".format(new_laf.shape))
         print("shape: {}".format(K.feature.make_upright(new_laf).shape))
         laf_out_flat = K.feature.scale_laf(K.feature.make_upright(new_laf), 1.0 / ellipse_scale)
-        laf_out_flat = laf_out_flat[:, :, :2, :2]
         laf_out_flat = laf_out_flat.permute(1, 0, 2, 3)
-        #laf_out = laf_out_flat.reshape(-1, 4)
-        laf_out = laf_out_flat.reshape(HH, WW, 2, 2)
-        #laf_out = laf_out.permute(0, 3, 1, 2)
-        return laf_out, laf_out_flat
+        laf_out = laf_out_flat.reshape(HH, WW, 2, 3)
+        return laf_out

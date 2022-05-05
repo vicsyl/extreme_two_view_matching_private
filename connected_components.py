@@ -60,7 +60,7 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
 
     if title is not None:
         plt.title(title)
-    elif normals is not None:
+    else:
         title = "{} - connected components: \n".format(file_name)
         new_component_dict = {}
         for i, c_index in enumerate(valid_component_dict.keys()):
@@ -68,7 +68,11 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
         merged_dict = merge_keys_for_same_value(new_component_dict)
         for merged_values in merged_dict:
             cur_colors_names = ", ".join([color_names[val % 9] for val in merged_values])
-            title = "{}[{}]={}={},\n".format(title, cur_colors_names, normals[merged_dict[merged_values]], merged_dict[merged_values])
+            if normals is not None:
+                title = "{}[{}]={}={},\n".format(title, cur_colors_names, normals[merged_dict[merged_values]], merged_dict[merged_values])
+            else:
+                title = "{}[{}]={},\n".format(title, cur_colors_names, merged_dict[merged_values])
+
         plt.title(title)
 
     plt.imshow(cluster_colors)

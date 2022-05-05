@@ -151,7 +151,22 @@ def draw_identity_data(ax, data, r):
     opt_conv_draw(ax, in_data, 'c', 2)
 
 
-def vote(centers, data, r, fraction_th, iter_th, rerurn_cover_idxs=False, valid_px_mask=None):
+def vote(centers, data, r, fraction_th, iter_th, return_cover_idxs=False, valid_px_mask=None):
+    """
+    :param centers:
+    :param data:
+    :param r:
+    :param fraction_th:
+    :param iter_th:
+    :param return_cover_idxs:
+    :param valid_px_mask:
+    :return: winning_centers (, cover_idx - if return_cover_idxs is True)
+        winning_centers: rows of with 2 columns - (tau_i, phi_i)
+        cover_idx: index of centers for the data points
+                    -1 : no winning center
+                    -2 : identity center
+                    >=0: winning center index
+    """
 
     # NOTE: filtered_data works as index-less data points, whereas cover_idx are filters across all indices
     # if everything is done across all indices, it may get simpler
@@ -168,10 +183,10 @@ def vote(centers, data, r, fraction_th, iter_th, rerurn_cover_idxs=False, valid_
     init_filter = ~data_around_identity_mask & valid_px_mask
     filtered_data = data[:, init_filter]
 
-    if rerurn_cover_idxs:
+    if return_cover_idxs:
         cover_idx = torch.ones(data.shape[1]) * -1
         valid_identity_filter = data_around_identity_mask & valid_px_mask
-        cover_idx[valid_identity_filter] = 0
+        cover_idx[valid_identity_filter] = -2
 
     iter_finished = 0
     winning_centers = []
@@ -184,12 +199,12 @@ def vote(centers, data, r, fraction_th, iter_th, rerurn_cover_idxs=False, valid_
         sorted, indices = torch.sort(votes_count, descending=True)
 
         data_in_mask = votes[indices[0]]
-        if rerurn_cover_idxs:
+        if return_cover_idxs:
             distances_all = distance_matrix_concise(centers[:, indices[0]:indices[0] + 1], data)
             votes_all = (distances_all < r_ball_distance)
             # & on bools?
             votes_new = votes_all[0] & (cover_idx == -1)
-            cover_idx[votes_new] = iter_finished + 1
+            cover_idx[votes_new] = iter_finished
 
         filtered_data = filtered_data[:, ~data_in_mask]
         rect_fraction = 1 - filtered_data.shape[1] / data.shape[1]
@@ -200,7 +215,7 @@ def vote(centers, data, r, fraction_th, iter_th, rerurn_cover_idxs=False, valid_
 
     Timer.end_check_point("vote_covering_centers")
 
-    if rerurn_cover_idxs:
+    if return_cover_idxs:
         return torch.tensor(winning_centers), cover_idx
     else:
         return torch.tensor(winning_centers)
@@ -240,7 +255,7 @@ def opt_conv_draw(ax, ts_phis, color, size):
     ax.plot(xs, ys, 'o', color=color, markersize=size)
 
 
-def opt_cov_prepare_plot(cov_params: CoveringParams, title="Nearest neighbors"):
+def opt_cov_prepare_plot(cov_params: CoveringParams, title="Covering - centers, cover sets, data points..."):
 
     fig, ax = plt.subplots()
     plt.title(title)

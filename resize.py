@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 
+
 def upsample_bilinear(depth_data, height, width):
     upsampling = torch.nn.Upsample(size=(height, width), mode='bilinear')
     depth_data = upsampling(depth_data)

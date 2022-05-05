@@ -236,13 +236,14 @@ def plot_space_of_tilts(label, img_name, valid_component, normal_index, tilt_r, 
 
 
 def visualize_LAF_custom(img, LAF, img_idx=0, color='r', title="", **kwargs):
-    x, y = KR.feature.laf.get_laf_pts_to_draw(KR.feature.laf.scale_laf(LAF, 0.5), img_idx)
-    plt.figure(**kwargs)
-    plt.title(title)
-    plt.imshow(KR.utils.tensor_to_image(img[img_idx]))
-    plt.plot(x, y, color)
-    plt.show(block=False)
-    return
+    temporarily_disabled = True
+    if not temporarily_disabled:
+        x, y = KR.feature.laf.get_laf_pts_to_draw(KR.feature.laf.scale_laf(LAF, 0.5), img_idx)
+        plt.figure(**kwargs)
+        plt.title(title)
+        plt.imshow(KR.utils.tensor_to_image(img[img_idx]))
+        plt.plot(x, y, color)
+        plt.show(block=False)
 
 
 # TODO document
@@ -349,6 +350,20 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
 
 
 def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis, config, return_cover_idxs=False, valid_px_mask=None):
+    """
+    :param covering_params:
+    :param data_all_ts:
+    :param data_all_phis:
+    :param config:
+    :param return_cover_idxs:
+    :param valid_px_mask:
+    :return: winning_centers (, cover_idx - if return_cover_idxs is True)
+        winning_centers: rows of with 2 columns - (tau_i, phi_i)
+        cover_idx: index of centers for the data points
+                    -1 : no winning center
+                    -2 : identity center
+                    >=0: winning center index
+    """
 
     covering_fraction_th = config["affnet_covering_fraction_th"]
     covering_max_iter = config["affnet_covering_max_iter"]
@@ -360,7 +375,7 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
     ret_winning_centers = vote(covering_coords, data, covering_params.r_max,
                                fraction_th=covering_fraction_th,
                                iter_th=covering_max_iter,
-                               rerurn_cover_idxs=return_cover_idxs,
+                               return_cover_idxs=return_cover_idxs,
                                valid_px_mask=valid_px_mask)
     if return_cover_idxs:
         cover_idxs = ret_winning_centers[1]

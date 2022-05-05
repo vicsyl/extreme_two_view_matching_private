@@ -22,9 +22,11 @@ net_decoder = ModelBuilder.build_decoder(
     use_softmax=True)
 
 
-def get_nonsky_mask(np_image, height, width, use_cuda=False):
+# TODO still performing numpy-torch conversion (in: np_image)
+def get_nonsky_mask_torch(np_image, height, width, use_cuda=False):
 
-    Timer.start_check_point("sky masking")
+    sky_m_t = "sky masking torch"
+    Timer.start_check_point(sky_m_t)
 
     crit = torch.nn.NLLLoss(ignore_index=-1)
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
@@ -50,9 +52,19 @@ def get_nonsky_mask(np_image, height, width, use_cuda=False):
         scores = semseg_model(singleton_batch, segSize=output_size)
         # Get the predicted scores for each pixel
         _, pred = torch.max(scores, dim=1)
-        pred = pred.detach().cpu()[0].numpy()
+        pred = pred.detach().cpu()[0]
         nonsky_mask = pred != 2
 
-    Timer.end_check_point("sky masking")
+    Timer.end_check_point(sky_m_t)
 
     return nonsky_mask
+
+
+def get_nonsky_mask(np_image, height, width, use_cuda=False):
+
+    sky_m = "sky masking"
+    Timer.start_check_point(sky_m)
+    t = get_nonsky_mask_torch(np_image, height, width, use_cuda=use_cuda)
+    ret = t.numpy()
+    Timer.end_check_point(sky_m)
+    return ret
