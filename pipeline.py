@@ -1,5 +1,6 @@
 #import sys
 from datetime import datetime
+
 from hard_net_descriptor import HardNetDescriptor
 from normals_rotations import *
 from rootsift_descriptor import RootSIFT
@@ -434,6 +435,7 @@ class Pipeline:
                              key_points=kps,
                              descriptions=descs,
                              normals=None,
+                             ts_phis=None,
                              components_indices=None,
                              valid_components_dict=None)
 
@@ -454,6 +456,7 @@ class Pipeline:
                                      key_points=None,
                                      descriptions=None,
                                      normals=None,
+                                     ts_phis=None,
                                      components_indices=None,
                                      valid_components_dict=None)
             else:
@@ -561,6 +564,7 @@ class Pipeline:
                                          key_points=None,
                                          descriptions=None,
                                          normals=normals_clusters_repr,
+                                         ts_phis=None,
                                          components_indices=components_indices,
                                          valid_components_dict=valid_components_dict)
 
@@ -575,7 +579,9 @@ class Pipeline:
 
                 assert isinstance(self.feature_descriptor, HardNetDescriptor), "rectify_affine_affnet on, but without HardNet descriptor"
 
-                # TODO remove this hack
+                # TODO ideally remove this hack
+                # NOTE that unfortunately it is not very easy to do - hopefully the experiments will show this option
+                # won't be successful as it is not the most natural way to do IMHO
                 conf_to_use = self.config
                 if self.config[CartesianConfig.affnet_clustering]:
                     conf_to_use = self.config.copy()

@@ -121,6 +121,7 @@ class CartesianConfig:
     affnet_dense_affnet_batch = "affnet_dense_affnet_batch"
     affnet_dense_affnet_filter = "affnet_dense_affnet_filter"
     affnet_dense_affnet_use_orienter = "affnet_dense_affnet_use_orienter"
+    affnet_clustering_restart_affnet = "affnet_clustering_restart_affnet"
 
     props_handlers = {
 
@@ -175,6 +176,7 @@ class CartesianConfig:
         affnet_dense_affnet_batch: Property("int", default=None, cache=Property.cache_img_data, optional=True, list_allowed=True),
         affnet_dense_affnet_filter: Property("int", default=None, cache=Property.cache_img_data, optional=True, list_allowed=True),
         affnet_dense_affnet_use_orienter: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
+        affnet_clustering_restart_affnet: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
 
         # SIFT
         "n_features": Property("int", None, optional=True, cache=Property.cache_img_data),

@@ -1,9 +1,11 @@
 import kornia as KR
 import kornia.feature as KF
 
+import config
 from kornia_utils import *
 from opt_covering import *
 from utils import update_stats_map_static, append_update_stats_map_static
+from config import CartesianConfig
 
 
 @dataclass
@@ -460,10 +462,16 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
     else:
         mask_img_component = torch.ones(img_data.img.shape[:2])
 
-    ts_phis = get_covering_transformations(ts_compponent, phis_component,
-                                           ts_affnet_out, phis_affnet_out,
-                                           ts_affnet_in, phis_affnet_in,
-                                           img_name, current_component, normal_index, config)
+    affnet_clustering_restart_affnet = config.get(CartesianConfig.affnet_clustering_restart_affnet, False)
+    if img_data.ts_phis is not None and not affnet_clustering_restart_affnet:
+        current_ts_phis_idx = img_data.valid_components_dict[current_component]
+        ts_phis = img_data.ts_phis[current_ts_phis_idx]
+        ts_phis = ts_phis.unsqueeze(0)
+    else:
+        ts_phis = get_covering_transformations(ts_compponent, phis_component,
+                                               ts_affnet_out, phis_affnet_out,
+                                               ts_affnet_in, phis_affnet_in,
+                                               img_name, current_component, normal_index, config)
 
     append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warps_per_component"], len(ts_phis), stats_map)
     for t_phi in ts_phis:
@@ -643,6 +651,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     Timer.end_check_point("affnet_init")
 
     if affnet_no_clustering:
+
+        # NOTE: naming irony
+        affnet_clustering = config.get(CartesianConfig.affnet_clustering, False)
+        assert not affnet_clustering
+
         print("processing all components at once - no clustering")
         mask_cmp = torch.ones_like(kpts_component_indices, dtype=torch.bool)
         all_kps, all_descs, all_laffs = add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,

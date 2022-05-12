@@ -4,6 +4,8 @@ import sys
 import traceback
 from typing import List
 
+import torch
+
 from scene_info import *
 from utils import *
 
@@ -249,6 +251,7 @@ class ImageData:
     descriptions: object
     real_K: np.ndarray
     normals: np.ndarray
+    ts_phis: torch.Tensor
     components_indices: np.ndarray
     valid_components_dict: dict
 
@@ -259,6 +262,7 @@ class ImageData:
                          key_points=img_serialized_data.kpts,
                          descriptions=img_serialized_data.descs,
                          normals=img_serialized_data.normals,
+                         ts_phis=None,
                          components_indices=img_serialized_data.components_indices,
                          valid_components_dict=img_serialized_data.valid_components_dict)
 

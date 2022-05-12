@@ -14,7 +14,6 @@ import kornia.feature as KF
 from config import CartesianConfig
 
 import sys
-#from __future__ import print_function
 
 from rectification import possibly_upsample_normals
 from hard_net_descriptor import HardNetDescriptor
@@ -137,7 +136,7 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
             center_name = center_names.get(i, "winning center no. {}".format(i))
             plt.title("{} pixels for {}".format(mask.sum(), center_name))
             plt.imshow(mask)
-            plt.show()
+            plt.show(block=False)
 
         if upsample_early:
             cover_idx = affnet_upsample(cover_idx)
@@ -171,6 +170,7 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
                          key_points=None,
                          descriptions=None,
                          normals=None,
+                         ts_phis=ts_phis,
                          components_indices=components_indices,
                          valid_components_dict=valid_components_dict)
 
