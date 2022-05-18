@@ -957,8 +957,11 @@ def evaluate_per_img_stats(stats_map):
                     sum_area += area
             avg_area = sum_area / len(m[configuration])
             print("avg rectified warped imgs area: {}".format(avg_area))
-            avg_warps_per_component = sum_warps / sum_components
-            print("avg number of warps per component: {}".format(avg_warps_per_component))
+            if sum_components != 0:
+                avg_warps_per_component = sum_warps / sum_components
+                print("avg number of warps per component: {}".format(avg_warps_per_component))
+            else:
+                print("avg number of warps per component: N/A 'sum_components == 0'")
 
 
 def get_all_diffs(maps_all_params):
