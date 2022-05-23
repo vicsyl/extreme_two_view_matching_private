@@ -139,8 +139,8 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
 
     dets_u = torch.det(U)
     dets_v = torch.det(V)
-    if asserts:
-        print("Foo")
+    # if asserts:
+    #     print("Foo")
         # assert torch.allclose(dets_v, dets_u, atol=1e-07)
         # assert torch.allclose(dets_v, torch.tensor(1.0), atol=1e-07)
 
@@ -151,8 +151,8 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
 
     def assert_rotation(A, angle):
         sins_ang = torch.sin(angle)
-        if asserts:
-            print("This is fine")
+#        if asserts:
+            # print("This is fine")
             # assert torch.allclose(sins_ang, -A[:, :, 0, 1], atol=1e-03)
             # assert torch.allclose(sins_ang, A[:, :, 1, 0], atol=1e-03)
             # assert torch.allclose(A[:, :, 1, 1], A[:, :, 0, 0], atol=1e-05)
