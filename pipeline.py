@@ -321,6 +321,8 @@ class Pipeline:
         return img_processing_dir
 
     def get_cached_image_data_or_none(self, img_name, img, real_K):
+
+        Timer.start_check_point("Serving img data from cache")
         img_processing_dir = self.get_and_create_img_processing_dir()
         img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
         if self.use_cached_img_data and os.path.isfile(img_data_path):
@@ -329,11 +331,14 @@ class Pipeline:
                 print("img data for {} already computed, reading: {}".format(img_name, img_data_path))
                 img_serialized_data: ImageSerializedData = pickle.load(f)
             Timer.end_check_point("reading img processing data")
-            return ImageData.from_serialized_data(img=img,
+            ret = ImageData.from_serialized_data(img=img,
                                                   real_K=real_K,
                                                   img_serialized_data=img_serialized_data)
         else:
-            return None
+            ret = None
+        Timer.end_check_point("Serving img data from cache")
+        return ret
+
 
     @staticmethod
     def save_img_data(img_data, img_data_path, img_name):
@@ -382,6 +387,18 @@ class Pipeline:
 
         return img
 
+    def possibly_set_custom_normals(self, img_name, focal_length, orig_height, orig_width, real_K):
+
+        if self.config[CartesianConfig.affnet_custom_depth_lafs]:
+
+            Timer.start_check_point("Custom normals")
+            # get depth data - normals - lafs
+            depth_map = self.depth_reader.read_depth_data(img_name)
+            normals, _ = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_map, device=torch.device('cpu'),
+                                                         svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
+            self.feature_descriptor.set_normals(normals, real_K)
+            Timer.end_check_point("Custom normals")
+
     def process_image(self, img_name, order):
 
         Timer.start_check_point("processing img")
@@ -406,21 +423,17 @@ class Pipeline:
             focal_length = real_K[0, 0]
 
         img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
+        cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
+        if cached_img_data is not None:
+            return cached_img_data
+
+        self.possibly_set_custom_normals(img_name, focal_length, orig_height, orig_width, real_K)
 
         # without rectification at all
         if not self.config[CartesianConfig.rectify]:
 
             Timer.start_check_point("processing img without rectification")
-            if self.config[CartesianConfig.affnet_custom_depth_lafs]:
-                # get depth data - normals - lafs
-                depth_map = self.depth_reader.read_depth_data(img_name)
-                normals, _ = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_map, device=torch.device('cpu'),
-                                                             svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
-                self.feature_descriptor.set_normals(normals, real_K)
 
-            cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
-            if cached_img_data is not None:
-                return cached_img_data
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
             cp_img = img.copy()
@@ -460,10 +473,6 @@ class Pipeline:
                                      components_indices=None,
                                      valid_components_dict=None)
             else:
-
-                cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
-                if cached_img_data is not None:
-                    return cached_img_data
 
                 Timer.start_check_point("processing img from scratch")
 
@@ -1164,7 +1173,7 @@ class Pipeline:
 
                     rectify_affine_affnet = self.config["rectify_affine_affnet"]
                     affnet_no_clustering = self.config["affnet_no_clustering"]
-                    if self.config[CartesianConfig.rectify] and (not rectify_affine_affnet or not affnet_no_clustering) and not affnet_clustering:
+                    if self.config[CartesianConfig.rectify] and (not rectify_affine_affnet or not affnet_no_clustering) and not self.config[CartesianConfig.affnet_clustering]:
                         zero_around_z = self.config["rectify_by_0_around_z"]
                         estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
 

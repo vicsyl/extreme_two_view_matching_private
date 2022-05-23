@@ -77,6 +77,11 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
         print("WARNING: affnet_filter (={}) is being used".format(dense_affnet_filter), file=sys.stderr)
         gs_timg = gs_timg[:, :, ::dense_affnet_filter, ::dense_affnet_filter]
 
+    # TODO lafs are very expensive to compute here, so
+    # TODO: first let's measure it !!!
+    # then: add them to 0st tier img data (separate data structure) (and keep handling pipeline handle the 1st tier as usual)
+    # challenge come up with a general scheme!!!
+
     with torch.no_grad():
         lafs = dense_affnet(gs_timg)
         coords = affnet_coords(lafs.shape[:2])
@@ -84,14 +89,13 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
         lafs[:, :, 0, 2] = coords[1]
         lafs[:, :, 1, 2] = coords[0]
 
-        orienter = KF.LAFOrienter(dense_affnet.patch_size, angle_detector=KF.OriNet(True))
-        lafs_flat = lafs.reshape(1, lafs.shape[0] * lafs.shape[1], 2, 3)
-
         if conf.get(CartesianConfig.affnet_show_dense_affnet, "False"):
             show_affnet_features(lafs)
 
         # orienter
         if conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True"):
+            orienter = KF.LAFOrienter(dense_affnet.patch_size, angle_detector=KF.OriNet(True))
+            lafs_flat = lafs.reshape(1, lafs.shape[0] * lafs.shape[1], 2, 3)
             all_size = lafs_flat.shape[1]
             affnet_dense_affnet_batch = conf.get(CartesianConfig.affnet_dense_affnet_batch, None)
             if affnet_dense_affnet_batch is None:
@@ -112,6 +116,7 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
 
         covering: CoveringParams = CoveringParams.dense_covering_1_7()
 
+        # TODO use lin_features, from here on
         lin_features = lafs[:, :, :, :2]
         _, _, ts1, phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
 
@@ -144,7 +149,8 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
                 cover_idx = torch_upsample_factor(cover_idx, dense_affnet_filter)
 
         all_valid = range(len(ts_phis))
-        components_indices, valid_components_dict = get_connected_components(cover_idx, all_valid, show=False, fraction_threshold=0.008)
+        # TODO param!!!
+        components_indices, valid_components_dict = get_connected_components(cover_idx, all_valid, show=True, fraction_threshold=0.008)
 
         # NOTES
         # a) upsample_early is usually True, even though False may be more sensible

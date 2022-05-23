@@ -56,6 +56,7 @@ class HardNetDescriptor:
             data_in = F.interpolate(data_in, size=to_size, scale_factor=None, mode='nearest', align_corners=None)
         return data_in
 
+    # TODO I don't like this hack
     def set_normals(self, custom_normals, custom_K):
         self.custom_normals = custom_normals
         self.custom_K = custom_K
