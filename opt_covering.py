@@ -144,18 +144,16 @@ def distance_matrix_concise(centers, data):
 
 
 def draw_identity_data(ax, data, r):
-
-    r = math.log(r)
-    data_around_identity_mask = data[0] < math.exp(r)
+    data_around_identity_mask = data[0] < r
     in_data = data[:, data_around_identity_mask]
     opt_conv_draw(ax, in_data, 'c', 2)
 
 
-def vote(centers, data, r, fraction_th, iter_th, return_cover_idxs=False, valid_px_mask=None):
+def vote(centers, data, r_param, fraction_th, iter_th, return_cover_idxs=False, valid_px_mask=None, t_max=None):
     """
     :param centers:
     :param data:
-    :param r:
+    :param r_param:
     :param fraction_th:
     :param iter_th:
     :param return_cover_idxs:
@@ -176,11 +174,23 @@ def vote(centers, data, r, fraction_th, iter_th, return_cover_idxs=False, valid_
     if valid_px_mask is None:
         valid_px_mask = torch.ones(data.shape[1], dtype=torch.bool)
 
-    r = math.log(r)
-    r_ball_distance = (math.exp(2 * r) + 1) / (2 * math.exp(r))
+    r_ball_distance_new = (r_param ** 2 + 1) / (2 * r_param)
 
-    data_around_identity_mask = data[0] < math.exp(r)
+    r_old = math.log(r_param)
+    r_ball_distance_old = (math.exp(2 * r_old) + 1) / (2 * math.exp(r_old))
+    # CONTINUE here + run & think about stats and visos
+    assert math.fabs(r_ball_distance_old - r_ball_distance_new) < 1.0e-10
+
+    assert math.exp(r_old) == r_param
+    data_around_identity_mask = data[0] < r_param
+
     init_filter = ~data_around_identity_mask & valid_px_mask
+
+    # TODO effective_data_size - should be data and valid_px_mask and ~data_completely_off (but irrespective of data_around_identity_mask)
+    if t_max is not None:
+        data_completely_off = data[0] > t_max
+        init_filter = init_filter & ~data_completely_off
+
     filtered_data = data[:, init_filter]
 
     if return_cover_idxs:
@@ -194,14 +204,14 @@ def vote(centers, data, r, fraction_th, iter_th, return_cover_idxs=False, valid_
     while rect_fraction < fraction_th and iter_finished < iter_th:
 
         distances = distance_matrix(centers[0], filtered_data[0], centers[1], filtered_data[1])
-        votes = (distances < r_ball_distance)
+        votes = (distances < r_ball_distance_new)
         votes_count = votes.sum(axis=1)
         sorted, indices = torch.sort(votes_count, descending=True)
 
         data_in_mask = votes[indices[0]]
         if return_cover_idxs:
             distances_all = distance_matrix_concise(centers[:, indices[0]:indices[0] + 1], data)
-            votes_all = (distances_all < r_ball_distance)
+            votes_all = (distances_all < r_ball_distance_new)
             # & on bools?
             votes_new = votes_all[0] & (cover_idx == -1)
             cover_idx[votes_new] = iter_finished
@@ -247,12 +257,12 @@ def opt_conv_draw_ellipses(ax, cov_params, centers):
     ax.plot(grid_x, grid_y, 'o', color="b", markersize=0.2)
 
 
-def opt_conv_draw(ax, ts_phis, color, size):
+def opt_conv_draw(ax, ts_phis, color, size, shape='o'):
 
     tilts_logs = torch.log(ts_phis[0])
     xs = torch.cos(ts_phis[1]) * tilts_logs
     ys = torch.sin(ts_phis[1]) * tilts_logs
-    ax.plot(xs, ys, 'o', color=color, markersize=size)
+    ax.plot(xs, ys, shape, color=color, markersize=size)
 
 
 def opt_cov_prepare_plot(cov_params: CoveringParams, title="Covering - centers, cover sets, data points..."):
@@ -277,13 +287,13 @@ def opt_cov_prepare_plot(cov_params: CoveringParams, title="Covering - centers, 
     return ax
 
 
-def draw_in_center(ax, center, data, r_max):
+def draw_covered_data(ax, center, data, r_max, color):
     r_log = math.log(r_max)
     rhs = (math.exp(2 * r_log) + 1) / (2 * math.exp(r_log))
     distances = distance_matrix(center[0, None], data[0], center[1, None], data[1])
     votes = (distances[0] < rhs)
     data_in = data[:, votes]
-    opt_conv_draw(ax, data_in, 'yellow', 2)
+    opt_conv_draw(ax, data_in, color, 1)
 
 
 def demo():
@@ -306,7 +316,7 @@ def demo():
 
     #opt_conv_draw_ellipses(ax, covering_params, covering_centers)
 
-    winning_centers = vote(covering_centers, data, covering_params.r_max, fraction_th=0.6, iter_th=30)
+    winning_centers = vote(covering_centers, data, covering_params.r_max, fraction_th=0.6, iter_th=30, t_max=covering_params.t_max)
 
     # for i, wc in enumerate(winning_centers):
     #     draw_in_center(ax, wc, data, covering_params.r_max)

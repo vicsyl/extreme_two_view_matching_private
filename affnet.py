@@ -381,19 +381,22 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
                                fraction_th=covering_fraction_th,
                                iter_th=covering_max_iter,
                                return_cover_idxs=return_cover_idxs,
-                               valid_px_mask=valid_px_mask)
+                               valid_px_mask=valid_px_mask,
+                               t_max=covering_params.t_max)
     if return_cover_idxs:
         cover_idxs = ret_winning_centers[1]
         ret_winning_centers = ret_winning_centers[0]
 
     if show_affnet:
         ax = opt_cov_prepare_plot(covering_params)
-        opt_conv_draw(ax, data, "b", 1.0)
-        opt_conv_draw(ax, covering_coords, "r", 3.0)
+        opt_conv_draw(ax, data, "k", 1.0)
 
-        for i, wc in enumerate(ret_winning_centers):
-            draw_in_center(ax, wc, data, covering_params.r_max)
-            opt_conv_draw(ax, wc, "b", 5.0)
+        colors = ["r", "g", "b", "y"]
+        for i in range(len(ret_winning_centers) - 1, -1, -1):
+            wc = ret_winning_centers[i]
+            color = colors[i % len(colors)]
+            draw_covered_data(ax, wc, data, covering_params.r_max, color)
+            opt_conv_draw(ax, wc, color, 8.0, shape="o")
 
         draw_identity_data(ax, data, covering_params.r_max)
 
@@ -406,6 +409,19 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
 
 
 def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
+    """ BEWARE - just a unnecessarily long delegation method (because of the 'mean' covering type - just skip to winning_centers
+    :param data_all_ts:
+    :param data_all_phis:
+    :param ts_out:
+    :param phis_out:
+    :param ts_in:
+    :param phis_in:
+    :param img_name:
+    :param component_index:
+    :param normal_index:
+    :param config:
+    :return:
+    """
 
     covering_type = config["affnet_covering_type"]
     covering = CoveringParams.get_effective_covering_by_cfg(config)
@@ -569,6 +585,35 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
     return all_kps, all_descs, all_laffs
 
 
+def visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering):
+
+    ts_affnet_in_or_no_comp = ts[:, mask_in_or_no_component]
+    ts_affnet_out = ts[:, ~mask_in_or_no_component]
+    phis_affnet_in_or_no_comp = phis[:, mask_in_or_no_component]
+    phis_affnet_out = phis[:, ~mask_in_or_no_component]
+
+    way_out_mask = ts > covering.t_max
+
+    # plot_space_of_tilts -> all initial
+    label = "all (near Id or no component/others):\n {}/{}".format(ts_affnet_in_or_no_comp.shape[1],
+                                                                   ts_affnet_out.shape[1])
+    # TODO valid, etc
+    print("{}: count: {}".format(label, ts.shape))
+    plot_space_of_tilts(label, img_name, 0, 0, covering.r_max, covering.t_max, [
+        PointsStyle(ts=ts_affnet_in_or_no_comp, phis=phis_affnet_in_or_no_comp, color="b", size=0.5),
+        PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
+        PointsStyle(ts=ts[way_out_mask], phis=phis[way_out_mask], color="g", size=0.5),
+    ])
+
+
+def visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_all):
+    pass # now disabled
+    # title = "{} - all unrectified affnet features".format(img_name)
+    # visualize_LAF_custom(t_img_all, unrectified_laffs, title=title, figsize=(8, 12))
+    # title = "{} - all unrectified affnet features - no valid component".format(img_name)
+    # visualize_LAF_custom(t_img_all, unrectified_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
+
+
 def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), params_key="", stats_map={}):
 
     if params_key is None or params_key == "":
@@ -579,8 +624,6 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     Timer.start_check_point("affnet_init")
 
     covering = CoveringParams.get_effective_covering_by_cfg(conf_map)
-    max_tilt_r = covering.t_max
-    tilt_r_exp = covering.r_max
 
     # to be removed
     invert_first = conf_map.get("invert_first", True)
@@ -594,6 +637,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True)
 
     if affnet_no_clustering:
+        # NOTE component == 0 -> still a valid component
         kpts_component_indices = torch.zeros((unrectified_laffs.shape[:2]))
     else:
         kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, unrectified_laffs)
@@ -609,7 +653,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     _, _, ts, phis = decompose_lin_maps_lambda_psi_t_phi(affnet_lin_maps)
 
     mask_no_valid_component = (kpts_component_indices == -1)[0]
-    mask_in = (ts < tilt_r_exp)[0]
+    mask_in = (ts < covering.r_max)[0]
     mask_in_or_no_component = mask_in | mask_no_valid_component
 
     mask_to_add = torch.ones_like(mask_in_or_no_component, dtype=torch.bool) if affnet_include_all_from_identity else mask_in_or_no_component
@@ -631,24 +675,9 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
 
     if show_affnet:
-        ts_affnet_in_or_no_comp = ts[:, mask_in_or_no_component]
-        ts_affnet_out = ts[:, ~mask_in_or_no_component]
-        phis_affnet_in_or_no_comp = phis[:, mask_in_or_no_component]
-        phis_affnet_out = phis[:, ~mask_in_or_no_component]
-
-        # plot_space_of_tilts -> all initial
-        label = "all: {}/{}".format(ts_affnet_in_or_no_comp.shape[1], ts_affnet_out.shape[1])
-        # TODO valid, etc
-        print("{}: count: {}".format(label, ts.shape))
-        plot_space_of_tilts(label, img_name, 0, 0, tilt_r_exp, max_tilt_r, [
-            PointsStyle(ts=ts_affnet_in_or_no_comp, phis=phis_affnet_in_or_no_comp, color="b", size=0.5),
-            PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
-        ], show_affnet)
-
-        title = "{} - all unrectified affnet features".format(img_name)
-        visualize_LAF_custom(t_img_all, unrectified_laffs, title=title, figsize=(8, 12))
-        title = "{} - all unrectified affnet features - no valid component".format(img_name)
-        visualize_LAF_custom(t_img_all, unrectified_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
+        # components - this would require computing the components (again) here
+        visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering)
+        visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_all)
 
     Timer.end_check_point("affnet_init")
 
@@ -687,7 +716,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         all_laffs_no_scale = KF.scale_laf(all_laffs, 1. / all_scales)
         _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(all_laffs_no_scale[:, :, :, :2])
 
-        mask_in = ts_affnet_final < tilt_r_exp
+        mask_in = ts_affnet_final < covering.r_max
         ts_affnet_in = ts_affnet_final[mask_in]
         ts_affnet_out = ts_affnet_final[~mask_in]
         phis_affnet_in = phis_affnet_final[mask_in]
@@ -695,7 +724,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
         label = "all features after rectification: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
         print("{}: count: {}".format(label, ts_affnet_final.shape))
-        plot_space_of_tilts(label, img_name, "-", "-", tilt_r_exp, max_tilt_r, [
+        plot_space_of_tilts(label, img_name, "-", "-", covering.r_max, covering.t_max, [
             PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
             PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
         ], show_affnet)
