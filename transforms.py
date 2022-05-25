@@ -1,4 +1,5 @@
 import torch
+from core import assert_small_error
 
 
 def get_rotation_matrices_torch(unit_rotation_vectors, angs_rads, device):
@@ -36,9 +37,10 @@ def get_rotation_matrices_torch(unit_rotation_vectors, angs_rads, device):
     return R
 
 
-def get_rectification_rotations(normals, device):
+def get_rectification_rotations(normals, device=torch.device('cpu')):
     """
     :param normals:
+    :param device:
     :return:
     """
 
@@ -50,6 +52,7 @@ def get_rectification_rotations(normals, device):
 
     rotation_vectors = torch.cross(z, normals, dim=1)
     rotation_vector_norms = torch.linalg.norm(rotation_vectors, dim=1)[:, None]
+    rotation_vector_norms = torch.clamp(rotation_vector_norms, max=1.0)
     unit_rotation_vectors = rotation_vectors / rotation_vector_norms
     thetas = torch.asin(rotation_vector_norms)
 
@@ -57,15 +60,7 @@ def get_rectification_rotations(normals, device):
         debug = True
         if debug:
             det = torch.linalg.det(R)
-            for exp in range(2, 5):
-                th = 10.0 ** -exp
-                cond = torch.all((det - 1.0).abs() < th)
-                if not cond:
-                    max_err = (det - 1.0).abs().max()
-                    print("condition not met with max error: {}".format(max_err))
-                    max_err_data = normals[(det - 1.0).abs().argmax()]
-                    print("condition not met with max error on data: {}".format(max_err_data))
-                assert cond, "torch.all((det - 1.0).abs() < {})".format(th)
+            assert_small_error(det - 1.0, 1.0e-5, "|det - 1.0| < {}".format(1.0e-5), normals)
 
     R = get_rotation_matrices_torch(unit_rotation_vectors, thetas, device)
     check_R(R)
@@ -109,3 +104,17 @@ def decompose_homographies(Hs, device):
     print("allclose check (rtol=1e-03, atol=1e-05): {}".format(torch.allclose(test_compose_back, Hs, rtol=1e-03, atol=1e-05)))
     assert torch.allclose(test_compose_back, Hs, rtol=1e-01, atol=1e-01)
     return pure_homographies, affines
+
+
+def t_get_rectification_rotations():
+    # EDU NOTE:
+    # this used to lead to an error caused by
+    # thetas = torch.asin(rotation_vector_norms),
+    # where rotation_vector_norms > 1.0.
+    # Fixed by clamp(...,max=1.0)
+    data = -torch.tensor([[8.0251e-01, -5.9664e-01,  1.5897e-04]])
+    get_rectification_rotations(data, device=torch.device('cpu'))
+
+
+if __name__ == "__main__":
+    t_get_rectification_rotations()
