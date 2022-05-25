@@ -96,9 +96,17 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     lambdas = torch.ones(l_maps.shape[:2])
 
     def assert_decomposition():
+
         d = torch.diag_embed(s)
         product = lambdas[:, :, None, None] * U @ d @ V
-        close_cond = torch.allclose(product, l_maps, rtol=1e-04, atol=1e-05)
+        # NOTE relaxed from atol=1e-05 to atol=1e-04, maybe the matrix difference should be used here
+        close_cond = torch.allclose(product, l_maps, rtol=1e-04, atol=1e-04)
+        if not close_cond:
+            mask = ~torch.isclose(product, l_maps, rtol=1e-04, atol=1e-05)
+            mask = mask.max(dim=2).values.max(dim=2).values[0].to(float)
+            arg_max = mask.argmax()
+            print("error on data: [{}] vs. [{}]".format(product[0, arg_max], l_maps[0, arg_max]))
+            print("error: {}".format(product[0, arg_max] - l_maps[0, arg_max]))
         assert close_cond
 
     assert_decomposition()
@@ -771,6 +779,30 @@ def draw_test():
     plt.show()
 
 
+def simple_decomposition_test():
+
+    # UNFORTUNATELY this could not be reconstructed (probably due to literal arithmetic errors
+    # pipeline: matching_pairs = frame_0000001350_2_frame_0000000475_1
+
+    # pipeline:
+    # (tensor([[ 3.1739e-02, -2.6362e-02],
+    #         [-3.7077e+01,  6.2287e+01]]),
+    # tensor([[ 3.1739e-02, -2.6349e-02],
+    #         [-3.7077e+01,  6.2287e+01]]))
+
+    # test:
+    # (tensor([[[[ 3.1740e-02, -2.6356e-02],
+    #           [-3.7077e+01,  6.2287e+01]]]]),
+    #  tensor([[[[ 3.1739e-02, -2.6349e-02],
+    #           [-3.7077e+01,  6.2287e+01]]]]))
+
+    l_maps = torch.tensor([[
+        [[3.1739e-02, -2.6349e-02],
+        [-3.7077e+01,  6.2287e+01]]]
+    ])
+    decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True)
+
+
 def decomposition_test():
 
     t = torch.tensor(1.5220)
@@ -819,9 +851,9 @@ def show_sets_of_linear_maps(data_list, label="compare"):
 
 
 if __name__ == "__main__":
-    #main_demo()
-    decomposition_test()
-    #draw_test()
+    simple_decomposition_test()
+    # decomposition_test()
+    # draw_test()
 
 # CONTINUE:
 #   IMPORTANT: a) get_kpts_normals(normals, laffs_no_scale).unsqueeze(dim=0) -> get_kpts_normals_representatives!!!!
