@@ -57,7 +57,15 @@ def get_rectification_rotations(normals, device):
         debug = True
         if debug:
             det = torch.linalg.det(R)
-            assert torch.all((det - 1.0).abs() < 0.0001)
+            for exp in range(2, 5):
+                th = 10.0 ** -exp
+                cond = torch.all((det - 1.0).abs() < th)
+                if not cond:
+                    max_err = (det - 1.0).abs().max()
+                    print("condition not met with max error: {}".format(max_err))
+                    max_err_data = normals[(det - 1.0).abs().argmax()]
+                    print("condition not met with max error on data: {}".format(max_err_data))
+                assert cond, "torch.all((det - 1.0).abs() < {})".format(th)
 
     R = get_rotation_matrices_torch(unit_rotation_vectors, thetas, device)
     check_R(R)
