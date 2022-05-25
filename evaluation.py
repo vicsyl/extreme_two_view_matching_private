@@ -589,7 +589,7 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
                     diff_acc_data_lists[i_param_list].append((float(diff), perc))
                 else:
                     value_list.append("--")
-            print("{} {}".format(diff, " ".join(value_list)))
+            print(" ".join(value_list))
 
     # if tex_save_path_prefix is not None:
     #     for i, angle_threshold in enumerate(angle_thresholds):
