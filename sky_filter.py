@@ -1,6 +1,7 @@
 import torch.nn
 import torchvision as tv
 import numpy as np
+import os
 from utils import Timer
 
 from mit_semseg.models import ModelBuilder, SegmentationModule
@@ -8,17 +9,28 @@ from mit_semseg.models import ModelBuilder, SegmentationModule
 from PIL import Image
 
 
+# NOTE not the nicest way, but it works
+def get_weights_dir():
+
+    for cand in [".semseg", "../.semseg"]:
+        if os.path.isdir(cand):
+            return cand
+    raise "oops"
+
+
+weights_dir = get_weights_dir()
+
 net_encoder = ModelBuilder.build_encoder(
     arch='resnet18dilated',
     fc_dim=512,
-    weights='.semseg/encoder_epoch_20.pth')
+    weights='{}/encoder_epoch_20.pth'.format(weights_dir))
 
 
 net_decoder = ModelBuilder.build_decoder(
     arch='ppm_deepsup',
     fc_dim=512,
     num_class=150,
-    weights='.semseg/decoder_epoch_20.pth',
+    weights='{}/decoder_epoch_20.pth'.format(weights_dir),
     use_softmax=True)
 
 

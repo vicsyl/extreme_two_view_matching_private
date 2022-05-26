@@ -57,14 +57,57 @@ def affnet_upsample(data_2d):
 
 def show_affnet_features(aff_features):
 
+    fig, axs = plt.subplots(1, 3, figsize=(9, 9))
+    fig.suptitle("Dense AffNet upright shapes' components")
+
+    idx = 0
     for i in range(2):
         for j in range(2):
             if i == 0 and j == 1:
                 continue
-            t_i = K.tensor_to_image(aff_features[:, :, i, j])
-            plt.title("upright shapes[{}, {}]".format(i, j))
-            plt.imshow(t_i)
-            plt.show()
+            img_t = K.tensor_to_image(aff_features[:, :, i, j])
+            axs[idx].set_title("shapes[{}, {}]".format(i, j))
+            axs[idx].imshow(img_t)
+            idx = idx + 1
+    plt.show(block=False)
+
+
+def vis_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices, valid_components_dict):
+
+    show = conf.get(CartesianConfig.show_dense_affnet_components, False)
+    if not show:
+        return
+
+    center_names = {-3: "sky",
+                    -2: "identity equivalence class",
+                    -1: "no valid center"}
+    l = 3 + len(ts_phis)
+    c = 4 if l > 3 else l
+    r = (l - 1) // 4 + 1
+    fig, axs = plt.subplots(r, c, figsize=(9, 9))
+    dense_affnet_filter = conf.get("affnet_dense_affnet_filter", None)
+    use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
+    title = "{} - pixels of shapes covered by covering sets\ndense_affnet_filter={},use_orienter={} ".format(img_name, dense_affnet_filter, use_orienter)
+    fig.suptitle(title)
+
+    for i in range(-3, len(ts_phis)):
+        mask = cover_idx == i
+        center_name = center_names.get(i, "winning center no. {}".format(i))
+
+        idx = i + 3
+        r = idx // 4
+        c = idx % 4
+
+        axs[r, c].set_title("{} pixels for\n{}".format(mask.sum(), center_name))
+        axs[r, c].imshow(mask)
+
+    plt.show(block=False)
+
+    get_and_show_components(components_indices,
+                            valid_components_dict,
+                            show=True,
+                            save=False,
+                            file_name=img_name)
 
 
 def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cuda=False):
@@ -92,8 +135,8 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
         if conf.get(CartesianConfig.affnet_show_dense_affnet, "False"):
             show_affnet_features(lafs)
 
-        # orienter
-        if conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True"):
+        use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
+        if use_orienter:
             orienter = KF.LAFOrienter(dense_affnet.patch_size, angle_detector=KF.OriNet(True))
             lafs_flat = lafs.reshape(1, lafs.shape[0] * lafs.shape[1], 2, 3)
             all_size = lafs_flat.shape[1]
@@ -116,8 +159,15 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
 
         covering: CoveringParams = CoveringParams.dense_covering_1_7()
 
-        # TODO use lin_features, from here on
+        # NOTE using lin_features from here on
         lin_features = lafs[:, :, :, :2]
+
+        invert_first = conf.get("invert_first", True)
+        # NOTE backward compatibility
+        assert invert_first
+        if invert_first:
+            lin_features = torch.inverse(lin_features)
+
         _, _, ts1, phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
 
         # winning_centers can only work with flatten data
@@ -125,23 +175,15 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
         phis1_flat = phis1.reshape(1, -1)
         ts_phis, cover_idx = winning_centers(covering, ts1_flat, phis1_flat, conf, return_cover_idxs=True, valid_px_mask=non_sky_mask)
 
-        cover_idx = cover_idx.reshape(lafs.shape[0], lafs.shape[1])
-        non_sky_mask = non_sky_mask.reshape(lafs.shape[0], lafs.shape[1])
+        cover_idx = cover_idx.reshape(lin_features.shape[:2])
+        non_sky_mask = non_sky_mask.reshape(lin_features.shape[:2])
+
         # NOTE: index value convention
         # range(len(ts_phis)) -> all_valid
         # -3 sky
-        # -2 identity center
+        # -2 identity equivalence class
         # -1 no valid center
         cover_idx[~non_sky_mask] = -3
-        center_names = {-3: "sky",
-                        -2: "identity center",
-                        -1: "no valid center"}
-        for i in range(-3, len(ts_phis)):
-            mask = cover_idx == i
-            center_name = center_names.get(i, "winning center no. {}".format(i))
-            plt.title("{} pixels for {}".format(mask.sum(), center_name))
-            plt.imshow(mask)
-            plt.show(block=False)
 
         if upsample_early:
             cover_idx = affnet_upsample(cover_idx)
@@ -150,7 +192,7 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
 
         all_valid = range(len(ts_phis))
         # TODO param!!!
-        components_indices, valid_components_dict = get_connected_components(cover_idx, all_valid, show=True, fraction_threshold=0.008)
+        components_indices, valid_components_dict = get_connected_components(cover_idx, all_valid, fraction_threshold=0.008)
 
         # NOTES
         # a) upsample_early is usually True, even though False may be more sensible
@@ -165,11 +207,7 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
                 components_indices = torch_upsample_factor(components_indices, dense_affnet_filter)
             components_indices = components_indices.numpy()
 
-        get_and_show_components(components_indices,
-                                valid_components_dict,
-                                show=True,
-                                save=False,
-                                file_name=img_name)
+        vis_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices, valid_components_dict)
 
         return ImageData(img=img,
                          real_K=None,

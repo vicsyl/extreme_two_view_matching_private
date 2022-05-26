@@ -32,7 +32,7 @@ def read_google_scene(scene_name, file_name_suffix, show_first=0):
         img_pairs_maps[diff] = {}
 
         print("Diff: {}".format(diff))
-        file_name = "{}/set_100/new-vis-pairs/keys-th-0.{}.npy".format(scene_name, diff)
+        file_name = "{}/{}/set_100/new-vis-pairs/keys-th-0.{}.npy".format(SceneInfo.base_dir, scene_name, diff)
         data_np = np.load(file_name)
 
         # just to check first couple of tuples in the "easiest" level
@@ -43,13 +43,13 @@ def read_google_scene(scene_name, file_name_suffix, show_first=0):
         for i in range(data_np.shape[0]):
 
             img_name_tuple = data_np[i].split("-")
-            img1_path = "{}/set_100/images/{}{}".format(scene_name, img_name_tuple[0], file_name_suffix)
+            img1_path = "{}/{}/set_100/images/{}{}".format(SceneInfo.base_dir, scene_name, img_name_tuple[0], file_name_suffix)
             img1_exists = os.path.isfile(img1_path)
-            img2_path = "{}/set_100/images/{}{}".format(scene_name, img_name_tuple[1], file_name_suffix)
+            img2_path = "{}/{}/set_100/images/{}{}".format(SceneInfo.base_dir, scene_name, img_name_tuple[1], file_name_suffix)
             img2_exists = os.path.isfile(img2_path)
-            cal1_path = "{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[0])
+            cal1_path = "{}/{}/set_100/calibration/calibration_{}.h5".format(SceneInfo.base_dir, scene_name, img_name_tuple[0])
             cal1_exists = os.path.isfile(cal1_path)
-            cal2_path = "{}/set_100/calibration/calibration_{}.h5".format(scene_name, img_name_tuple[1])
+            cal2_path = "{}/{}/set_100/calibration/calibration_{}.h5".format(SceneInfo.base_dir, scene_name, img_name_tuple[1])
             cal2_exists = os.path.isfile(cal2_path)
             if img1_exists and img2_exists and cal1_exists and cal2_exists:
                 counter = counter + 1
@@ -64,11 +64,11 @@ def read_google_scene(scene_name, file_name_suffix, show_first=0):
                 if i < show_first and (diff == 9):
                     plt.figure(figsize=(10, 10))
                     plt.subplot(1, 2, 1)
-                    img = plt.imread("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[0], file_name_suffix))
+                    img = plt.imread("{}/{}/set_100/images/{}{}".format(SceneInfo.base_dir, scene_name, img_name_tuple[0], file_name_suffix))
                     plt.title("{} from difficulty {}".format(i, diff))
                     plt.imshow(img)
                     plt.subplot(1, 2, 2)
-                    img = plt.imread("{}/set_100/images/{}{}".format(scene_name, img_name_tuple[1], file_name_suffix))
+                    img = plt.imread("{}/{}/set_100/images/{}{}".format(SceneInfo.base_dir, scene_name, img_name_tuple[1], file_name_suffix))
                     plt.title("{} from difficulty {}".format(i, diff))
                     plt.imshow(img)
                     show_or_close(True)
@@ -158,11 +158,13 @@ class SceneInfo:
     type: str # "orig", "google"
     file_name_suffix: str
 
+    base_dir = "."
+
     def get_input_dir(self):
         if self.type == "orig":
-            return "original_dataset/{}/images".format(self.name)
+            return "{}/original_dataset/{}/images".format(SceneInfo.base_dir, self.name)
         elif self.type == "google":
-            return "{}/set_100/images".format(self.name)
+            return "{}/{}/set_100/images".format(SceneInfo.base_dir, self.name)
         else:
             raise Exception("unexpected type: {}".format(self.type))
 
@@ -186,9 +188,9 @@ class SceneInfo:
 
     def depth_input_dir(self):
         if self.type == "orig":
-            return "depth_data/mega_depth/{}".format(self.name)
+            return "{}/depth_data/mega_depth/{}".format(SceneInfo.base_dir, self.name)
         elif self.type == "google":
-            return "depth_data/{}".format(self.name)
+            return "{}/depth_data/{}".format(SceneInfo.base_dir, self.name)
         else:
             raise Exception("unexpected type: {}".format(self.type))
 
@@ -259,7 +261,7 @@ class SceneInfo:
 
 def read_image_pairs(scene):
 
-    file_name = "original_dataset/{}/{}_image_pairs.txt".format(scene, scene)
+    file_name = "{}/original_dataset/{}/{}_image_pairs.txt".format(SceneInfo.base_dir, scene, scene)
     f = open(file_name, "r")
 
     img_pairs_maps = [None] * 18
@@ -284,7 +286,7 @@ def read_image_pairs(scene):
 
 def read_images(scene, lazy=True):
 
-    file_name = "original_dataset/{}/0/images.txt".format(scene)
+    file_name = "{}/original_dataset/{}/0/images.txt".format(SceneInfo.base_dir, scene)
     f = open(file_name, "r")
 
     image_map = {}
@@ -331,7 +333,7 @@ def read_images(scene, lazy=True):
 
 def read_cameras(scene):
 
-    file_name = "original_dataset/{}/0/cameras.txt".format(scene)
+    file_name = "{}/original_dataset/{}/0/cameras.txt".format(SceneInfo.base_dir, scene)
     f = open(file_name, "r")
 
     camera_map = {}
@@ -464,8 +466,6 @@ def show():
                 break
         if not found:
             print("{} not found!!!".format(pair))
-
-
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
         [0, 0, 128],
     ]
 
+    # TODO instead of listing the colors lets add them to the legend
     color_names = [
         "red",
         "green",
@@ -149,6 +150,7 @@ def get_connected_components(normal_indices, valid_indices, show=False,
             out_valid_indices_counter = out_valid_indices_counter + max_valid_labels
 
         if show:
+            # NOTE not very revealing btw.
             get_and_show_components(out, out_valid_indices_dict, "out after normal index={}".format(v_i))
 
     Timer.end_check_point("get_connected_components")

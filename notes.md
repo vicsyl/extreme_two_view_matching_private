@@ -676,16 +676,90 @@ https://github.com/ducha-aiki/ransac-tutorial-2020-data/blob/master/create_H_sub
 
   
 
-TODO:
-# visualizations
-* cluster colors
-* coverings
+# plan/notes for 4/6/2022
 
-# math
-* upsampling formula
-* make upright (maybe delve into the paper)
+## Demo
+* options/TODOs
+  * TODO orienter (OK(?) - it)
+    * interesting AffNet just estimates elongation without getting the dominant direction right? 
+  * TODO exact upscaling (via the formula) (OK)
+  * TODO, sky segmentation (OK), visualizations 
+  * within the detected component, I restart the covering algorithm (singleton covering set only) 
+
+* TODO measure time -> CUDA
+* filter for affnet clustering !!! OK
+
+* simple list:
+  * bugs
+  * visos
+  * default: "restart the covering algorithm (singleton covering set only)" - OK
+  * run
+  * (design, theory, next)
+
+* BUGS: 
+  * sky segmentation - doesn't work OK
+  * what is center no. 0 - it is identity? OK
+  * visualization - cover stats
+
+* after run 
+  * visos opt_cov_prepare_plot(cov_params: CoveringParams, ...
 
 # other 
-* enrollment form
-* "productionize" and run 2a
-* motivations -> + licenses (??) 
+* employment
+* PhD.  
+ 
+
+* new simple list
+  * caching schema!!!, leftovers, (fix)
+  * run with orienter False
+  * check on the run with use_laffs = True 
+  * 1 ii) b)
+  * 2
+  * (design, theory)
+
+
+# plan/notes for ... summary
+
+## summary of all work after DT
+
+* big picture
+  * what we generally do (boxes)
+  * what works and what doesn't 
+* new experiments
+  * results, hypothesis -> ptoofs
+* next steps
+    * proposed
+      * Toft>1: theory
+      * framework: ....??!! (rewrite)
+    * ideas?
+    * article?
+    * datasets
+    * improvements
+
+* workflow
+  * very simple notebooks -> presentations, results, theory....
+
+
+CONTINUE: last run + inspect the commit + check the stats
+
+* results
+* hypothesis, theory, stats, how to prove it?
+* plan for the meeting (next steps)
+* presentation
+
+
+
+!! - normal -> H -> affine
+!! - covering 
+!! - covering vs. clustering and connected components
+!! - affine shapes theory (phi vs psi)
+
+  
+* diary??!!
+DONE OK
+# coding - nevertheless
+* column w/o difficulty
+* 2 bugs ? with assertions
+  * try examples
+  * improve the workflow
+

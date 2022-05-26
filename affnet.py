@@ -374,7 +374,7 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
         winning_centers: rows of with 2 columns - (tau_i, phi_i)
         cover_idx: index of centers for the data points
                     -1 : no winning center
-                    -2 : identity center
+                    -2 : identity equivalence class
                     >=0: winning center index
     """
 
@@ -396,13 +396,16 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
         ret_winning_centers = ret_winning_centers[0]
 
     if show_affnet:
-        ax = opt_cov_prepare_plot(covering_params)
+        colors = ["r", "g", "b", "y"]
+        colors_unrolled = [colors[i % len(colors)] for i in range(len(ret_winning_centers) - 1, -1, -1)]
+
+        title = "Covering the space of tilts:\n not-covered - black, identity eq. class - cyan".format(", ".join(colors_unrolled))
+        ax = opt_cov_prepare_plot(covering_params, title=title)
         opt_conv_draw(ax, data, "k", 1.0)
 
-        colors = ["r", "g", "b", "y"]
         for i in range(len(ret_winning_centers) - 1, -1, -1):
             wc = ret_winning_centers[i]
-            color = colors[i % len(colors)]
+            color = colors_unrolled[i]
             draw_covered_data(ax, wc, data, covering_params.r_max, color)
             opt_conv_draw(ax, wc, color, 8.0, shape="o")
 
@@ -623,6 +626,18 @@ def visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_a
 
 
 def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), params_key="", stats_map={}):
+    """ This seems to do a lot, but it just
+        a) compute the HardNet kps, descs and lafs
+        b) iterates over connected components (of clustered normals or covered sets of lafs) and calls
+    :param img_name:
+    :param hardnet_descriptor:
+    :param img_data:
+    :param conf_map:
+    :param device:
+    :param params_key:
+    :param stats_map:
+    :return:
+    """
 
     if params_key is None or params_key == "":
         params_key = "default"
@@ -632,10 +647,6 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     Timer.start_check_point("affnet_init")
 
     covering = CoveringParams.get_effective_covering_by_cfg(conf_map)
-
-    # to be removed
-    invert_first = conf_map.get("invert_first", True)
-    assert invert_first
 
     affnet_include_all_from_identity = conf_map.get("affnet_include_all_from_identity", False)
     affnet_no_clustering = conf_map["affnet_no_clustering"]
@@ -655,6 +666,9 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     affnet_lin_maps = laffs_no_scale[:, :, :, :2]
 
+    # NOTE to be removed - still here because of the questionable idea of backward compatibility
+    invert_first = conf_map.get("invert_first", True)
+    assert invert_first
     if invert_first:
         affnet_lin_maps = torch.inverse(affnet_lin_maps)
 

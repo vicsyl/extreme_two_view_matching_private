@@ -162,7 +162,7 @@ def vote(centers, data, r_param, fraction_th, iter_th, return_cover_idxs=False, 
         winning_centers: rows of with 2 columns - (tau_i, phi_i)
         cover_idx: index of centers for the data points
                     -1 : no winning center
-                    -2 : identity center
+                    -2 : identity equivalence class
                     >=0: winning center index
     """
 
@@ -265,7 +265,7 @@ def opt_conv_draw(ax, ts_phis, color, size, shape='o'):
     ax.plot(xs, ys, shape, color=color, markersize=size)
 
 
-def opt_cov_prepare_plot(cov_params: CoveringParams, title="Covering - centers, cover sets, data points..."):
+def opt_cov_prepare_plot(cov_params: CoveringParams, title):
 
     fig, ax = plt.subplots()
     plt.title(title)
@@ -307,7 +307,7 @@ def demo():
     data[0] = torch.abs(data[0] * 5.0 + 1)
     data[1] = data[1] * math.pi
 
-    ax = opt_cov_prepare_plot(covering_params)
+    ax = opt_cov_prepare_plot(covering_params, title="Covering - centers, cover sets, data points...")
 
     #opt_conv_draw(ax, data, "b", 1.0)
 

@@ -1252,13 +1252,10 @@ def append_all(pipeline, str):
     return "{}_{}_{}_{}".format(str, use_degensac, estimate_K, timestamp)
 
 
-def main():
+def run_pipeline(args, config_file_path):
 
-    parser = argparse.ArgumentParser(prog='pipeline')
-    parser.add_argument('--output_dir', help='output dir')
-    args = parser.parse_args()
-
-    pipeline, config_map = Pipeline.configure("config.txt", args)
+    pipeline, config_map = Pipeline.configure(config_file_path, args)
+    #pipeline, config_map = Pipeline.configure("demos/configs/dense_affnet_config.txt", args)
     all_configs = CartesianConfig.get_configs(config_map)
     print("first iterate through the configs:")
     for config, cache_map in all_configs:
@@ -1276,6 +1273,14 @@ def main():
         print("{} finished".format(pipeline.get_stats_key()))
 
     print("process finished")
+
+
+def main():
+
+    parser = argparse.ArgumentParser(prog='pipeline')
+    parser.add_argument('--output_dir', help='output dir')
+    args = parser.parse_args()
+    run_pipeline(args, "config.txt")
 
 
 if __name__ == "__main__":

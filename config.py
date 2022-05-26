@@ -123,6 +123,8 @@ class CartesianConfig:
     affnet_dense_affnet_use_orienter = "affnet_dense_affnet_use_orienter"
     affnet_clustering_restart_affnet = "affnet_clustering_restart_affnet"
 
+    show_dense_affnet_components = "show_dense_affnet_components"
+
     props_handlers = {
 
         # dataset
@@ -191,6 +193,9 @@ class CartesianConfig:
 
         #special
         "sequential_files_limit": Property("int", default=None, optional=True, list_allowed=False),
+
+        # VISOS
+        show_dense_affnet_components: Property("bool", default=False, optional=False, list_allowed=False),
     }
 
     @staticmethod
