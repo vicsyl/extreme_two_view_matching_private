@@ -55,7 +55,10 @@ def affnet_upsample(data_2d):
     return padded_centered
 
 
-def show_affnet_features(aff_features):
+def show_affnet_features(aff_features, conf):
+
+    if not conf.get(CartesianConfig.affnet_show_dense_affnet, "False"):
+        return
 
     fig, axs = plt.subplots(1, 3, figsize=(9, 9))
     fig.suptitle("Dense AffNet upright shapes' components")
@@ -72,14 +75,14 @@ def show_affnet_features(aff_features):
     plt.show(block=False)
 
 
-def vis_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices, valid_components_dict):
+def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices, valid_components_dict):
 
     show = conf.get(CartesianConfig.show_dense_affnet_components, False)
     if not show:
         return
 
     center_names = {-3: "sky",
-                    -2: "identity equivalence class",
+                    -2: "identity eq. class",
                     -1: "no valid center"}
     l = 3 + len(ts_phis)
     c = 4 if l > 3 else l
@@ -90,15 +93,18 @@ def vis_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, co
     title = "{} - pixels of shapes covered by covering sets\ndense_affnet_filter={},use_orienter={} ".format(img_name, dense_affnet_filter, use_orienter)
     fig.suptitle(title)
 
+    pxs = cover_idx.shape[0] * cover_idx.shape[1]
+
     for i in range(-3, len(ts_phis)):
         mask = cover_idx == i
-        center_name = center_names.get(i, "winning center no. {}".format(i))
+        center_name = center_names.get(i, "covering set {}".format(i))
 
         idx = i + 3
         r = idx // 4
         c = idx % 4
 
-        axs[r, c].set_title("{} pixels for\n{}".format(mask.sum(), center_name))
+        fraction = mask.sum() / pxs * 100
+        axs[r, c].set_title("{} pxs({:.02f}%)\n{}".format(mask.sum(), fraction, center_name))
         axs[r, c].imshow(mask)
 
     plt.show(block=False)
@@ -110,104 +116,158 @@ def vis_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, co
                             file_name=img_name)
 
 
-def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cuda=False):
+def filter_components(component_idxs, fraction_threshold):
 
-    gs_timg = K.image_to_tensor(img, False).float() / 255.
-    gs_timg = K.color.bgr_to_grayscale(gs_timg)
+    component_size_threshold = component_idxs.shape[0] * component_idxs.shape[1] * fraction_threshold
+    _, counts = torch.unique(component_idxs, return_counts=True)
+    counts_mask = counts > component_size_threshold
+    valid_component_dict = {}
+    for i in range(3, len(counts_mask)):
+        if counts_mask[i]:
+            valid_component_dict[i - 3] = i - 3
 
+    # NOTE compatibility with the existing code
+    component_idxs = component_idxs.numpy()
+    return component_idxs, valid_component_dict
+
+
+def get_eligible_components(component_idxs, conf, valid_length):
+    """
+    :param component_idxs:
+    :param conf:
+    :param valid_length: I think effectively component_idxs.max() + 1
+    :return:
+    """
+
+    fraction_threshold = conf.get(CartesianConfig.affnet_dense_affnet_cc_fraction_th, 0.008)
+    enforce_cc = conf.get(CartesianConfig.affnet_dense_affnet_enforce_connected_components, True)
+    if enforce_cc:
+        components_indices, valid_components_dict = get_connected_components(component_idxs,
+                                                                             range(valid_length),
+                                                                             fraction_threshold=fraction_threshold)
+    else:
+        components_indices, valid_components_dict = filter_components(component_idxs, fraction_threshold)
+
+    return components_indices, valid_components_dict
+
+
+def apply_affnet_filter(gs_timg, conf):
     dense_affnet_filter = conf.get("affnet_dense_affnet_filter", None)
     if dense_affnet_filter is not None:
         print("WARNING: affnet_filter (={}) is being used".format(dense_affnet_filter), file=sys.stderr)
         gs_timg = gs_timg[:, :, ::dense_affnet_filter, ::dense_affnet_filter]
+    return gs_timg, dense_affnet_filter
 
-    # TODO lafs are very expensive to compute here, so
-    # TODO: first let's measure it !!!
-    # then: add them to 0st tier img data (separate data structure) (and keep handling pipeline handle the 1st tier as usual)
-    # challenge come up with a general scheme!!!
+
+def add_affnet_coodrs_to_lafs(lafs):
+    coords = affnet_coords(lafs.shape[:2])
+    # (H, W) (shape -> mesh-grid) => (H, W) (geometric coords)
+    lafs[:, :, 0, 2] = coords[1]
+    lafs[:, :, 1, 2] = coords[0]
+
+
+def possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf):
+
+    use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
+    if use_orienter:
+        add_affnet_coodrs_to_lafs(lafs)
+        orienter = KF.LAFOrienter(dense_affnet.patch_size, angle_detector=KF.OriNet(True))
+        lafs_flat = lafs.reshape(1, lafs.shape[0] * lafs.shape[1], 2, 3)
+        all_size = lafs_flat.shape[1]
+        affnet_dense_affnet_batch = conf.get(CartesianConfig.affnet_dense_affnet_batch, None)
+        if affnet_dense_affnet_batch is None:
+            batch_size = all_size
+        else:
+            batch_size = affnet_dense_affnet_batch
+
+        for i in range((all_size - 1) // batch_size + 1):
+            l = i * batch_size
+            u = min((i + 1) * batch_size, all_size)
+            lafs_flat[:, l:u] = orienter(lafs_flat[:, l:u], gs_timg)
+        lafs = lafs_flat.reshape(lafs.shape[0], lafs.shape[1], 2, 3)
+
+    return lafs
+
+
+def possibly_invert_lin_features(lin_features, conf):
+    invert_first = conf.get("invert_first", True)
+    # NOTE backward compatibility
+    assert invert_first
+    if invert_first:
+        lin_features = torch.inverse(lin_features)
+    return lin_features
+
+
+def handle_upsample_early(upsample_early, cover_idx, dense_affnet_filter):
+    if upsample_early:
+        cover_idx = affnet_upsample(cover_idx)
+        if dense_affnet_filter is not None:
+            cover_idx = torch_upsample_factor(cover_idx, dense_affnet_filter)
+    return cover_idx
+
+
+def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter):
+    # NOTES
+    # a) upsample_early is usually True, even though False may be more sensible
+    # b) with False the data is transformed from numpy to torch and back
+    # c) the most useful thing to do would be to redo the get_connected_components to work on torch
+    # d) not so sure about the retyping (uint32 vs int32)
+    if not upsample_early:
+        assert np.all(components_indices < 256), "could not retype to np.uint8"
+        t = torch.from_numpy(components_indices).to(torch.float)
+        components_indices = affnet_upsample(t).to(torch.int32)
+        if dense_affnet_filter is not None:
+            components_indices = torch_upsample_factor(components_indices, dense_affnet_filter)
+        components_indices = components_indices.numpy()
+    return components_indices
+
+
+def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cuda=False):
+    """
+    The main function to call here.
+    NOTE: especially when the orienter is on the lafs are very expensive to compute
+    (so ideally some caching scheme would come in handy, BUT the "simple" step of producing dense lafs
+    is still affected by some params)
+    :param img:
+    :param img_name:
+    :param dense_affnet:
+    :param conf:
+    :param upsample_early:
+    :param use_cuda:
+    :return:
+    """
+    gs_timg = K.image_to_tensor(img, False).float() / 255.
+    gs_timg = K.color.bgr_to_grayscale(gs_timg)
+    gs_timg, dense_affnet_filter = apply_affnet_filter(gs_timg, conf)
 
     with torch.no_grad():
         lafs = dense_affnet(gs_timg)
-        coords = affnet_coords(lafs.shape[:2])
-        # (H, W) (shape -> mesh-grid) => (H, W) (geometric coords)
-        lafs[:, :, 0, 2] = coords[1]
-        lafs[:, :, 1, 2] = coords[0]
-
-        if conf.get(CartesianConfig.affnet_show_dense_affnet, "False"):
-            show_affnet_features(lafs)
-
-        use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
-        if use_orienter:
-            orienter = KF.LAFOrienter(dense_affnet.patch_size, angle_detector=KF.OriNet(True))
-            lafs_flat = lafs.reshape(1, lafs.shape[0] * lafs.shape[1], 2, 3)
-            all_size = lafs_flat.shape[1]
-            affnet_dense_affnet_batch = conf.get(CartesianConfig.affnet_dense_affnet_batch, None)
-            if affnet_dense_affnet_batch is None:
-                batch_size = all_size
-            else:
-                batch_size = affnet_dense_affnet_batch
-
-            for i in range((all_size - 1) // batch_size + 1):
-                l = i * batch_size
-                u = min((i + 1) * batch_size, all_size)
-                lafs_flat[:, l:u] = orienter(lafs_flat[:, l:u], gs_timg)
-            lafs = lafs_flat.reshape(lafs.shape[0], lafs.shape[1], 2, 3)
+        show_affnet_features(lafs, conf)
+        lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
 
         non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
-        show_sky_mask(img, non_sky_mask, img_name, show=False)
-        # flatten
-        non_sky_mask = non_sky_mask.reshape(-1, 1)[:, 0]
+        non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]
 
-        covering: CoveringParams = CoveringParams.dense_covering_1_7()
-
-        # NOTE using lin_features from here on
         lin_features = lafs[:, :, :, :2]
-
-        invert_first = conf.get("invert_first", True)
-        # NOTE backward compatibility
-        assert invert_first
-        if invert_first:
-            lin_features = torch.inverse(lin_features)
+        lin_features = possibly_invert_lin_features(lin_features, conf)
 
         _, _, ts1, phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
-
-        # winning_centers can only work with flatten data
-        ts1_flat = ts1.reshape(1, -1)
-        phis1_flat = phis1.reshape(1, -1)
-        ts_phis, cover_idx = winning_centers(covering, ts1_flat, phis1_flat, conf, return_cover_idxs=True, valid_px_mask=non_sky_mask)
-
-        cover_idx = cover_idx.reshape(lin_features.shape[:2])
-        non_sky_mask = non_sky_mask.reshape(lin_features.shape[:2])
+        covering: CoveringParams = CoveringParams.get_effective_covering_by_cfg(conf)
+        ts_phis, cover_idx = winning_centers(covering, ts1.reshape(1, -1), phis1.reshape(1, -1), conf, return_cover_idxs=True, valid_px_mask=non_sky_mask_flat)
 
         # NOTE: index value convention
         # range(len(ts_phis)) -> all_valid
         # -3 sky
         # -2 identity equivalence class
         # -1 no valid center
+        cover_idx = cover_idx.reshape(lin_features.shape[:2])
         cover_idx[~non_sky_mask] = -3
 
-        if upsample_early:
-            cover_idx = affnet_upsample(cover_idx)
-            if dense_affnet_filter is not None:
-                cover_idx = torch_upsample_factor(cover_idx, dense_affnet_filter)
+        cover_idx = handle_upsample_early(upsample_early, cover_idx, dense_affnet_filter)
+        components_indices, valid_components_dict = get_eligible_components(cover_idx, conf, len(ts_phis))
+        components_indices = handle_upsample_late(upsample_early, components_indices, dense_affnet_filter)
 
-        all_valid = range(len(ts_phis))
-        # TODO param!!!
-        components_indices, valid_components_dict = get_connected_components(cover_idx, all_valid, fraction_threshold=0.008)
-
-        # NOTES
-        # a) upsample_early is usually True, even though False may be more sensible
-        # b) with False the data is transformed from numpy to torch and back
-        # c) the most useful thing to do would be to redo the get_connected_components to work on torch
-        # d) not so sure about the retyping (uint32 vs int32)
-        if not upsample_early:
-            assert np.all(components_indices < 256), "could not retype to np.uint8"
-            t = torch.from_numpy(components_indices).to(torch.float)
-            components_indices = affnet_upsample(t).to(torch.int32)
-            if dense_affnet_filter is not None:
-                components_indices = torch_upsample_factor(components_indices, dense_affnet_filter)
-            components_indices = components_indices.numpy()
-
-        vis_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices, valid_components_dict)
+        visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices, valid_components_dict)
 
         return ImageData(img=img,
                          real_K=None,

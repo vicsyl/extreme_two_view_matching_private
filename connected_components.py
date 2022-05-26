@@ -131,7 +131,7 @@ def get_connected_components(normal_indices, valid_indices, show=False,
         if flood_filling:
             input = flood_fill(input)
 
-        ret, labels = cv.connectedComponents(input, connectivity=connectivity)
+        _, labels = cv.connectedComponents(input, connectivity=connectivity)
 
         unique, counts = np.unique(labels, return_counts=True)
         valid_labels = np.where(counts > component_size_threshold)[0]

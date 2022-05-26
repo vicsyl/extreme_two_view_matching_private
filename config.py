@@ -121,6 +121,8 @@ class CartesianConfig:
     affnet_dense_affnet_batch = "affnet_dense_affnet_batch"
     affnet_dense_affnet_filter = "affnet_dense_affnet_filter"
     affnet_dense_affnet_use_orienter = "affnet_dense_affnet_use_orienter"
+    affnet_dense_affnet_cc_fraction_th = "affnet_dense_affnet_cc_fraction_th"
+    affnet_dense_affnet_enforce_connected_components = "affnet_dense_affnet_enforce_connected_components"
     affnet_clustering_restart_affnet = "affnet_clustering_restart_affnet"
 
     show_dense_affnet_components = "show_dense_affnet_components"
@@ -178,6 +180,8 @@ class CartesianConfig:
         affnet_dense_affnet_batch: Property("int", default=None, cache=Property.cache_img_data, optional=True, list_allowed=True),
         affnet_dense_affnet_filter: Property("int", default=None, cache=Property.cache_img_data, optional=True, list_allowed=True),
         affnet_dense_affnet_use_orienter: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
+        affnet_dense_affnet_cc_fraction_th: Property("float", default=0.008, cache=Property.cache_img_data, optional=False, list_allowed=True),
+        affnet_dense_affnet_enforce_connected_components: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
         affnet_clustering_restart_affnet: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
 
         # SIFT
