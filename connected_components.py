@@ -57,12 +57,12 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
     for i, c_index in enumerate(valid_component_dict.keys()):
         cluster_colors[np.where(cluster_indices == c_index)] = colors[i % 9]
 
-    plt.figure(figsize=(9, 9))
+    plt.figure(figsize=(10, 10))
 
     if title is not None:
         plt.title(title)
     else:
-        title = "{} - connected components: \n".format(file_name)
+        title = "{} - (connected) components: \n".format(file_name)
         new_component_dict = {}
         for i, c_index in enumerate(valid_component_dict.keys()):
             new_component_dict[i] = valid_component_dict[c_index]

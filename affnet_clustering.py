@@ -60,7 +60,7 @@ def show_affnet_features(aff_features, conf):
     if not conf.get(CartesianConfig.affnet_show_dense_affnet, "False"):
         return
 
-    fig, axs = plt.subplots(1, 3, figsize=(9, 9))
+    fig, axs = plt.subplots(1, 3, figsize=(10, 10))
     fig.suptitle("Dense AffNet upright shapes' components")
 
     idx = 0
@@ -87,7 +87,7 @@ def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_na
     l = 3 + len(ts_phis)
     c = 4 if l > 3 else l
     r = (l - 1) // 4 + 1
-    fig, axs = plt.subplots(r, c, figsize=(9, 9))
+    fig, axs = plt.subplots(r, c, figsize=(10, 10))
     dense_affnet_filter = conf.get("affnet_dense_affnet_filter", None)
     use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
     title = "{} - pixels of shapes covered by covering sets\ndense_affnet_filter={},use_orienter={} ".format(img_name, dense_affnet_filter, use_orienter)
@@ -242,8 +242,8 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
 
     with torch.no_grad():
         lafs = dense_affnet(gs_timg)
-        show_affnet_features(lafs, conf)
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
+        show_affnet_features(lafs, conf)
 
         non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
         non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]

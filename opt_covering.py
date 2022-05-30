@@ -267,7 +267,7 @@ def opt_conv_draw(ax, ts_phis, color, size, shape='o'):
 
 def opt_cov_prepare_plot(cov_params: CoveringParams, title):
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 10))
     plt.title(title)
 
     log_max_radius = math.log(cov_params.t_max)

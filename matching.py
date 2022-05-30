@@ -596,7 +596,7 @@ def show_save_matching(img1,
 
     if show or save:
         img_matches = draw_matches(kps1, kps2, tentative_matches, None, inlier_mask, img1, img2)
-        plt.figure(figsize=(20, 20))
+        plt.figure(figsize=(10, 10))
         inliers_count = np.sum(inlier_mask)
         plt.title("Matches in line with the model - {} inliers".format(inliers_count))
         plt.imshow(img_matches)

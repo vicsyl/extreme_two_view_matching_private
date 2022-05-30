@@ -237,11 +237,15 @@ def get_aff_map(t, phi, component_mask, invert_first):
 
 def plot_space_of_tilts(label, img_name, valid_component, normal_index, tilt_r, max_tilt_r, point_styles: list, really_show=True):
     if really_show:
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 10))
         if img_name is None:
-            plt.title(label)
+            title = label
         else:
-            plt.title("{}: {} - component {} / normal {}".format(label, img_name, valid_component, normal_index))
+            if normal_index is None:
+                title = "{}: {} - component(s) {}".format(label, img_name, valid_component, normal_index)
+            else:
+                title = "{}: {} - component {} / normal {}".format(label, img_name, valid_component, normal_index)
+        plt.title(title)
         prepare_plot(max_tilt_r, tilt_r, ax)
         for point_style in point_styles:
             draw(point_style.ts, point_style.phis, point_style.color, point_style.size, ax)
@@ -407,7 +411,7 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
             wc = ret_winning_centers[i]
             color = colors_unrolled[i]
             draw_covered_data(ax, wc, data, covering_params.r_max, color)
-            opt_conv_draw(ax, wc, color, 8.0, shape="o")
+            opt_conv_draw(ax, wc, "k", 8.0, shape="x")
 
         draw_identity_data(ax, data, covering_params.r_max)
 
@@ -475,11 +479,11 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
     max_tilt_r = covering.t_max
 
     # mark
-    ts_compponent, phis_component = ts[mask_cmp], phis[mask_cmp]
+    ts_component, phis_component = ts[mask_cmp], phis[mask_cmp]
 
-    mask_in = ts_compponent < tilt_r_exp
-    ts_affnet_in = ts_compponent[mask_in]
-    ts_affnet_out = ts_compponent[~mask_in]
+    mask_in = ts_component < tilt_r_exp
+    ts_affnet_in = ts_component[mask_in]
+    ts_affnet_out = ts_component[~mask_in]
     phis_affnet_in = phis_component[mask_in]
     phis_affnet_out = phis_component[~mask_in]
 
@@ -498,7 +502,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         ts_phis = img_data.ts_phis[current_ts_phis_idx]
         ts_phis = ts_phis.unsqueeze(0)
     else:
-        ts_phis = get_covering_transformations(ts_compponent, phis_component,
+        ts_phis = get_covering_transformations(ts_component, phis_component,
                                                ts_affnet_out, phis_affnet_out,
                                                ts_affnet_in, phis_affnet_in,
                                                img_name, current_component, normal_index, config)
@@ -518,6 +522,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
             plt.imshow(img_warped)
             plt.show()
 
+        # not normalized by scale, which is good btw.
         kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True)
         if len(kps_warped) == 0:
             continue
@@ -536,6 +541,16 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         kpt_s_back = kpt_s_back.squeeze(2)
 
         laffs_final[0, :, :, 2] = kpt_s_back
+
+        # new, to be checked if is OK - but probably it is..
+        # actually maybe let's use these laffs_final for visualizations and then
+        # return the 'reprojected laffs' -> reprojected by ('t_phi[0], t_phi[1]').inv()
+        # (the inverse will have other components than just t, phi) that is
+
+        invert_first = config.get("invert_first", True)
+        assert invert_first
+        if invert_first:
+            laffs_final[:, :, :, :2] = torch.inverse(laffs_final[:, :, :, :2])
 
         kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
         mask_cmp = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (
@@ -564,13 +579,12 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         scale_l_final = KF.get_laf_scale(laffs_final)
         laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
-        _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(
-            laffs_final_no_scale[:, :, :, :2])
+        _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
 
         mask_in = ts_affnet_final < tilt_r_exp
         append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added"], ts_affnet_final.shape[1], stats_map)
         append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_close"], mask_in.sum().item(), stats_map)
-        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_compponent.shape[0], stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_component.shape[0], stats_map)
         append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_img_size"], img_warped.shape[0] * img_warped.shape[1], stats_map)
 
         Timer.end_check_point("affnet filtering keypoints")
@@ -586,7 +600,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
             phis_affnet_in = phis_affnet_final[mask_in]
             phis_affnet_out = phis_affnet_final[~mask_in]
 
-            label = "rectified: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
+            label = "rectified (Id class/others):\n{}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
             print("{}: count: {}".format(label, ts_affnet_final.shape))
             plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
                 PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
@@ -596,7 +610,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
     return all_kps, all_descs, all_laffs
 
 
-def visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering):
+def visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering, img_data):
 
     ts_affnet_in_or_no_comp = ts[:, mask_in_or_no_component]
     ts_affnet_out = ts[:, ~mask_in_or_no_component]
@@ -606,11 +620,11 @@ def visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering):
     way_out_mask = ts > covering.t_max
 
     # plot_space_of_tilts -> all initial
-    label = "all (near Id or no component/others):\n {}/{}".format(ts_affnet_in_or_no_comp.shape[1],
+    label = "all (Id or no component/others):\n {}/{}".format(ts_affnet_in_or_no_comp.shape[1],
                                                                    ts_affnet_out.shape[1])
     # TODO valid, etc
     print("{}: count: {}".format(label, ts.shape))
-    plot_space_of_tilts(label, img_name, 0, 0, covering.r_max, covering.t_max, [
+    plot_space_of_tilts(label, img_name, list(img_data.valid_components_dict.keys()), None, covering.r_max, covering.t_max, [
         PointsStyle(ts=ts_affnet_in_or_no_comp, phis=phis_affnet_in_or_no_comp, color="b", size=0.5),
         PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
         PointsStyle(ts=ts[way_out_mask], phis=phis[way_out_mask], color="g", size=0.5),
@@ -682,6 +696,9 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     all_kps = [kps for i, kps in enumerate(identity_kps) if mask_to_add[i]] # []
     all_descs = identity_descs[mask_to_add]
     all_laffs = unrectified_laffs[:, mask_to_add]
+    # probably a bug (that the next line was missing) - check that aff_laffs and affnet_lin_maps are actually
+    # not already sharing the data even before this line
+    all_laffs[:, mask_to_add, :, :2] = affnet_lin_maps[:, mask_to_add]
 
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_all"], len(identity_kps), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component"], mask_no_valid_component.sum().item(), stats_map)
@@ -698,7 +715,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     if show_affnet:
         # components - this would require computing the components (again) here
-        visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering)
+        visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering, img_data)
         visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_all)
 
     Timer.end_check_point("affnet_init")
@@ -744,7 +761,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
         phis_affnet_in = phis_affnet_final[mask_in]
         phis_affnet_out = phis_affnet_final[~mask_in]
 
-        label = "all features after rectification: {}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
+        label = "all features after rectification (Id class/others):\n{}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
         print("{}: count: {}".format(label, ts_affnet_final.shape))
         plot_space_of_tilts(label, img_name, "-", "-", covering.r_max, covering.t_max, [
             PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),

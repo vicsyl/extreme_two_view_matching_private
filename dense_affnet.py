@@ -84,8 +84,6 @@ class DenseAffNet(nn.Module):
         N = new_laf_no_center.size(0)
         new_laf = torch.cat([new_laf_no_center, torch.zeros(N, 1, 2, 1)], dim=3)
         ellipse_scale = K.feature.get_laf_scale(new_laf)
-        print("shape: {}".format(new_laf.shape))
-        print("shape: {}".format(K.feature.make_upright(new_laf).shape))
         laf_out_flat = K.feature.scale_laf(K.feature.make_upright(new_laf), 1.0 / ellipse_scale)
         laf_out_flat = laf_out_flat.permute(1, 0, 2, 3)
         laf_out = laf_out_flat.reshape(HH, WW, 2, 3)
