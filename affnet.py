@@ -698,7 +698,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     all_laffs = unrectified_laffs[:, mask_to_add]
     # probably a bug (that the next line was missing) - check that aff_laffs and affnet_lin_maps are actually
     # not already sharing the data even before this line
-    all_laffs[:, mask_to_add, :, :2] = affnet_lin_maps[:, mask_to_add]
+    all_laffs[:, :, :, :2] = affnet_lin_maps[:, mask_to_add]
 
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_all"], len(identity_kps), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component"], mask_no_valid_component.sum().item(), stats_map)
