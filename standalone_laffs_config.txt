@@ -1,0 +1,33 @@
+# AFFNET
+rectify_affine_affnet = True
+affnet_no_clustering = False
+
+# HARD NET
+affnet_compute_laffs = True
+feature_descriptor = HARD_NET
+
+# COVERING
+# mean, dense_cover, sparse_coved, dense_cover_original
+affnet_covering_type = dense_cover
+affnet_covering_fraction_th = 0.95
+affnet_covering_max_iter = 100
+
+# DENSE AFFNET
+affnet_clustering = True
+affnet_dense_affnet_batch = 10000
+affnet_dense_affnet_use_orienter = False
+affnet_clustering_restart_affnet = False
+affnet_dense_affnet_enforce_connected_components = False
+affnet_dense_affnet_cc_fraction_th = 0.03
+
+# FILTERS (mostly for local debugging)
+affnet_hard_net_filter = None
+affnet_dense_affnet_filter = None
+
+# SHOW
+show_affnet = False
+affnet_show_dense_affnet = False
+show_dense_affnet_components = False
+
+# DEFAULTS different:
+affnet_include_all_from_identity = True

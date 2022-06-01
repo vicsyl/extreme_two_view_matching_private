@@ -203,6 +203,30 @@ class CartesianConfig:
     }
 
     @staticmethod
+    def parse_file_for_single_config(file_name):
+        config = CartesianConfig.get_default_cfg()
+
+        # CartesianConfig.config_parse_line(k, v, config)
+        # key == CartesianConfig.config_combination:
+        # if value in [CartesianConfig.max_one_non_default, CartesianConfig.just_one_non_default,
+        #              CartesianConfig.cartesian]:
+
+        with open(file_name) as f:
+            for line in f:
+                if line.strip().startswith("#"):
+                    continue
+                elif line.strip() == "":
+                    continue
+                k, v = line.partition("=")[::2]
+                k = k.strip()
+                v = v.strip()
+                CartesianConfig.config_parse_line(k, v, config)
+
+        all_configs = CartesianConfig.get_configs(config)
+        config, _ = all_configs[0]
+        return config
+
+    @staticmethod
     def get_default_cfg():
         ret = {k: v.default for (k, v) in CartesianConfig.props_handlers.items()}
         return ret

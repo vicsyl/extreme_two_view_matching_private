@@ -122,29 +122,32 @@ class Pipeline:
     connected_components_flood_fill = False
 
     def setup_descriptor(self):
-        feature_descriptor = self.config["feature_descriptor"]
-        n_features = self.config["n_features"]
-        sift_octave_layers = self.config["sift_octave_layers"]
-        sift_contrast_threshold = self.config["sift_contrast_threshold"]
-        sift_edge_threshold = self.config["sift_edge_threshold"]
-        sift_sigma = self.config["sift_sigma"]
+        self.feature_descriptor = Pipeline.setup_descriptor_static(self.config, self.device)
+
+    @staticmethod
+    def setup_descriptor_static(config, device=torch.device("cpu")):
+        feature_descriptor = config["feature_descriptor"]
+        n_features = config["n_features"]
+        sift_octave_layers = config["sift_octave_layers"]
+        sift_contrast_threshold = config["sift_contrast_threshold"]
+        sift_edge_threshold = config["sift_edge_threshold"]
+        sift_sigma = config["sift_sigma"]
 
         if feature_descriptor == "SIFT":
             feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
         elif feature_descriptor == "BRISK":
             feature_descriptor = cv.BRISK_create(n_features)
         elif feature_descriptor == "SUPERPOINT":
-            feature_descriptor = SuperPointDescriptor(path="./superpoint_forked/superpoint_v1.pth", device=self.device)
+            feature_descriptor = SuperPointDescriptor(path="./superpoint_forked/superpoint_v1.pth", device=device)
         elif feature_descriptor == "ROOT_SIFT":
             feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
             feature_descriptor = RootSIFT(feature_descriptor)
         elif feature_descriptor == "HARD_NET":
-            affnet_hard_net_filter = self.config.get("affnet_hard_net_filter", None)
-            affnet_compute_laffs = self.config.get("affnet_compute_laffs", False)
+            affnet_hard_net_filter = config.get("affnet_hard_net_filter", None)
+            affnet_compute_laffs = config.get("affnet_compute_laffs", False)
             feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
-            feature_descriptor = HardNetDescriptor(feature_descriptor, affnet_compute_laffs, filter=affnet_hard_net_filter, device=self.device)
-
-        self.feature_descriptor = feature_descriptor
+            feature_descriptor = HardNetDescriptor(feature_descriptor, affnet_compute_laffs, filter=affnet_hard_net_filter, device=device)
+        return feature_descriptor
 
     @staticmethod
     def configure(config_file_name: str, args):
@@ -585,10 +588,6 @@ class Pipeline:
                 print("process_image done")
 
             elif self.config["rectify_affine_affnet"]:
-
-                # NOTE (remove): use this code and the one starting at line 480, which is:
-                # img_data = affnet_clustering(img, img_name, self.dense_affnet, self.config, self.upsample_early)
-                # img_data.real_K = real_K
 
                 assert isinstance(self.feature_descriptor, HardNetDescriptor), "rectify_affine_affnet on, but without HardNet descriptor"
 

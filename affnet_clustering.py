@@ -85,9 +85,9 @@ def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_na
                     -2: "identity eq. class",
                     -1: "no valid center"}
     l = 3 + len(ts_phis)
-    c = 4 if l > 3 else l
-    r = (l - 1) // 4 + 1
-    fig, axs = plt.subplots(r, c, figsize=(10, 10))
+    columns = 4 if l > 3 else l
+    rows = (l - 1) // 4 + 1
+    fig, axs = plt.subplots(rows, columns, figsize=(10, 10))
     dense_affnet_filter = conf.get("affnet_dense_affnet_filter", None)
     use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
     title = "{} - pixels of shapes covered by covering sets\ndense_affnet_filter={},use_orienter={} ".format(img_name, dense_affnet_filter, use_orienter)
@@ -104,8 +104,9 @@ def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_na
         c = idx % 4
 
         fraction = mask.sum() / pxs * 100
-        axs[r, c].set_title("{} pxs({:.02f}%)\n{}".format(mask.sum(), fraction, center_name))
-        axs[r, c].imshow(mask)
+        axis = axs[r, c] if rows > 1 else axs[c]
+        axis.set_title("{} pxs({:.02f}%)\n{}".format(mask.sum(), fraction, center_name))
+        axis.imshow(mask)
 
     plt.show(block=False)
 
