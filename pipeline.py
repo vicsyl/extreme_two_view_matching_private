@@ -586,6 +586,10 @@ class Pipeline:
 
             elif self.config["rectify_affine_affnet"]:
 
+                # NOTE (remove): use this code and the one starting at line 480, which is:
+                # img_data = affnet_clustering(img, img_name, self.dense_affnet, self.config, self.upsample_early)
+                # img_data.real_K = real_K
+
                 assert isinstance(self.feature_descriptor, HardNetDescriptor), "rectify_affine_affnet on, but without HardNet descriptor"
 
                 # TODO ideally remove this hack
@@ -597,13 +601,15 @@ class Pipeline:
                     conf_to_use["affnet_covering_max_iter"] = 1
                     print()
 
-                img_data.key_points, img_data.descriptions, _ = affnet_rectify(img_name,
-                                                                               self.feature_descriptor,
-                                                                               img_data,
-                                                                               conf_to_use,
-                                                                               device=self.device,
-                                                                               params_key=self.cache_map[Property.all_combinations],
-                                                                               stats_map=self.stats)
+                kpts_struct = affnet_rectify(img_name,
+                                             self.feature_descriptor,
+                                             img_data,
+                                             conf_to_use,
+                                             device=self.device,
+                                             params_key=self.cache_map[Property.all_combinations],
+                                             stats_map=self.stats)
+                img_data.key_points = kpts_struct.kps
+                img_data.descriptions = kpts_struct.descs
 
             else:
 

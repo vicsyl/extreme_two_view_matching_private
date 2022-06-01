@@ -1,6 +1,7 @@
 import kornia as KR
 import kornia.feature as KF
 import numpy
+import torch
 
 import config
 from kornia_utils import *
@@ -10,9 +11,18 @@ from config import CartesianConfig
 
 
 @dataclass
+class KptStruct:
+    kps: list
+    descs: torch.Tensor
+    # possibly inverted
+    laffs: torch.Tensor
+    reprojected_laffs: torch.Tensor
+
+
+@dataclass
 class PointsStyle:
-    ts: torch.tensor
-    phis: torch.tensor
+    ts: torch.Tensor
+    phis: torch.Tensor
     color: str
     size: float
 
@@ -470,7 +480,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                      mask_cmp, ts, phis,
                      current_component, normal_index,
                      config, params_key, stats_map,
-                     all_kps, all_descs, all_laffs):
+                     kpts_struct: KptStruct):
 
     show_affnet = config.get("show_affnet", False)
     affnet_warp_image_show_transformation = config.get("affnet_warp_image_show_transformation", False)
@@ -489,7 +499,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
     if ts_affnet_out.shape[0] == 0:
         print("Component no {} will be skipped from rectification, no features with a large tilt".format(current_component))
-        return all_kps, all_descs, all_laffs
+        return
 
     if current_component is not None:
         mask_img_component = torch.from_numpy(img_data.components_indices == current_component)
@@ -542,7 +552,10 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         laffs_final[0, :, :, 2] = kpt_s_back
 
-        # new, to be checked if is OK - but probably it is..
+        laffs_reprojected = laffs_final.clone()
+        laffs_reprojected[:, :, :, :2] = laffs_reprojected[:, :, :, :2] @ aff_maps_inv[:, :, :2]
+
+        # new, to be checked if it is OK - but probably it is..
         # actually maybe let's use these laffs_final for visualizations and then
         # return the 'reprojected laffs' -> reprojected by ('t_phi[0], t_phi[1]').inv()
         # (the inverse will have other components than just t, phi) that is
@@ -572,11 +585,15 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         descs = descs_warped[mask_cmp.numpy()]
 
         laffs_final = laffs_final[:, mask_cmp]
+        laffs_reprojected = laffs_reprojected[:, mask_cmp]
 
-        all_kps.extend(kps)
-        all_descs = np.vstack((all_descs, descs))
-        all_laffs = torch.cat((all_laffs, laffs_final), 1)
+        kpts_struct.kps.extend(kps)
+        kpts_struct.descs = np.vstack((kpts_struct.descs, descs))
+        kpts_struct.laffs = torch.cat((kpts_struct.laffs, laffs_final), 1)
+        kpts_struct.reprojected_laffs = torch.cat((kpts_struct.reprojected_laffs, laffs_reprojected), 1)
 
+        # unscaled data etc. is just for stats or even for visualizations
+        # TODO refactor - do_stats(_and_viz)..
         scale_l_final = KF.get_laf_scale(laffs_final)
         laffs_final_no_scale = KF.scale_laf(laffs_final, 1. / scale_l_final)
         _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
@@ -606,8 +623,6 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                 PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
                 PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
             ], show_affnet)
-
-    return all_kps, all_descs, all_laffs
 
 
 def visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering, img_data):
@@ -639,17 +654,18 @@ def visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_a
     # visualize_LAF_custom(t_img_all, unrectified_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
 
-def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torch.device('cpu'), params_key="", stats_map={}):
+def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key="", stats_map={}, device=torch.device('cpu')):
     """ This seems to do a lot, but it just
         a) compute the HardNet kps, descs and lafs
         b) iterates over connected components (of clustered normals or covered sets of lafs) and calls
+        NOTE: there was an idea of returning the 'unrectified_indices'
     :param img_name:
     :param hardnet_descriptor:
     :param img_data:
     :param conf_map:
-    :param device:
     :param params_key:
     :param stats_map:
+    :param device:
     :return:
     """
 
@@ -675,11 +691,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     else:
         kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, unrectified_laffs)
 
-    laffs_scale = KF.get_laf_scale(unrectified_laffs)
-    laffs_no_scale = KF.scale_laf(unrectified_laffs, 1. / laffs_scale)
-
-    affnet_lin_maps = laffs_no_scale[:, :, :, :2]
-
+    affnet_lin_maps = unrectified_laffs[:, :, :, :2]
+    orig_laffs_identity = unrectified_laffs[:, :, :, :2]
     # NOTE to be removed - still here because of the questionable idea of backward compatibility
     invert_first = conf_map.get("invert_first", True)
     assert invert_first
@@ -696,9 +709,15 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
     all_kps = [kps for i, kps in enumerate(identity_kps) if mask_to_add[i]] # []
     all_descs = identity_descs[mask_to_add]
     all_laffs = unrectified_laffs[:, mask_to_add]
+    reprojected_laffs = unrectified_laffs[:, mask_to_add]
     # probably a bug (that the next line was missing) - check that aff_laffs and affnet_lin_maps are actually
     # not already sharing the data even before this line
     all_laffs[:, :, :, :2] = affnet_lin_maps[:, mask_to_add]
+    reprojected_laffs[:, :, :, :2] = orig_laffs_identity[:, mask_to_add]
+    kpts_struct = KptStruct(kps=all_kps,
+                            descs=all_descs,
+                            laffs=all_laffs,
+                            reprojected_laffs=reprojected_laffs)
 
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_all"], len(identity_kps), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component"], mask_no_valid_component.sum().item(), stats_map)
@@ -728,11 +747,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
         print("processing all components at once - no clustering")
         mask_cmp = torch.ones_like(kpts_component_indices, dtype=torch.bool)
-        all_kps, all_descs, all_laffs = add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
+        add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                          mask_cmp, ts, phis,
                          None, None,
                          conf_map, params_key, stats_map,
-                         all_kps, all_descs, all_laffs)
+                         kpts_struct)
 
     else:
         for current_component in img_data.valid_components_dict:
@@ -741,18 +760,18 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
             print("processing component->normal: {} -> {}".format(current_component, normal_index))
             mask_cmp = kpts_component_indices == current_component
 
-            all_kps, all_descs, all_laffs = add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
+            add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                              mask_cmp, ts, phis,
                              current_component, normal_index,
                              conf_map, params_key, stats_map,
-                             all_kps, all_descs, all_laffs)
+                             kpts_struct)
 
     if show_affnet:
         title = "{} - all features after rectification".format(img_name)
-        visualize_LAF_custom(t_img_all, all_laffs, title=title, figsize=(8, 12))
+        visualize_LAF_custom(t_img_all, kpts_struct.laffs, title=title, figsize=(8, 12))
 
-        all_scales = KF.get_laf_scale(all_laffs)
-        all_laffs_no_scale = KF.scale_laf(all_laffs, 1. / all_scales)
+        all_scales = KF.get_laf_scale(kpts_struct.laffs)
+        all_laffs_no_scale = KF.scale_laf(kpts_struct.laffs, 1. / all_scales)
         _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(all_laffs_no_scale[:, :, :, :2])
 
         mask_in = ts_affnet_final < covering.r_max
@@ -770,8 +789,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, device=torc
 
     Timer.end_check_point("affnet_rectify")
 
-    unrectified_indices = None
-    return all_kps, all_descs, unrectified_indices
+    return kpts_struct
 
 
 def draw_test():
