@@ -67,9 +67,42 @@ def get_rectification_rotations(normals, device=torch.device('cpu')):
     return R
 
 
+def homographies_jacobians(Hs, xs_hom, device):
+    """
+    :param Hs:(B, 3, 3)
+    :param xs_hom:(B, 3)
+    :param device:
+    :return: jacobian(B, 3, 3)
+    """
+
+    B1, three1, three2 = Hs.shape
+    assert three1 == 3
+    assert three2 == 3
+
+    B2, three3 = xs_hom.shape
+    assert three3 == 3
+    assert B2 == B1
+
+    ys_hom = Hs @ xs_hom[:, :, None]
+    ys_hom = ys_hom[:, :, 0]
+    ys_hom[:, :2] = ys_hom[:, :2] / ys_hom[:, 2:]
+
+    # J = [[ h11 - y1 * h31, h12 - y1 * h32 ],   /  (h31*x1 + h32*x2 + h33) = ys_hom[:. 2]
+    #      [ h21 - y2 * h31, h22 - y2 * h32 ]]  /
+    jacobian = torch.zeros_like(Hs, device=device)
+    jacobian[:, 2, 2] = 1.0
+    jacobian[:, 0, 0] = Hs[:, 0, 0] - ys_hom[:, 0] * Hs[:, 2, 0]
+    jacobian[:, 0, 1] = Hs[:, 0, 1] - ys_hom[:, 0] * Hs[:, 2, 1]
+    jacobian[:, 1, 0] = Hs[:, 1, 0] - ys_hom[:, 1] * Hs[:, 2, 0]
+    jacobian[:, 1, 1] = Hs[:, 1, 1] - ys_hom[:, 1] * Hs[:, 2, 1]
+    jacobian[:, :2, :2] = jacobian[:, :2, :2] / ys_hom[:, 2:, None]
+    return jacobian
+
+
 def decompose_homographies(Hs, device):
     """
     :param Hs:(B, 3, 3)
+    :param device:
     :return: pure_homographies(B, 3, 3), affine(B, 3, 3)
     """
 
@@ -116,5 +149,29 @@ def t_get_rectification_rotations():
     get_rectification_rotations(data, device=torch.device('cpu'))
 
 
+def sanity_check_homographies_jacobians():
+
+    def batched_eye_local(B, D):
+        eye = torch.eye(D)[None].repeat(B, 1, 1)
+        return eye
+
+    B_C = 1000
+    Hs = batched_eye_local(B_C, 3) + (torch.randn(B_C, 3, 3) - 0.5) / 10
+    Hs[:, 2, :2] = 0
+    # Hs are affine ...
+    Hs[:, 2, 2] = 1.0
+
+    xs_hom = torch.ones(B_C, 3) + (torch.randn(B_C, 3) - 0.5) / 10
+    xs_hom[:, 2] = 1.0
+
+    affines1 = homographies_jacobians(Hs, xs_hom, device=torch.device('cpu'))
+    _, affines2 = decompose_homographies(Hs, device=torch.device('cpu'))
+
+    # ... which would result in the same affine maps from the two methods (except of the translation component)
+    affines2[:, :2, 2] = 0.0
+    assert torch.allclose(affines1, affines2)
+
+
 if __name__ == "__main__":
     t_get_rectification_rotations()
+    sanity_check_homographies_jacobians()

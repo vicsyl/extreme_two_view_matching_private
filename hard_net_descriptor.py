@@ -9,7 +9,7 @@ from kornia_moons.feature import *
 from affnet import show_sets_of_linear_maps
 from transforms import get_rectification_rotations
 from utils import Timer
-from transforms import decompose_homographies
+from transforms import decompose_homographies, homographies_jacobians
 
 """
 DISCLAIMER: taken from https://github.com/kornia/kornia-examples/blob/master/MKD_TFeat_descriptors_in_kornia.ipynb
@@ -130,7 +130,7 @@ class HardNetDescriptor:
 
         return descs.detach().cpu().numpy(), lafs_to_use.detach().cpu()
 
-    def get_lafs_from_normals(self, cv2_sift_kpts, timg):
+    def get_Hs_from_custom_normals(self, cv2_sift_kpts, timg):
 
         kps_long = torch.tensor([[kp.pt[0] + 0.5, kp.pt[1] + 0.5] for kp in cv2_sift_kpts], dtype=torch.long, device=self.device)
         in_img_mask = kps_long[:, 0] >= 0
@@ -145,16 +145,39 @@ class HardNetDescriptor:
         Rs = get_rectification_rotations(normals, self.device)
         K_torch = torch.from_numpy(self.custom_K).to(dtype=torch.float32, device=self.device)
         Hs = K_torch @ Rs @ torch.inverse(K_torch)
-        Hs_pure, affines = decompose_homographies(Hs, self.device)
+        return Hs
+
+    def batch_and_invert_affines(self, affines, cv2_sift_kpts, timg):
 
         affines = affines[None, :, :2, :]
         visualise = False
         if visualise:
             self.visualize_lafs(affines.clone(), cv2_sift_kpts, timg)
-
         affines[:, :, :, :2] = torch.inverse(affines[:, :, :, :2])
+        return affines
+
+    def update_translations_from_cv2(self, affines, cv2_sift_kpts):
+
         locations = torch.tensor([list(cv_kpt.pt) for cv_kpt in cv2_sift_kpts], device=self.device)
         affines[0, :, :, 2] = locations
+        return affines
+
+    def get_lafs_from_normals_old(self, cv2_sift_kpts, timg):
+
+        Hs = self.get_Hs_from_custom_normals(cv2_sift_kpts, timg)
+        # the problem is also that the translation component is not zero (but will be updated below)
+        _, affines = decompose_homographies(Hs, self.device)
+        affines = self.batch_and_invert_affines(affines, cv2_sift_kpts, timg)
+        affines = self.update_translations_from_cv2(affines, cv2_sift_kpts)
+        return affines
+
+    def get_lafs_from_normals(self, cv2_sift_kpts, timg):
+
+        Hs = self.get_Hs_from_custom_normals(cv2_sift_kpts, timg)
+        points_hom = torch.tensor([(*cv2_sift_kpt.pt, 1) for cv2_sift_kpt in cv2_sift_kpts], device=self.device)
+        affines = homographies_jacobians(Hs, points_hom, self.device)
+        affines = self.batch_and_invert_affines(affines, cv2_sift_kpts, timg)
+        affines[:, :, :, 2] = points_hom[:, :2]
         return affines
 
     def visualize_lafs(self, affines2x3, cv2_sift_kpts, timg):
