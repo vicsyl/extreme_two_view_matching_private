@@ -562,14 +562,12 @@ class Pipeline:
                         components_indices = components_indices.astype(dtype=np.uint32)
 
                     components_out_path = "{}/{}_cluster_connected_components".format(img_processing_dir, img_name)
-                    # TODO this I think should blow up! : img=img, non_sky_mask=non_sky_mask)
                     get_and_show_components(components_indices,
                                             valid_components_dict,
                                             normals=normals_clusters_repr,
                                             show=self.show_clustered_components,
                                             save=self.save_clustered_components,
-                                            path=components_out_path,
-                                            file_name=depth_data_file_name[:-4], img=img, non_sky_mask=non_sky_mask)
+                                            path=components_out_path)
 
                     img_data = ImageData(img=img,
                                          real_K=real_K,
