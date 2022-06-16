@@ -1,0 +1,151 @@
+device = cpu
+
+# PIPELINE
+
+# cartesian, max_one_non_default, just_one_non_default
+config_combination = cartesian
+
+# compute_normals, compute_normals_compare run_sequential_pipeline, run_matching_pipeline
+method = run_matching_pipeline
+
+# SCENE
+
+#scene_name = phototourism/st_peters_square
+scene_name = scene1
+file_name_suffix = .jpg
+# 'orig' or 'google'
+scene_type = orig
+
+matching_difficulties_min = 0
+matching_difficulties_max = 1
+matching_limit = 1
+
+# local matching pipeline prop
+matching_pairs = frame_0000001350_2_frame_0000000475_1
+
+rectify = True
+feature_descriptor = HARD_NET
+
+# AFFNET
+
+affnet_custom_depth_lafs = False
+
+rectify_affine_affnet = True
+affnet_no_clustering = False
+
+# HARD NET
+affnet_compute_laffs = True
+
+# COVERING
+# mean, dense_cover, sparse_coved, dense_cover_original
+affnet_covering_type = dense_cover
+affnet_covering_fraction_th = 0.95
+affnet_covering_max_iter = 100
+
+# DENSE AFFNET
+affnet_clustering = True
+affnet_dense_affnet_batch = 10000
+affnet_dense_affnet_use_orienter = True
+affnet_clustering_restart_affnet = False
+affnet_dense_affnet_enforce_connected_components = False
+affnet_dense_affnet_cc_fraction_th = 0.03
+
+# FILTERS
+affnet_hard_net_filter = None
+affnet_dense_affnet_filter = None
+
+
+# SHOW & SAVE & CACHE
+
+show_affnet = True
+
+affnet_show_dense_affnet = True
+show_dense_affnet_components = True
+
+show_input_img = True
+show_matching = True
+show_clusters = True
+show_clustered_components = True
+show_rectification = True
+show_sky_mask = True
+affnet_warp_image_show_transformation = True
+
+save_clusters = False
+save_matching = False
+save_clustered_components = False
+save_rectification = False
+save_sky_mask = False
+
+use_cached_img_data = False
+
+
+# DEFAULTS different:
+affnet_include_all_from_identity = True
+do_flann = False
+
+
+# CLUSTER VS. LOCAL
+
+# local: set via the command line: output_dir = work/pipeline_wc
+# local:
+# matching_pairs = frame_0000001555_4_frame_0000000945_4
+
+# cluster
+# output_dir_prefix = work/pipeline
+
+
+# USED SOMETIMES
+# sequential_files_limit = 1
+# permutation_limit = 200
+
+# DEFAULTS
+
+# clip_angle = None
+# connected_components_closing_size = None
+# connected_components_flood_fill = False
+# connected_components_connectivity = 4
+# upsample_early = True
+# use_degensac = False
+# estimate_k = False
+# focal_point_mean_factor = 0.5
+# knn_ratio_threshold = 0.85
+# angle_distance_threshold_degrees = 35
+
+# SIFT
+# n_features = None
+# sift_contrast_threshold = 0.04
+# TOFT: sift_contrast_threshold = 0.03
+
+# may be (interesting)
+# img_read_mode = None
+# tried: img_read_mode = RGB
+# img_max_size = None
+# tried: img_max_size = 1000
+# final, before_matching, before_rectification
+# pipeline_final_step = final
+# rotation_alpha1 = 1.0
+# rotation_alpha2 = 1.0
+# rectify_by_fixed_rotation = False
+# rectify_by_0_around_z = False
+# rectify_by_GT = False
+# filter_sky = True
+# singular_value_quantil = 1.0
+# mean_shift_type = mean
+# handle_antipodal_points = False
+# all_unrectified = False
+# ransac_th = 0.5
+# ransac_conf = 0.9999
+# ransac_iters = 100000
+
+# FGINN
+# fginn = False
+# num_nn = 2
+# fginn_spatial_th = 100 # or maybe 15
+# ratio_th = 0.5 # or 0.85
+
+# planes_based_matching = False
+
+
+# REMOVED
+# use_hardnet = True
+# use_rootsift = True
