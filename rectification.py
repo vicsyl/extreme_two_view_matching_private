@@ -11,7 +11,7 @@ from connected_components import get_and_show_components, read_img_normals_info,
 from img_utils import show_or_close
 from resize import resample_nearest_numpy
 from scene_info import SceneInfo
-from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix_safe
+from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix, get_rotation_matrix_safe
 
 
 def get_rectification_rotation(normal, rotation_factor=1.0):

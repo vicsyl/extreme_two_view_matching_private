@@ -265,19 +265,26 @@ def opt_conv_draw(ax, ts_phis, color, size, shape='o'):
     ax.plot(xs, ys, shape, color=color, markersize=size)
 
 
-def opt_cov_prepare_plot(cov_params: CoveringParams, title):
+# NOTE probably can be inline
+def set_cov_axis(cov_params: CoveringParams, ax):
+    log_max_radius = math.log(cov_params.t_max)
+    factor = 1.2
+    abs_lim = factor * log_max_radius
+    ax.set_xlim((-abs_lim, abs_lim))
+    ax.set_ylim((-abs_lim, abs_lim))
+
+
+def opt_cov_prepare_plot(cov_params: CoveringParams, title=None):
 
     fig, ax = plt.subplots(figsize=(10, 10))
-    plt.title(title)
+    if title is not None:
+        plt.title(title)
 
     log_max_radius = math.log(cov_params.t_max)
     log_unit_radius = math.log(cov_params.r_max)
 
     ax.set_aspect(1.0)
-
-    factor = 1.2
-    ax.set_xlim((-factor * log_max_radius, factor * log_max_radius))
-    ax.set_ylim((-factor * log_max_radius, factor * log_max_radius))
+    set_cov_axis(cov_params, ax)
 
     circle = Circle((0, 0), log_max_radius, color='r', fill=False)
     ax.add_artist(circle)

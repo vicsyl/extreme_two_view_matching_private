@@ -1,9 +1,42 @@
+import imp
 import math
 import time
 
 import matplotlib.pyplot as plt
 import cv2 as cv
 import numpy as np
+
+
+def np_rgb_mask(np_img):
+    mask = np.logical_and(np_img[:, :, 0] == 0, np_img[:, :, 1] == 0)
+    mask = np.logical_and(mask, np_img[:, :, 2] == 0)
+    return mask
+
+
+# TODO definitely clean this up!!
+# TODO the title doesn't really work!!
+def create_plot_only_img(title, img_np, h_size_inches=10, transparent=False, show_axis=False):
+
+    fig = plt.figure(frameon=False, figsize=(h_size_inches, h_size_inches * img_np.shape[0] / img_np.shape[1]))
+
+    if transparent:
+        data_to_show = np.ones((*img_np.shape[:2], 4), dtype=int) * 255
+        data_to_show[:, :, :3] = img_np
+        mask = np_rgb_mask(data_to_show)
+        data_to_show[mask, 3] = 0
+    else:
+        data_to_show = img_np
+
+    fig.patch.set_facecolor('black')
+    fig.patch.set_alpha(0.0)
+    if not show_axis:
+        ax = plt.Axes(fig, [0., 0., 1., 1.])
+        ax.set_axis_off()
+    fig.add_axes(ax)
+    if title is not None:
+        plt.title(title)
+    plt.imshow(data_to_show)
+    return fig
 
 
 # does not look work so well

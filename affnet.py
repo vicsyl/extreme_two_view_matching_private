@@ -1,5 +1,6 @@
 import kornia as KR
 import kornia.feature as KF
+import matplotlib.pyplot as plt
 import numpy
 import torch
 
@@ -376,6 +377,50 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
     return img_tilt, affine_transform
 
 
+# TODO possibly move it to coverings
+# TODO many things are duplicated
+# TODO I am afraid the transparency is not handled (i.e. it's enabled somewhere else)
+def prepare_coverings_plot(covering_params, data, winning_centers, with_title, with_axis):
+
+    # TODO handle the colors
+    colors = ["r", "g", "b", "y"]
+    colors_unrolled = [colors[i % len(colors)] for i in range(len(winning_centers) - 1, -1, -1)]
+
+    if with_title:
+        title = "Covering the space of tilts:\n not-covered - black, identity eq. class - cyan".format(", ".join(colors_unrolled))
+    else:
+        title = None
+
+    ax = opt_cov_prepare_plot(covering_params, title)
+    if not with_axis:
+        ax.set_axis_off()
+
+    opt_conv_draw(ax, data, "k", 1.0)
+
+    for i in range(len(winning_centers) - 1, -1, -1):
+        wc = winning_centers[i]
+        color = colors_unrolled[i]
+        draw_covered_data(ax, wc, data, covering_params.r_max, color)
+        opt_conv_draw(ax, wc, "k", 8.0, shape="x")
+
+    draw_identity_data(ax, data, covering_params.r_max)
+
+
+def potentially_show_sof(covering_params, data, winning_centers, config):
+
+    show_affnet = config.get(CartesianConfig.show_affnet, False)
+    if show_affnet:
+        prepare_coverings_plot(covering_params, data, winning_centers, with_title=True, with_axis=True)
+        plt.show(block=False)
+
+    save_affnet_coverings = config.get(CartesianConfig.save_affnet_coverings, False)
+    if save_affnet_coverings:
+        prepare_coverings_plot(covering_params, data, winning_centers, with_title=False, with_axis=False)
+        # TODO externalize the path
+        plt.savefig("./work/covering_dense", dpi=48)
+        plt.close()
+
+
 def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis, config, return_cover_idxs=False, valid_px_mask=None):
     """
     :param covering_params:
@@ -394,7 +439,6 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
 
     covering_fraction_th = config["affnet_covering_fraction_th"]
     covering_max_iter = config["affnet_covering_max_iter"]
-    show_affnet = config.get("show_affnet", False)
 
     covering_coords = covering_params.covering_coordinates()
     data = torch.vstack((data_all_ts, data_all_phis))
@@ -409,23 +453,7 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
         cover_idxs = ret_winning_centers[1]
         ret_winning_centers = ret_winning_centers[0]
 
-    if show_affnet:
-        colors = ["r", "g", "b", "y"]
-        colors_unrolled = [colors[i % len(colors)] for i in range(len(ret_winning_centers) - 1, -1, -1)]
-
-        title = "Covering the space of tilts:\n not-covered - black, identity eq. class - cyan".format(", ".join(colors_unrolled))
-        ax = opt_cov_prepare_plot(covering_params, title=title)
-        opt_conv_draw(ax, data, "k", 1.0)
-
-        for i in range(len(ret_winning_centers) - 1, -1, -1):
-            wc = ret_winning_centers[i]
-            color = colors_unrolled[i]
-            draw_covered_data(ax, wc, data, covering_params.r_max, color)
-            opt_conv_draw(ax, wc, "k", 8.0, shape="x")
-
-        draw_identity_data(ax, data, covering_params.r_max)
-
-        plt.show()
+    potentially_show_sof(covering_params, data, ret_winning_centers, config)
 
     if return_cover_idxs:
         return ret_winning_centers, cover_idxs

@@ -118,6 +118,7 @@ class CartesianConfig:
     affnet_custom_depth_lafs = "affnet_custom_depth_lafs"
     affnet_clustering = "affnet_clustering"
     affnet_show_dense_affnet = "affnet_show_dense_affnet"
+    affnet_save_dense_affnet = "affnet_save_dense_affnet"
     affnet_dense_affnet_batch = "affnet_dense_affnet_batch"
     affnet_dense_affnet_filter = "affnet_dense_affnet_filter"
     affnet_dense_affnet_use_orienter = "affnet_dense_affnet_use_orienter"
@@ -126,6 +127,10 @@ class CartesianConfig:
     affnet_clustering_restart_affnet = "affnet_clustering_restart_affnet"
 
     show_dense_affnet_components = "show_dense_affnet_components"
+
+    # TODO rename / make finer grained
+    show_affnet = "show_affnet"
+    save_affnet_coverings = "save_affnet_coverings"
 
     props_handlers = {
 
@@ -168,7 +173,8 @@ class CartesianConfig:
         "affnet_max_tilt_r": Property("float", default=5.8, cache=Property.cache_img_data, list_allowed=True),
         "affnet_hard_net_filter": Property("int", default=None, optional=True, cache=Property.cache_img_data, list_allowed=False),
         "affnet_compute_laffs": Property("bool", default=False, optional=False, cache=Property.cache_img_data, list_allowed=True),
-        "show_affnet": Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=True),
+        show_affnet: Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=True),
+        save_affnet_coverings: Property("bool", default=False, optional=True, cache=Property.cache_img_data, list_allowed=True),
         "affnet_include_all_from_identity": Property("bool", default=False, optional=True, cache=Property.cache_img_data),
         "affnet_covering_type": Property("enum", default="dense_cover", cache=Property.cache_img_data, optional=False, list_allowed=True, allowed_values=["mean", "dense_cover", "sparse_cover", "dense_cover_original"]),
         "affnet_covering_fraction_th": Property("float", default=0.9, cache=Property.cache_img_data, optional=False, list_allowed=True),
@@ -177,6 +183,7 @@ class CartesianConfig:
         affnet_custom_depth_lafs: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
         affnet_clustering: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
         affnet_show_dense_affnet: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
+        affnet_save_dense_affnet: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
         affnet_dense_affnet_batch: Property("int", default=None, cache=Property.cache_img_data, optional=True, list_allowed=True),
         affnet_dense_affnet_filter: Property("int", default=None, cache=Property.cache_img_data, optional=True, list_allowed=True),
         affnet_dense_affnet_use_orienter: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),

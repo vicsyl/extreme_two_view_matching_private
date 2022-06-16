@@ -4,8 +4,12 @@ import os
 import cv2 as cv
 import matplotlib.pyplot as plt
 import glob
+
+import torch
+
 from utils import Timer, identity_map_from_range_of_iter, merge_keys_for_same_value
-from img_utils import show_or_close
+from img_utils import *
+import torch.nn as nn
 
 # original_input_dir - to scene info
 def read_img_normals_info(parent_dir, img_name_dir):
@@ -26,6 +30,99 @@ def read_img_normals_info(parent_dir, img_name_dir):
     return normals, normal_indices
 
 
+# def get_and_show_components_inner(cluster_indices, valid_component_dict, title=None, normals=None, show=True, save=False, path=None, file_name=None, filter=None, img=None, non_sky_mask=None):
+#
+#     colors = [
+#         [255, 255, 0],
+#         [255, 0, 0],
+#         [0, 255, 0],
+#         [0, 0, 255],
+#         [255, 0, 255],
+#         [0, 255, 255],
+#         [128, 0, 0],
+#         [0, 128, 0],
+#         [0, 0, 128],
+#     ]
+#
+#     # TODO instead of listing the colors lets add them to the legend
+#     color_names = [
+#         "red",
+#         "green",
+#         "blue",
+#         "yellow",
+#         "magenta",
+#         "cyan",
+#         "maroon",
+#         "dark green",
+#         "navy"
+#     ]
+#
+#     if img is None:
+#         cluster_colors = np.zeros((cluster_indices.shape[0], cluster_indices.shape[1], 3), dtype=np.int32)
+#
+#         if non_sky_mask is not None and filter.__contains__(-1):
+#             cluster_colors[non_sky_mask == 1] = [0, 0, 128]
+#         else:
+#             for i, c_index in enumerate(valid_component_dict.keys()):
+#                 if filter is None or filter.__contains__(c_index):
+#                     cluster_colors[cluster_indices == c_index] = colors[i % 9]
+#
+#         mask = 1 - np_rgb_mask(cluster_colors)
+#         indices = np.where(mask)
+#         min0 = indices[0].min()
+#         max0 = indices[0].max() + 1
+#         min1 = indices[1].min()
+#         max1 = indices[1].max() + 1
+#         cropped = np.zeros((max0 - min0, max1 - min1, 3))
+#         cropped[:, :] = cluster_colors[min0:max0, min1:max1]
+#         cluster_colors = cropped
+#
+#     else:
+#         cluster_colors = np.copy(img)
+#         for i, c_index in enumerate(valid_component_dict.keys()):
+#             if filter is None or filter.__contains__(c_index):
+#                 for rgb_index in range(3):
+#                     if colors[i % 9][rgb_index] == 0:
+#                         cluster_colors[cluster_indices == c_index, rgb_index] = 0
+#
+#         if non_sky_mask is not None:
+#             cluster_colors[non_sky_mask == 0, :2] = 0
+#             cluster_colors[non_sky_mask == 0, 2] = 128 # cluster_colors[non_sky_mask == 0, 2] / 2
+#
+#     if show or save:
+#
+#         if img is not None:
+#             plt.figure()
+#             plt.imshow(img)
+#             plt.show(block=False)
+#
+#         if title is None:
+#             title = "{} - (connected) components: \n".format(file_name)
+#             new_component_dict = {}
+#             for i, c_index in enumerate(valid_component_dict.keys()):
+#                 new_component_dict[i] = valid_component_dict[c_index]
+#             merged_dict = merge_keys_for_same_value(new_component_dict)
+#             for merged_values in merged_dict:
+#                 cur_colors_names = ", ".join([color_names[val % 9] for val in merged_values])
+#                 if normals is not None:
+#                     title = "{}[{}]={}={},\n".format(title, cur_colors_names, normals[merged_dict[merged_values]],
+#                                                      merged_dict[merged_values])
+#                 else:
+#                     title = "{}[{}]={},\n".format(title, cur_colors_names, merged_dict[merged_values])
+#
+#         create_plot_only_img(title, cluster_colors, 10, transparent=img is None)
+#
+#         save = True
+#         if save:
+#             # plt.savefig("foo.png", dpi=24, transparent=True)
+#             # 'work/pipeline_scene1_333/imgs//frame_0000001350_2_cluster_connected_components'
+#             plt.savefig(path, dpi=24, transparent=True, facecolor=(0.0, 0.0, 0.0, 0.0))
+#             # plt.savefig(path, dpi=24, transparent=True)
+#         show_or_close(show)
+#
+#     return cluster_colors
+
+
 def get_and_show_components(cluster_indices, valid_component_dict, title=None, normals=None, show=True, save=False, path=None, file_name=None):
 
     colors = [
@@ -33,20 +130,20 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
         [0, 255, 0],
         [0, 0, 255],
         [255, 255, 0],
-        [255, 0, 255],
+        [0, 0, 0], # [255, 0, 255],
         [0, 255, 255],
         [128, 0, 0],
         [0, 128, 0],
         [0, 0, 128],
     ]
 
-    # TODO instead of listing the colors lets add them to the legend
+    # TODO instead of listing the colors let's add them to the legend
     color_names = [
         "red",
         "green",
         "blue",
         "yellow",
-        "magenta",
+        "black", #"magenta",
         "cyan",
         "maroon",
         "dark green",
@@ -57,10 +154,16 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
     for i, c_index in enumerate(valid_component_dict.keys()):
         cluster_colors[np.where(cluster_indices == c_index)] = colors[i % 9]
 
-    plt.figure(figsize=(10, 10))
+    # TODO clean up
+    size_h = 10
+    fig = plt.figure(figsize=(size_h, size_h * cluster_colors.shape[0] / cluster_colors.shape[1]))
+    ax = plt.Axes(fig, [0., 0., 1., 1.])
+    ax.set_axis_off()
+    fig.add_axes(ax)
 
     if title is not None:
         plt.title(title)
+    # TODO this was commented out to suppress setting the title...
     else:
         title = "{} - (connected) components: \n".format(file_name)
         new_component_dict = {}
@@ -78,12 +181,45 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
 
     plt.imshow(cluster_colors)
     if save:
-        plt.savefig(path)
+        full_path = "{}/{}".format(path, file_name)
+        print("saving to {}".format(full_path))
+        plt.savefig(full_path)
 
     show_or_close(show)
     return cluster_colors
 
 
+# def get_and_show_components_new(cluster_indices, valid_component_dict, title=None, normals=None, show=True, save=False, path=None, file_name=None, iterate_through_all=False, img=None, non_sky_mask=None):
+#
+#     def non_valid_mask(cluster_indices, valid_component_dict):
+#         print("non_valid_mask cluster_indices.shape: {}".format(cluster_indices.shape))
+#
+#         mask = np.zeros(cluster_indices.shape)
+#         for k in valid_component_dict.keys():
+#             mask = np.logical_or(mask, cluster_indices == k)
+#         ret = 1 - mask
+#         print("non_valid_mask shape: {}".format(ret.shape))
+#         print("non_valid_mask sum: {}".format(ret.sum()))
+#         return ret
+#
+#     magic = 1000000
+#     mask = non_valid_mask(cluster_indices, valid_component_dict)
+#     cluster_indices[mask] = magic
+#     #valid_component_dict[magic] = magic
+#
+#     upsample = nn.Upsample(size=cluster_indices.shape, mode='nearest')
+#     t = torch.from_numpy(non_sky_mask)
+#     non_sky_mask = upsample(t[None, None].to(float))[0, 0].to(bool).numpy()
+#
+#     cluster_colors = get_and_show_components_inner(cluster_indices, valid_component_dict, title, normals, show, save, path, file_name, filter=None, img=img, non_sky_mask=non_sky_mask)
+#     iterate_through_all = True
+#     if iterate_through_all:
+#         for k in valid_component_dict.keys():
+#             get_and_show_components_inner(cluster_indices, valid_component_dict, title, normals, show, save, "{}_{}".format(path, k), file_name, filter={k}, img=None, non_sky_mask=non_sky_mask)
+#         get_and_show_components_inner(cluster_indices, valid_component_dict, title, normals, show, save, "{}_{}".format(path, "sky"), file_name, filter={-1}, img=None, non_sky_mask=1-non_sky_mask)
+#     return cluster_colors
+#
+#
 def circle_like_ones(size):
     ret = np.ones((size, size), np.uint8)
     r_check = (size / 2 - 0.4) ** 2

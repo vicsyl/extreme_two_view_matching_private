@@ -8,6 +8,46 @@ import cv2 as cv
 from resize import upsample_bilinear
 import torch.nn.functional as F
 import kornia.geometry as KG
+import torch.nn as nn
+
+
+# TODO option: frame or mask sensitive
+def adjust_affine_transform(components_indices, index, A):
+    def add_third_row(column_vecs):
+        return np.vstack((column_vecs, np.ones(column_vecs.shape[1])))
+
+    coords = np.float32([[0.0, 0.0, 1.0],
+                         [components_indices.shape[1] + 1, 0.0, 1.0],
+                         [components_indices.shape[1] + 1, components_indices.shape[0] + 1, 1.0],
+                         [0.0, components_indices.shape[0] + 1, 1.0]])
+    coords = np.transpose(coords)
+
+    new_coords = A @ coords
+    new_coords = new_coords / new_coords[2, :]
+
+    min_row = min(new_coords[1])
+    max_row = max(new_coords[1])
+    min_col = min(new_coords[0])
+    max_col = max(new_coords[0])
+
+    dst = np.float32([[min_col, min_row], [min_col, max_row - 1], [max_col - 1, max_row - 1], [max_col - 1, min_row]])
+    dst = np.transpose(dst)
+    dst = add_third_row(dst)
+
+    print("coords: {}".format(coords))
+    print("dst: {}".format(dst))
+
+    translate_vec_new = (-np.min(dst[0]), -np.min(dst[1]))
+    translate_matrix_new = np.array([
+        [1, 0, translate_vec_new[0]],
+        [0, 1, translate_vec_new[1]],
+        [0, 0, 1],
+    ])
+
+    bounding_box = (math.ceil(max_col - min_col), math.ceil(max_row - min_row))
+
+    A = translate_matrix_new @ A
+    return A, bounding_box
 
 
 def ensure_key(map, key):

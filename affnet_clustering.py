@@ -12,6 +12,8 @@ from connected_components import *
 from depth_to_normals import show_sky_mask
 import kornia.feature as KF
 from config import CartesianConfig
+from utils import adjust_affine_transform
+from img_utils import create_plot_only_img
 
 import sys
 
@@ -55,13 +57,11 @@ def affnet_upsample(data_2d):
     return padded_centered
 
 
-def show_affnet_features(aff_features, conf):
-
-    if not conf.get(CartesianConfig.affnet_show_dense_affnet, "False"):
-        return
+def show_or_save_affnet_features(aff_features, show_or_save):
 
     fig, axs = plt.subplots(1, 3, figsize=(10, 10))
-    fig.suptitle("Dense AffNet upright shapes' components")
+    if show_or_save:
+        fig.suptitle("Dense AffNet upright shapes' components")
 
     idx = 0
     for i in range(2):
@@ -69,13 +69,60 @@ def show_affnet_features(aff_features, conf):
             if i == 0 and j == 1:
                 continue
             img_t = K.tensor_to_image(aff_features[:, :, i, j])
-            axs[idx].set_title("shapes[{}, {}]".format(i, j))
+            if show_or_save:
+                axs[idx].set_title("shapes[{}, {}]".format(i, j))
+            else:
+                axs[idx].set_axis_off()
             axs[idx].imshow(img_t)
             idx = idx + 1
-    plt.show(block=False)
+
+    if show_or_save:
+        plt.show(block=False)
+        # TODO close with fig? - if so, merge the two lines
+        plt.close(fig)
+    else:
+        plt.savefig("./work/dense_affnet_upright_features_all".format(i, j), dpi=24)
+        plt.close(fig)
+
+    not_temporarily_closed = False
+    if not_temporarily_closed:
+        for i in range(2):
+            for j in range(2):
+                if i == 0 and j == 1:
+                    continue
+                img_np = K.tensor_to_image(aff_features[:, :, i, j])
+                title = "Upright dense AffNet features [{}, {}]".format(i, j) if show_or_save else None
+                fig = create_plot_only_img(title, img_np, h_size_inches=5, transparent=False)
+                if show_or_save:
+                    plt.show(block=False)
+                    # TODO close with fig? - if so, merge the two lines
+                    plt.close(fig)
+                else:
+                    plt.savefig("./work/dense_affnet_upright_features_{}_{}".format(i, j), dpi=24)
+                    plt.close(fig)
 
 
-def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices, valid_components_dict):
+def show_affnet_features(aff_features, conf):
+
+    if conf.get(CartesianConfig.affnet_show_dense_affnet, False):
+        show_or_save_affnet_features(aff_features, show_or_save=True)
+    if conf.get(CartesianConfig.affnet_save_dense_affnet, False):
+        show_or_save_affnet_features(aff_features, show_or_save=False)
+
+
+def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices_arg, valid_components_dict_arg):
+
+    valid_components_dict = valid_components_dict_arg.copy()
+    components_indices = np.copy(components_indices_arg)
+
+    # identity
+    valid_components_dict[-2] = -2
+
+    # sky
+    valid_components_dict[-1] = -1
+
+    # TODO hack -> no valid components => sky
+    components_indices[components_indices == -3] = -1
 
     show = conf.get(CartesianConfig.show_dense_affnet_components, False)
     if not show:
@@ -110,11 +157,70 @@ def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_na
 
     plt.show(block=False)
 
+    # TODO - handle save and path properly
+    # switch the save flag if necessary
     get_and_show_components(components_indices,
                             valid_components_dict,
                             show=True,
                             save=False,
+                            path="./work/",
                             file_name=img_name)
+
+    # TODO clean this up
+
+    not_temporarily_closed = False
+    if not_temporarily_closed:
+        colors = [
+            [255, 0, 0],
+            [255, 255, 0],
+            [1, 1, 1],
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [0, 255, 255],
+            [128, 0, 0],
+            [0, 128, 0],
+            [0, 0, 128],
+        ]
+        color_ix = 0
+
+        color_map_ix = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}
+
+        As = np.array([
+            [[1.0, 0.0, 0.0],
+             [0.0, 0.5, 0.0],
+             [0.0, 0.0, 1.0]
+             ],
+            [[1.0, 0.8, 0.0],
+             [0.0, 1.0, 0.0],
+             [0.0, 0.0, 1.0],
+             ],
+            [[1.0, -0.5, 0.0],
+             [0.0, 1.0, 0.0],
+             [0.0, 0.0, 1.0],
+             ],
+            [[0.71, -0.71, 0.0],
+             [0.71, 0.71, 0.0],
+             [0.0, 0.0, 1.0],
+             ],
+        ])
+
+        As_map_ix = {0: 0, 1: 1, 2: 2, 3: 3, 4: 0, 5: 1, 6: 2, 7: 3}
+
+        for i in range(-3, len(ts_phis)):
+            img_to_show = np.zeros(((*cover_idx.shape[:2], 3)))
+            img_to_show[cover_idx == i] = colors[color_map_ix[color_ix] % len(colors)]
+
+            create_plot_only_img(title, img_to_show, h_size_inches=6, transparent=True)
+            plt.savefig("./work/segments_dense_affnet_{}".format(color_ix), dpi=24, transparent=True, facecolor=(0.0, 0.0, 0.0, 0.0))
+
+            A, bb = adjust_affine_transform(img_to_show, None, As[As_map_ix[color_ix]])
+            img_to_show = np.int32(cv.warpPerspective(np.float32(img_to_show), A, bb))
+
+            create_plot_only_img(title, img_to_show, h_size_inches=6, transparent=True)
+            plt.savefig("./work/segments_dense_affnet_transformed_{}".format(color_ix), dpi=24, transparent=True, facecolor=(0.0, 0.0, 0.0, 0.0))
+
+            color_ix = color_ix + 1
 
 
 def filter_components(component_idxs, fraction_threshold):

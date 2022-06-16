@@ -58,8 +58,11 @@ affnet_dense_affnet_filter = None
 # SHOW & SAVE & CACHE
 
 show_affnet = True
+save_affnet_coverings = True
 
 affnet_show_dense_affnet = True
+affnet_save_dense_affnet = True
+
 show_dense_affnet_components = True
 
 show_input_img = True
