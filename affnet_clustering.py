@@ -10,6 +10,7 @@ from scene_info import *
 from opt_covering import *
 from connected_components import *
 from depth_to_normals import show_sky_mask
+import kornia as K
 import kornia.feature as KF
 from config import CartesianConfig
 from utils import adjust_affine_transform
@@ -330,6 +331,11 @@ def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter
 
 
 def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cuda=False):
+    gs_timg = K.image_to_tensor(img, False).float() / 255.
+    return affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=use_cuda, enable_sky_filtering=True)
+
+
+def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=False, enable_sky_filtering=False):
     """
     The main function to call here.
     NOTE: especially when the orienter is on the lafs are very expensive to compute
@@ -343,7 +349,16 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
     :param use_cuda:
     :return:
     """
-    gs_timg = K.image_to_tensor(img, False).float() / 255.
+
+    # # TODO hack
+    # if enable_sky_filtering:
+    #     assert img is not None
+    # else:
+    #     assert img is None
+
+    if img is None:
+        img = (gs_timg.clone()[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)
+
     gs_timg = K.color.bgr_to_grayscale(gs_timg)
     gs_timg, dense_affnet_filter = apply_affnet_filter(gs_timg, conf)
 
@@ -352,8 +367,11 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
         show_affnet_features(lafs, conf)
 
-        non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
-        non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]
+        if enable_sky_filtering:
+            non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
+            non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]
+        else:
+            non_sky_mask_flat = None
 
         lin_features = lafs[:, :, :, :2]
         lin_features = possibly_invert_lin_features(lin_features, conf)
@@ -368,7 +386,8 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
         # -2 identity equivalence class
         # -1 no valid center
         cover_idx = cover_idx.reshape(lin_features.shape[:2])
-        cover_idx[~non_sky_mask] = -3
+        if enable_sky_filtering:
+            cover_idx[~non_sky_mask] = -3
 
         cover_idx = handle_upsample_early(upsample_early, cover_idx, dense_affnet_filter)
         components_indices, valid_components_dict = get_eligible_components(cover_idx, conf, len(ts_phis))

@@ -337,7 +337,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
         sigma_x = blur_amplification * blur_param * math.sqrt(tilt * tilt - 1)
         kernel_size = 2 * math.ceil(sigma_x * 3.0) + 1
         kernel = KR.filters.get_gaussian_kernel1d(kernel_size, sigma_x)[None].unsqueeze(1)
-        print("kernel shape: {}".format(kernel.shape))
+        # print("kernel shape: {}".format(kernel.shape))
         # will kernel be in a good shape? (#dimensions, but also the shape?)
         img_blurred_x = KR.filters.filter2d(img_fc, kernel)
         img_blurred_y = KR.filters.filter2d(img_fc, kernel.view(1, kernel.shape[2], 1))
@@ -596,7 +596,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
         mask_cmp = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (
                     kpt_s_back_int[:, 0] < img_data.img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
-        print("invalid back transformed pixels: {}/{}".format(mask_cmp.shape[0] - mask_cmp.sum(), mask_cmp.shape[0]))
+        # print("invalid back transformed pixels: {}/{}".format(mask_cmp.shape[0] - mask_cmp.sum(), mask_cmp.shape[0]))
 
         kpt_s_back_int[~mask_cmp, 0] = 0
         kpt_s_back_int[~mask_cmp, 1] = 0
@@ -682,7 +682,7 @@ def visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_a
     # visualize_LAF_custom(t_img_all, unrectified_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
 
-def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key="", stats_map=None, device=torch.device('cpu')):
+def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key="", stats_map=None, device=torch.device('cpu'), mask=None):
     """ This seems to do a lot, but it just
         a) compute the HardNet kps, descs and lafs
         b) iterates over connected components (of clustered normals or covered sets of lafs) and calls
@@ -711,7 +711,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
 
     show_affnet = conf_map.get("show_affnet", False)
 
-    identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True)
+    identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, mask=mask)
 
     if affnet_no_clustering:
         # NOTE component == 0 -> still a valid component
@@ -753,10 +753,10 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component_or_close"], mask_in_or_no_component.sum().item(), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_added"], mask_to_add.sum().item(), stats_map)
 
-    print("affnet_identity_no_component: {}".format(mask_no_valid_component.sum()))
-    print("affnet_identity_close: {}".format(mask_in.sum()))
-    print("affnet_identity_no_component_or_close: {}".format(mask_in_or_no_component.sum()))
-    print("affnet_identity_added: {}".format(mask_to_add.sum()))
+    # print("affnet_identity_no_component: {}".format(mask_no_valid_component.sum()))
+    # print("affnet_identity_close: {}".format(mask_in.sum()))
+    # print("affnet_identity_no_component_or_close: {}".format(mask_in_or_no_component.sum()))
+    # print("affnet_identity_added: {}".format(mask_to_add.sum()))
 
     t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
 
@@ -785,7 +785,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
         for current_component in img_data.valid_components_dict:
 
             normal_index = img_data.valid_components_dict[current_component]
-            print("processing component->normal: {} -> {}".format(current_component, normal_index))
+            # print("processing component->normal: {} -> {}".format(current_component, normal_index))
             mask_cmp = kpts_component_indices == current_component
 
             add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,

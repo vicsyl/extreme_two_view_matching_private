@@ -15,7 +15,7 @@ def recompute_points_threshold_ratio(angle_distance_threshold_degrees, points_th
 def from_degrees_to_dist(degrees, log_key, factor=1.0):
     rads = factor * degrees * math.pi / 180
     distance = math.sin(rads / 2) * 2
-    print("{}: degrees: {}, distance: {}".format(log_key, degrees, distance))
+    # print("{}: degrees: {}, distance: {}".format(log_key, degrees, distance))
     return distance
 
 

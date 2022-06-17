@@ -62,11 +62,12 @@ class HardNetDescriptor:
         self.custom_K = custom_K
 
     def detectAndCompute(self, img, mask=None, give_laffs=False):
-        Timer.start_check_point("HardNet.detectAndCompute")
+        # Timer.start_check_point("HardNet.detectAndCompute")
         # NOTE this is just how it was called before (see SuperPoint.detectAndCompute)
-        assert mask is None
+        # assert mask is None
 
-        kps = self.sift_descriptor.detect(img, None)
+        mask_to_apply = None # if mask is None else mask.numpy().astype(np.uint8)
+        kps = self.sift_descriptor.detect(img, mask_to_apply)
         if self.filter is not None:
             kps = kps[::self.filter]
 
