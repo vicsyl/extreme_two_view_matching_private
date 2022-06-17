@@ -351,10 +351,10 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
     """
 
     # # TODO hack
-    # if enable_sky_filtering:
-    #     assert img is not None
-    # else:
-    #     assert img is None
+    if enable_sky_filtering:
+        assert img is not None
+    else:
+        assert img is None
 
     if img is None:
         img = (gs_timg.clone()[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)

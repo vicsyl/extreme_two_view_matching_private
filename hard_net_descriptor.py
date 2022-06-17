@@ -66,8 +66,8 @@ class HardNetDescriptor:
         # NOTE this is just how it was called before (see SuperPoint.detectAndCompute)
         # assert mask is None
 
-        mask_to_apply = None # if mask is None else mask.numpy().astype(np.uint8)
-        kps = self.sift_descriptor.detect(img, mask_to_apply)
+        #mask_to_apply = None #if mask is None else mask.numpy().astype(np.uint8)
+        kps = self.sift_descriptor.detect(img, mask)
         if self.filter is not None:
             kps = kps[::self.filter]
 

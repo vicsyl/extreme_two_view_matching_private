@@ -22,14 +22,6 @@ def get_default_config():
         "affnet_dense_affnet_use_orienter": False,
         "affnet_dense_affnet_enforce_connected_components": False,
 
-        # affnet_dense_affnet_batch = 10000
-        # affnet_clustering_restart_affnet = False
-        # affnet_dense_affnet_cc_fraction_th = 0.03
-
-        # show_affnet = False
-        # affnet_show_dense_affnet = False
-        # show_dense_affnet_components = False
-
         "affnet_include_all_from_identity": True
     }
 
@@ -51,10 +43,12 @@ class DenseAffnetFeature:
 
     def forward(self,
                 img: torch.Tensor,
-                # img_np,
                 mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
                                                               torch.Tensor,
                                                               torch.Tensor]:
+
+        assert mask is None, "non trivial mask (i.e. not None) not supported"
+
         img_data = affnet_clustering_torch(img=None,
                                            gs_timg=img,
                                            img_name=None,
@@ -63,15 +57,6 @@ class DenseAffnetFeature:
                                            upsample_early=True,
                                            use_cuda=self.device == torch.device("cuda"))
 
-        # img_data = affnet_clustering(img=img,
-        #                              img_name=None,
-        #                              dense_affnet=self.dense_affnet,
-        #                              conf=self.config,
-        #                              upsample_early=True,
-        #                              use_cuda=self.device == torch.device("cuda"))
-
-        # TODO debug mask
-        # TODO debug device
         kpts_struct: KptStruct = affnet_rectify(img_name=None,
                                                 hardnet_descriptor=self.hard_net,
                                                 img_data=img_data,
