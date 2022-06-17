@@ -51,23 +51,24 @@ class DenseAffnetFeature:
 
     def forward(self,
                 img: torch.Tensor,
+                # img_np,
                 mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
                                                               torch.Tensor,
                                                               torch.Tensor]:
-        # img_data = affnet_clustering_torch(img=None,
-        #                                    gs_timg=img,
-        #                                    img_name=None,
-        #                                    dense_affnet=self.dense_affnet,
-        #                                    conf=self.config,
-        #                                    upsample_early=True,
-        #                                    use_cuda=self.device == torch.device("cuda"))
+        img_data = affnet_clustering_torch(img=None,
+                                           gs_timg=img,
+                                           img_name=None,
+                                           dense_affnet=self.dense_affnet,
+                                           conf=self.config,
+                                           upsample_early=True,
+                                           use_cuda=self.device == torch.device("cuda"))
 
-        img_data = affnet_clustering(img=img,
-                                     img_name=None,
-                                     dense_affnet=self.dense_affnet,
-                                     conf=self.config,
-                                     upsample_early=True,
-                                     use_cuda=self.device == torch.device("cuda"))
+        # img_data = affnet_clustering(img=img,
+        #                              img_name=None,
+        #                              dense_affnet=self.dense_affnet,
+        #                              conf=self.config,
+        #                              upsample_early=True,
+        #                              use_cuda=self.device == torch.device("cuda"))
 
         # TODO debug mask
         # TODO debug device
