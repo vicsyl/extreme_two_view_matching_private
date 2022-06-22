@@ -377,51 +377,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
     return img_tilt, affine_transform
 
 
-# TODO possibly move it to coverings
-# TODO many things are duplicated
-# TODO I am afraid the transparency is not handled (i.e. it's enabled somewhere else)
-def prepare_coverings_plot(covering_params, data, winning_centers, with_title, with_axis):
-
-    # TODO handle the colors
-    colors = ["r", "g", "b", "y"]
-    colors_unrolled = [colors[i % len(colors)] for i in range(len(winning_centers) - 1, -1, -1)]
-
-    if with_title:
-        title = "Covering the space of tilts:\n not-covered - black, identity eq. class - cyan".format(", ".join(colors_unrolled))
-    else:
-        title = None
-
-    ax = opt_cov_prepare_plot(covering_params, title)
-    if not with_axis:
-        ax.set_axis_off()
-
-    opt_conv_draw(ax, data, "k", 1.0)
-
-    for i in range(len(winning_centers) - 1, -1, -1):
-        wc = winning_centers[i]
-        color = colors_unrolled[i]
-        draw_covered_data(ax, wc, data, covering_params.r_max, color)
-        opt_conv_draw(ax, wc, "k", 8.0, shape="x")
-
-    draw_identity_data(ax, data, covering_params.r_max)
-
-
-def potentially_show_sof(covering_params, data, winning_centers, config):
-
-    show_affnet = config.get(CartesianConfig.show_affnet, False)
-    if show_affnet:
-        prepare_coverings_plot(covering_params, data, winning_centers, with_title=True, with_axis=True)
-        plt.show(block=False)
-
-    save_affnet_coverings = config.get(CartesianConfig.save_affnet_coverings, False)
-    if save_affnet_coverings:
-        prepare_coverings_plot(covering_params, data, winning_centers, with_title=False, with_axis=False)
-        # TODO externalize the path
-        plt.savefig("./work/covering_dense", dpi=48)
-        plt.close()
-
-
-def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis, config, return_cover_idxs=False, valid_px_mask=None):
+def winning_centers(covering_params: CoveringParams, data, config, return_cover_idxs=False):
     """
     :param covering_params:
     :param data_all_ts:
@@ -429,7 +385,7 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
     :param config:
     :param return_cover_idxs:
     :param valid_px_mask:
-    :return: winning_centers (, cover_idx - if return_cover_idxs is True)
+    :return: winning_centers, cover_idx (=None if return_cover_idxs == False)
         winning_centers: rows of with 2 columns - (tau_i, phi_i)
         cover_idx: index of centers for the data points
                     -1 : no winning center
@@ -440,29 +396,17 @@ def winning_centers(covering_params: CoveringParams, data_all_ts, data_all_phis,
     covering_fraction_th = config["affnet_covering_fraction_th"]
     covering_max_iter = config["affnet_covering_max_iter"]
 
-    covering_coords = covering_params.covering_coordinates()
-    data = torch.vstack((data_all_ts, data_all_phis))
+    ret_winning_centers, cover_idx = vote(covering_params, data,
+                                          fraction_th=covering_fraction_th,
+                                          iter_th=covering_max_iter,
+                                          conf=config,
+                                          return_cover_idxs=return_cover_idxs)
 
-    ret_winning_centers = vote(covering_coords, data, covering_params.r_max,
-                               fraction_th=covering_fraction_th,
-                               iter_th=covering_max_iter,
-                               return_cover_idxs=return_cover_idxs,
-                               valid_px_mask=valid_px_mask,
-                               t_max=covering_params.t_max)
-    if return_cover_idxs:
-        cover_idxs = ret_winning_centers[1]
-        ret_winning_centers = ret_winning_centers[0]
-
-    potentially_show_sof(covering_params, data, ret_winning_centers, config)
-
-    if return_cover_idxs:
-        return ret_winning_centers, cover_idxs
-    else:
-        return ret_winning_centers
+    return ret_winning_centers, cover_idx
 
 
 def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
-    """ BEWARE - just a unnecessarily long delegation method (because of the 'mean' covering type - just skip to winning_centers
+    """ BEWARE - just an unnecessarily long delegation method (because of the 'mean' covering type - just skip to winning_centers
     :param data_all_ts:
     :param data_all_phis:
     :param ts_out:
@@ -501,7 +445,14 @@ def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, t
         return torch.hstack((t_mean_affnet, phi_mean_affnet)).unsqueeze(0)
 
     else:
-        return winning_centers(covering, data_all_ts, data_all_phis, config)
+        data = torch.vstack((data_all_ts, data_all_phis))
+        wcs, _ = winning_centers(covering, data, config)
+
+        for i, win_c in enumerate(wcs):
+            print("win_c no. {}: {}".format(i, win_c))
+        potentially_show_sof(covering, data, wcs, config)
+
+        return wcs
 
 
 def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,

@@ -1,9 +1,17 @@
 import matplotlib.pyplot as plt
 import torch
 import math
+import logging
+import pickle
+import numpy as np
+
+from config import CartesianConfig
 from dataclasses import dataclass
 from matplotlib.patches import Circle
 from utils import Timer
+from img_utils import create_plot_only_img
+from connected_components import get_and_show_components
+from utils import adjust_affine_transform
 
 @dataclass
 class CoveringParams:
@@ -146,70 +154,82 @@ def distance_matrix_concise(centers, data):
 def draw_identity_data(ax, data, r):
     data_around_identity_mask = data[0] < r
     in_data = data[:, data_around_identity_mask]
-    opt_conv_draw(ax, in_data, 'c', 2)
+    opt_conv_draw(ax, in_data, 'c', 0.5)
 
 
-def vote(centers, data, r_param, fraction_th, iter_th, return_cover_idxs=False, valid_px_mask=None, t_max=None):
+def vote(covering_params, data, fraction_th, iter_th, conf, return_cover_idxs=False):
     """
-    :param centers:
+    Assumes the data is prefiltered with e.g. sky mask. Data with t > t_max are
+        a) marked with cover_idx == -4 if not covered (difference between all with t > t_max and those uncovered are
+           logged on debug level)
+        b) ignored wrt. fraction_th
+
+    NOTE - the cover_idx membership array has the size of data
+
+    :param covering_params:
     :param data:
-    :param r_param:
     :param fraction_th:
     :param iter_th:
     :param return_cover_idxs:
-    :param valid_px_mask:
-    :return: winning_centers (, cover_idx - if return_cover_idxs is True)
+    :param conf:
+    :return: winning_centers , cover_idx (=None return_cover_idxs == False)
         winning_centers: rows of with 2 columns - (tau_i, phi_i)
         cover_idx: index of centers for the data points
-                    -1 : no winning center
-                    -2 : identity equivalence class
-                    >=0: winning center index
+                    -1: no winning center
+                    -2: identity equivalence class
+                   (-3: sky - not here)
+                    -4: uncovered off
+                  i>=0: winning center index i
     """
 
     # NOTE: filtered_data works as index-less data points, whereas cover_idx are filters across all indices
     # if everything is done across all indices, it may get simpler
 
-    Timer.start_check_point("vote_covering_centers")
+    centers = covering_params.covering_coordinates()
+    r_param = covering_params.r_max
+    t_max = covering_params.t_max
 
-    if valid_px_mask is None:
-        valid_px_mask = torch.ones(data.shape[1], dtype=torch.bool)
+    Timer.start_check_point("vote_covering_centers")
+    closest_winning_center = conf.get(CartesianConfig.sof_coverings_closest_winning_center, True)
 
     r_ball_distance_new = (r_param ** 2 + 1) / (2 * r_param)
 
+    # TODO delete the following 4 lines of code
     r_old = math.log(r_param)
     r_ball_distance_old = (math.exp(2 * r_old) + 1) / (2 * math.exp(r_old))
     # CONTINUE here + run & think about stats and visos
     assert math.fabs(r_ball_distance_old - r_ball_distance_new) < 1.0e-10
-
     assert math.exp(r_old) == r_param
-    data_around_identity_mask = data[0] < r_param
-
-    init_filter = ~data_around_identity_mask & valid_px_mask
 
     # TODO effective_data_size - should be data and valid_px_mask and ~data_completely_off (but irrespective of data_around_identity_mask)
-    if t_max is not None:
-        data_completely_off = data[0] > t_max
-        init_filter = init_filter & ~data_completely_off
+    data_completely_off = data[0] > t_max
+    print("all data points: {}".format(data.shape[1]))
+    init_data_size = data.shape[1] - data_completely_off.sum()
+    print("data points completely off: {}".format(data_completely_off.sum()))
 
-    filtered_data = data[:, init_filter]
+    data_around_identity_mask = data[0] < r_param
+    # NOTE data_around_identity_mask and data_completely_off are disjunctive sets
+    filtered_data = data[:, ~data_around_identity_mask & ~data_completely_off]
 
-    if return_cover_idxs:
+    cover_idx = None
+    if return_cover_idxs and not closest_winning_center:
         cover_idx = torch.ones(data.shape[1]) * -1
-        valid_identity_filter = data_around_identity_mask & valid_px_mask
-        cover_idx[valid_identity_filter] = -2
+        cover_idx[data_around_identity_mask] = -2
+        cover_idx[data_completely_off] = -4
+        logging.debug("initial data points with t > t_max: {}".format(data_completely_off.sum()))
 
     iter_finished = 0
     winning_centers = []
-    rect_fraction = 1 - filtered_data.shape[1] / data.shape[1]
+    rect_fraction = 1 - filtered_data.shape[1] / init_data_size
     while rect_fraction < fraction_th and iter_finished < iter_th:
 
-        distances = distance_matrix(centers[0], filtered_data[0], centers[1], filtered_data[1])
+        distances = distance_matrix_concise(centers, filtered_data)
         votes = (distances < r_ball_distance_new)
         votes_count = votes.sum(axis=1)
         sorted, indices = torch.sort(votes_count, descending=True)
-
         data_in_mask = votes[indices[0]]
-        if return_cover_idxs:
+
+        if return_cover_idxs and not closest_winning_center:
             distances_all = distance_matrix_concise(centers[:, indices[0]:indices[0] + 1], data)
             votes_all = (distances_all < r_ball_distance_new)
             # & on bools?
@@ -217,18 +237,43 @@ def vote(centers, data, r_param, fraction_th, iter_th, return_cover_idxs=False, 
             cover_idx[votes_new] = iter_finished
 
         filtered_data = filtered_data[:, ~data_in_mask]
-        rect_fraction = 1 - filtered_data.shape[1] / data.shape[1]
+        rect_fraction = 1 - filtered_data.shape[1] / init_data_size
 
         winning_center = centers[:, indices[0]]
         winning_centers.append((winning_center[0].item(), winning_center[1].item()))
         iter_finished += 1
 
+    winning_centers = torch.tensor(winning_centers)
+
     Timer.end_check_point("vote_covering_centers")
 
     if return_cover_idxs:
-        return torch.tensor(winning_centers), cover_idx
-    else:
-        return torch.tensor(winning_centers)
+        if closest_winning_center:
+            cover_idx = torch.ones(data.shape[1]) * -1
+            cover_idx[data_completely_off] = -4
+            logging.debug("initial data points with t > t_max: {}".format(data_completely_off.sum()))
+
+            distance_for_identity = conf.get(CartesianConfig.sof_coverings_distance_for_identity, False)
+
+            if distance_for_identity:
+                winning_centers_dist = torch.hstack((winning_centers.t(), torch.tensor([[1.0], [0.0]])))
+            else:
+                winning_centers_dist = winning_centers.t()
+
+            distances = distance_matrix_concise(winning_centers_dist, data)
+
+            minimal_wc_distances_values_indices = torch.min(distances, 0)
+            mask = minimal_wc_distances_values_indices.values < r_ball_distance_new
+            cover_idx[mask] = minimal_wc_distances_values_indices.indices[mask].type(cover_idx.dtype)
+
+            if distance_for_identity:
+                cover_idx[cover_idx == winning_centers_dist.shape[1] - 1] = -2
+            else:
+                cover_idx[data_around_identity_mask] = -2
+
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug("not covered data points with t > t_max: {}".format((cover_idx[data_completely_off] == -4).sum()))
+    return winning_centers, cover_idx
 
 
 def opt_conv_draw_ellipses(ax, cov_params, centers):
@@ -300,7 +345,277 @@ def draw_covered_data(ax, center, data, r_max, color):
     distances = distance_matrix(center[0, None], data[0], center[1, None], data[1])
     votes = (distances[0] < rhs)
     data_in = data[:, votes]
-    opt_conv_draw(ax, data_in, color, 1)
+    opt_conv_draw(ax, data_in, color, 0.5)
+
+
+def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices_arg, valid_components_dict_arg):
+
+    valid_components_dict = valid_components_dict_arg.copy()
+    components_indices = np.copy(components_indices_arg)
+
+    # identity
+    valid_components_dict[-2] = -2
+
+    # sky
+    valid_components_dict[-1] = -1
+
+    # TODO hack -> sky => no valid components
+    components_indices[components_indices == -3] = -1
+
+    show = conf.get(CartesianConfig.show_dense_affnet_components, False)
+    if not show:
+        return
+
+    center_names = {-3: "sky",
+                    -2: "identity eq. class",
+                    -1: "no valid center"}
+    l = 3 + len(ts_phis)
+    columns = 4 if l > 3 else l
+    rows = (l - 1) // 4 + 1
+    fig, axs = plt.subplots(rows, columns, figsize=(10, 10))
+    dense_affnet_filter = conf.get("affnet_dense_affnet_filter", None)
+    use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
+    title = "{} - pixels of shapes covered by covering sets\ndense_affnet_filter={},use_orienter={} ".format(img_name, dense_affnet_filter, use_orienter)
+    fig.suptitle(title)
+
+    pxs = cover_idx.shape[0] * cover_idx.shape[1]
+
+    for i in range(-3, len(ts_phis)):
+        mask = cover_idx == i
+        center_name = center_names.get(i, "covering set {}".format(i))
+
+        idx = i + 3
+        r = idx // 4
+        c = idx % 4
+
+        fraction = mask.sum() / pxs * 100
+        axis = axs[r, c] if rows > 1 else axs[c]
+        axis.set_title("{} pxs({:.02f}%)\n{}".format(mask.sum(), fraction, center_name))
+        axis.imshow(mask)
+
+    plt.show(block=False)
+
+    # TODO - handle save and path properly
+    # switch the save flag if necessary
+    get_and_show_components(components_indices,
+                            valid_components_dict,
+                            show=True,
+                            save=False,
+                            path="./work/",
+                            file_name=img_name)
+
+    # TODO clean this up
+
+    not_temporarily_closed = False
+    if not_temporarily_closed:
+        colors = [
+            [255, 0, 0],
+            [255, 255, 0],
+            [1, 1, 1],
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [0, 255, 255],
+            [128, 0, 0],
+            [0, 128, 0],
+            [0, 0, 128],
+        ]
+        color_ix = 0
+
+        color_map_ix = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}
+
+        As = np.array([
+            [[1.0, 0.0, 0.0],
+             [0.0, 0.5, 0.0],
+             [0.0, 0.0, 1.0]
+             ],
+            [[1.0, 0.8, 0.0],
+             [0.0, 1.0, 0.0],
+             [0.0, 0.0, 1.0],
+             ],
+            [[1.0, -0.5, 0.0],
+             [0.0, 1.0, 0.0],
+             [0.0, 0.0, 1.0],
+             ],
+            [[0.71, -0.71, 0.0],
+             [0.71, 0.71, 0.0],
+             [0.0, 0.0, 1.0],
+             ],
+        ])
+
+        As_map_ix = {0: 0, 1: 1, 2: 2, 3: 3, 4: 0, 5: 1, 6: 2, 7: 3}
+
+        for i in range(-3, len(ts_phis)):
+            img_to_show = np.zeros(((*cover_idx.shape[:2], 3)))
+            img_to_show[cover_idx == i] = colors[color_map_ix[color_ix] % len(colors)]
+
+            create_plot_only_img(title, img_to_show, h_size_inches=6, transparent=True)
+            plt.savefig("./work/segments_dense_affnet_{}".format(color_ix), dpi=24, transparent=True, facecolor=(0.0, 0.0, 0.0, 0.0))
+
+            A, bb = adjust_affine_transform(img_to_show, None, As[As_map_ix[color_ix]])
+            img_to_show = np.int32(cv.warpPerspective(np.float32(img_to_show), A, bb))
+
+            create_plot_only_img(title, img_to_show, h_size_inches=6, transparent=True)
+            plt.savefig("./work/segments_dense_affnet_transformed_{}".format(color_ix), dpi=24, transparent=True, facecolor=(0.0, 0.0, 0.0, 0.0))
+
+            color_ix = color_ix + 1
+
+
+# TODO I am afraid the transparency is not handled (i.e. it's enabled somewhere else)
+def prepare_coverings_plot(covering_params, data, winning_centers, cover_ix, with_title, with_axis, draw_sky_over=False):
+
+    # TODO handle the colors
+    # b : blue.
+    # g : green.
+    # r : red.
+    # c : cyan.
+    # m : magenta.
+    # y : yellow.
+    # k : black.
+    # w : white.
+
+    colors_names = [
+        ("r", "red"),
+        ("g", "green"),
+        ("b", "blue"),
+        ("y", "yellow"),
+        ("c", "cyan"),
+        ("m", "magenta")]
+
+    indices_names = {-4: "off not covered", -3: "sky", -2: "identity", -1: "not covered"}
+
+    title = None
+    if with_title:
+        colors_legend = []
+        for i in range(-4, len(winning_centers)):
+            # e.g. sky may be skipped
+            if (cover_ix == i).sum() == 0:
+                continue
+            indices_name = indices_names.get(i, i)
+            if i % 4 == 0:
+                indices_name = "\n{}".format(indices_name)
+            color_name = colors_names[i % len(colors_names)][1] if i != -3 else "black"
+            colors_legend.append("{}={}".format(indices_name, color_name))
+        title = "Covering the space of tilts:{}".format(", ".join(colors_legend))
+
+    ax = opt_cov_prepare_plot(covering_params, title)
+    if not with_axis:
+        ax.set_axis_off()
+
+    opt_conv_draw(ax, data, "k", 1.0)
+
+    for i in range(-4, len(winning_centers)):
+
+        color_letter = colors_names[i % len(colors_names)][0]
+        data_to_draw = data[:, cover_ix == i]
+        opt_conv_draw(ax, data_to_draw, color_letter, size=0.5)
+
+        if i >= 0:
+            wc = winning_centers[i]
+            opt_conv_draw(ax, wc, "k", 8.0, shape="x")
+
+    if draw_sky_over:
+        data_to_draw = data[:, cover_ix == -3]
+        opt_conv_draw(ax, data_to_draw, "k", size=0.5)
+
+
+# TODO I am afraid the transparency is not handled (i.e. it's enabled somewhere else)
+def prepare_coverings_plot_closest(covering_params, data, winning_centers, with_title, with_axis):
+
+    # TODO handle the colors
+    colors = ["r", "g", "b", "y"]
+    colors_unrolled = [colors[i % len(colors)] for i in range(len(winning_centers) - 1, -1, -1)]
+
+    if with_title:
+        title = "Covering the space of tilts:\n not-covered - black, identity eq. class - cyan".format(", ".join(colors_unrolled))
+    else:
+        title = None
+
+    ax = opt_cov_prepare_plot(covering_params, title)
+    if not with_axis:
+        ax.set_axis_off()
+
+    opt_conv_draw(ax, data, "k", 1.0)
+
+    for i in range(len(winning_centers) - 1, -1, -1):
+        wc = winning_centers[i]
+        color = colors_unrolled[i]
+        draw_covered_data(ax, wc, data, covering_params.r_max, color)
+        opt_conv_draw(ax, wc, "k", 8.0, shape="x")
+
+    draw_identity_data(ax, data, covering_params.r_max)
+
+
+def potentially_show_sof(covering_params, data, winning_centers, config, cover_idx=None, enforce_show=False):
+
+    show_affnet = config.get(CartesianConfig.show_affnet, enforce_show)
+    if show_affnet:
+        if cover_idx is None:
+            prepare_coverings_plot_closest(covering_params, data, winning_centers, with_title=True, with_axis=True)
+        else:
+            prepare_coverings_plot(covering_params, data, winning_centers, cover_idx, with_title=True, with_axis=True)
+        plt.show(block=False)
+
+    save_affnet_coverings = config.get(CartesianConfig.save_affnet_coverings, False)
+    if save_affnet_coverings:
+        if cover_idx is None:
+            prepare_coverings_plot_closest(covering_params, data, winning_centers, with_title=False, with_axis=False)
+        else:
+            prepare_coverings_plot(covering_params, data, winning_centers, cover_idx, with_title=False, with_axis=False)
+        # TODO externalize the path
+        plt.savefig("./work/covering_dense", dpi=48)
+        plt.close()
+
+
+def vote_test():
+
+    logging.getLogger().setLevel(logging.DEBUG)
+
+    covering_params = CoveringParams.dense_covering_1_7()
+
+    with open("resources/covering_data.pkl", "rb") as f:
+        sot_data = pickle.load(f)
+
+    fraction_th = 0.95
+    iter_th = 100
+    show_affnet_config = {CartesianConfig.show_affnet: True}
+
+    # closest to the winning center
+    ret_winning_centers1, cv1 = vote(covering_params,
+                                    sot_data,
+                                    fraction_th,
+                                    iter_th,
+                                    return_cover_idxs=True, conf={})
+
+    potentially_show_sof(covering_params, sot_data, ret_winning_centers1, show_affnet_config, cover_idx=cv1)
+
+    # closest to the winning center, distance_for_identity = True
+    ret_winning_centers_id, cv_id = vote(covering_params,
+                                         sot_data,
+                                         fraction_th,
+                                         iter_th,
+                                         return_cover_idxs=True, conf={CartesianConfig.sof_coverings_distance_for_identity: True})
+
+    potentially_show_sof(covering_params, sot_data, ret_winning_centers_id, show_affnet_config, cover_idx=cv_id)
+
+    # old method, new implementation
+    ret_winning_centers2, cv2 = vote(covering_params,
+                                    sot_data,
+                                    fraction_th,
+                                    iter_th,
+                                    return_cover_idxs=True, conf={CartesianConfig.sof_coverings_closest_winning_center: False})
+
+    potentially_show_sof(covering_params, sot_data, ret_winning_centers2, show_affnet_config, cover_idx=cv2)
+
+    # old method, old implementation
+    covering_coords = covering_params.covering_coordinates()
+    ret_winning_centers3, cv3 = vote_old(covering_coords, sot_data, covering_params.r_max,
+                                        fraction_th,
+                                        iter_th,
+                                        return_cover_idxs=True,
+                                        t_max=covering_params.t_max)
+
+    potentially_show_sof(covering_params, sot_data, ret_winning_centers3, config={CartesianConfig.show_affnet: True}, cover_idx=cv3)
 
 
 def demo():
@@ -323,7 +638,7 @@ def demo():
 
     #opt_conv_draw_ellipses(ax, covering_params, covering_centers)
 
-    winning_centers = vote(covering_centers, data, covering_params.r_max, fraction_th=0.6, iter_th=30, t_max=covering_params.t_max)
+    winning_centers = vote(covering_params, data, fraction_th=0.6, iter_th=30, conf={})
 
     # for i, wc in enumerate(winning_centers):
     #     draw_in_center(ax, wc, data, covering_params.r_max)
@@ -334,5 +649,89 @@ def demo():
     plt.show()
 
 
+def vote_old(centers, data, r_param, fraction_th, iter_th, return_cover_idxs=False, valid_px_mask=None, t_max=None):
+    """
+    :param centers:
+    :param data:
+    :param r_param:
+    :param fraction_th:
+    :param iter_th:
+    :param return_cover_idxs:
+    :param valid_px_mask:
+    :return: winning_centers (, cover_idx - if return_cover_idxs is True)
+        winning_centers: rows of with 2 columns - (tau_i, phi_i)
+        cover_idx: index of centers for the data points
+                    -1 : no winning center
+                    -2 : identity equivalence class
+                    >=0: winning center index
+    """
+
+    # NOTE: filtered_data works as index-less data points, whereas cover_idx are filters across all indices
+    # if everything is done across all indices, it may get simpler
+
+    Timer.start_check_point("vote_covering_centers")
+
+    if valid_px_mask is None:
+        valid_px_mask = torch.ones(data.shape[1], dtype=torch.bool)
+
+    r_ball_distance_new = (r_param ** 2 + 1) / (2 * r_param)
+
+    # TODO delete the following 4 lines of code
+    r_old = math.log(r_param)
+    r_ball_distance_old = (math.exp(2 * r_old) + 1) / (2 * math.exp(r_old))
+    # CONTINUE here + run & think about stats and visos
+    assert math.fabs(r_ball_distance_old - r_ball_distance_new) < 1.0e-10
+    assert math.exp(r_old) == r_param
+
+    data_around_identity_mask = data[0] < r_param
+
+    init_filter = ~data_around_identity_mask & valid_px_mask
+
+    # TODO effective_data_size - should be data and valid_px_mask and ~data_completely_off (but irrespective of data_around_identity_mask)
+    if t_max is not None:
+        data_completely_off = data[0] > t_max
+        init_filter = init_filter & ~data_completely_off
+
+    filtered_data = data[:, init_filter]
+
+    if return_cover_idxs:
+        cover_idx = torch.ones(data.shape[1]) * -1
+        valid_identity_filter = data_around_identity_mask & valid_px_mask
+        cover_idx[valid_identity_filter] = -2
+
+    iter_finished = 0
+    winning_centers = []
+    rect_fraction = 1 - filtered_data.shape[1] / data.shape[1]
+    while rect_fraction < fraction_th and iter_finished < iter_th:
+
+        distances = distance_matrix(centers[0], filtered_data[0], centers[1], filtered_data[1])
+        votes = (distances < r_ball_distance_new)
+        votes_count = votes.sum(axis=1)
+        sorted, indices = torch.sort(votes_count, descending=True)
+
+        data_in_mask = votes[indices[0]]
+        if return_cover_idxs:
+            distances_all = distance_matrix_concise(centers[:, indices[0]:indices[0] + 1], data)
+            votes_all = (distances_all < r_ball_distance_new)
+            # & on bools?
+            votes_new = votes_all[0] & (cover_idx == -1)
+            cover_idx[votes_new] = iter_finished
+
+        filtered_data = filtered_data[:, ~data_in_mask]
+        rect_fraction = 1 - filtered_data.shape[1] / data.shape[1]
+
+        winning_center = centers[:, indices[0]]
+        winning_centers.append((winning_center[0].item(), winning_center[1].item()))
+        iter_finished += 1
+
+    Timer.end_check_point("vote_covering_centers")
+
+    if return_cover_idxs:
+        return torch.tensor(winning_centers), cover_idx
+    else:
+        return torch.tensor(winning_centers)
+
+
 if __name__ == "__main__":
-    demo()
+    # demo()
+    vote_test()

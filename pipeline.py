@@ -80,7 +80,6 @@ class Pipeline:
     # simple
     stats = {}
 
-    # ! FIXME not really compatible with matching pairs
     chosen_depth_files = None
 
     show_input_img = False
@@ -863,10 +862,16 @@ class Pipeline:
 
     def run_sequential_pipeline(self):
 
+        assert "sequential_files_limit" in self.config or self.chosen_depth_files is not None
+
         self.start()
 
         file_names, _ = self.scene_info.get_megadepth_file_names_and_dir(None, self.chosen_depth_files)
-        file_names_permuted = [file_names[two_hundred_permutation[i]] for i in range(self.config["sequential_files_limit"])]
+        if self.chosen_depth_files is None:
+            file_names_permuted = [file_names[two_hundred_permutation[i]] for i in range(self.config["sequential_files_limit"])]
+        else:
+            file_names_permuted = file_names
+
         for idx, depth_data_file_name in enumerate(file_names_permuted):
             self.process_image(depth_data_file_name[:-4], idx % 2)
 

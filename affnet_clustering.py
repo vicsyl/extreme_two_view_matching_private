@@ -111,119 +111,6 @@ def show_affnet_features(aff_features, conf):
         show_or_save_affnet_features(aff_features, show_or_save=False)
 
 
-def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices_arg, valid_components_dict_arg):
-
-    valid_components_dict = valid_components_dict_arg.copy()
-    components_indices = np.copy(components_indices_arg)
-
-    # identity
-    valid_components_dict[-2] = -2
-
-    # sky
-    valid_components_dict[-1] = -1
-
-    # TODO hack -> no valid components => sky
-    components_indices[components_indices == -3] = -1
-
-    show = conf.get(CartesianConfig.show_dense_affnet_components, False)
-    if not show:
-        return
-
-    center_names = {-3: "sky",
-                    -2: "identity eq. class",
-                    -1: "no valid center"}
-    l = 3 + len(ts_phis)
-    columns = 4 if l > 3 else l
-    rows = (l - 1) // 4 + 1
-    fig, axs = plt.subplots(rows, columns, figsize=(10, 10))
-    dense_affnet_filter = conf.get("affnet_dense_affnet_filter", None)
-    use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
-    title = "{} - pixels of shapes covered by covering sets\ndense_affnet_filter={},use_orienter={} ".format(img_name, dense_affnet_filter, use_orienter)
-    fig.suptitle(title)
-
-    pxs = cover_idx.shape[0] * cover_idx.shape[1]
-
-    for i in range(-3, len(ts_phis)):
-        mask = cover_idx == i
-        center_name = center_names.get(i, "covering set {}".format(i))
-
-        idx = i + 3
-        r = idx // 4
-        c = idx % 4
-
-        fraction = mask.sum() / pxs * 100
-        axis = axs[r, c] if rows > 1 else axs[c]
-        axis.set_title("{} pxs({:.02f}%)\n{}".format(mask.sum(), fraction, center_name))
-        axis.imshow(mask)
-
-    plt.show(block=False)
-
-    # TODO - handle save and path properly
-    # switch the save flag if necessary
-    get_and_show_components(components_indices,
-                            valid_components_dict,
-                            show=True,
-                            save=False,
-                            path="./work/",
-                            file_name=img_name)
-
-    # TODO clean this up
-
-    not_temporarily_closed = False
-    if not_temporarily_closed:
-        colors = [
-            [255, 0, 0],
-            [255, 255, 0],
-            [1, 1, 1],
-            [255, 0, 0],
-            [0, 255, 0],
-            [0, 0, 255],
-            [0, 255, 255],
-            [128, 0, 0],
-            [0, 128, 0],
-            [0, 0, 128],
-        ]
-        color_ix = 0
-
-        color_map_ix = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}
-
-        As = np.array([
-            [[1.0, 0.0, 0.0],
-             [0.0, 0.5, 0.0],
-             [0.0, 0.0, 1.0]
-             ],
-            [[1.0, 0.8, 0.0],
-             [0.0, 1.0, 0.0],
-             [0.0, 0.0, 1.0],
-             ],
-            [[1.0, -0.5, 0.0],
-             [0.0, 1.0, 0.0],
-             [0.0, 0.0, 1.0],
-             ],
-            [[0.71, -0.71, 0.0],
-             [0.71, 0.71, 0.0],
-             [0.0, 0.0, 1.0],
-             ],
-        ])
-
-        As_map_ix = {0: 0, 1: 1, 2: 2, 3: 3, 4: 0, 5: 1, 6: 2, 7: 3}
-
-        for i in range(-3, len(ts_phis)):
-            img_to_show = np.zeros(((*cover_idx.shape[:2], 3)))
-            img_to_show[cover_idx == i] = colors[color_map_ix[color_ix] % len(colors)]
-
-            create_plot_only_img(title, img_to_show, h_size_inches=6, transparent=True)
-            plt.savefig("./work/segments_dense_affnet_{}".format(color_ix), dpi=24, transparent=True, facecolor=(0.0, 0.0, 0.0, 0.0))
-
-            A, bb = adjust_affine_transform(img_to_show, None, As[As_map_ix[color_ix]])
-            img_to_show = np.int32(cv.warpPerspective(np.float32(img_to_show), A, bb))
-
-            create_plot_only_img(title, img_to_show, h_size_inches=6, transparent=True)
-            plt.savefig("./work/segments_dense_affnet_transformed_{}".format(color_ix), dpi=24, transparent=True, facecolor=(0.0, 0.0, 0.0, 0.0))
-
-            color_ix = color_ix + 1
-
-
 def filter_components(component_idxs, fraction_threshold):
 
     component_size_threshold = component_idxs.shape[0] * component_idxs.shape[1] * fraction_threshold
@@ -367,40 +254,56 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
         show_affnet_features(lafs, conf)
 
+        lin_features = lafs[:, :, :, :2]
+        lin_features = possibly_invert_lin_features(lin_features, conf)
+
+        _, _, all_ts1, all_phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
+        all_data = torch.vstack((all_ts1.reshape(1, -1), all_phis1.reshape(1, -1)))
+
+        # TODO save
+        # with open("resources/covering_data.pkl", "wb") as f:
+        #     pickle.dump(all_data, f)
+
         if enable_sky_filtering:
             non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
             non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]
         else:
-            non_sky_mask_flat = None
+            non_sky_mask_flat = torch.ones(lin_features.shape[0] * lin_features.shape[1], dtype=torch.bool)
+        data = all_data[:, non_sky_mask_flat]
 
-        lin_features = lafs[:, :, :, :2]
-        lin_features = possibly_invert_lin_features(lin_features, conf)
-
-        _, _, ts1, phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
         covering: CoveringParams = CoveringParams.get_effective_covering_by_cfg(conf)
-        ts_phis, cover_idx = winning_centers(covering, ts1.reshape(1, -1), phis1.reshape(1, -1), conf, return_cover_idxs=True, valid_px_mask=non_sky_mask_flat)
+        win_centers, cover_idx = winning_centers(covering, data, conf, return_cover_idxs=True)
 
         # NOTE: index value convention
         # range(len(ts_phis)) -> all_valid
         # -3 sky
         # -2 identity equivalence class
         # -1 no valid center
-        cover_idx = cover_idx.reshape(lin_features.shape[:2])
-        if enable_sky_filtering:
-            cover_idx[~non_sky_mask] = -3
+        cover_idx_to_use = torch.zeros(lin_features.shape[0] * lin_features.shape[1])
+        cover_idx_to_use[non_sky_mask_flat] = cover_idx
+        cover_idx_to_use[~non_sky_mask_flat] = -3
 
-        cover_idx = handle_upsample_early(upsample_early, cover_idx, dense_affnet_filter)
-        components_indices, valid_components_dict = get_eligible_components(cover_idx, conf, len(ts_phis))
+        for i in range(-4, len(win_centers)):
+            if i >= 0:
+                win_c = win_centers[i]
+                print("win_c no. {}: {}".format(i, win_c.tolist()))
+            print("cover_idx #{}: {} data points".format(i, (cover_idx_to_use == i).sum().item()))
+
+        potentially_show_sof(covering, all_data, win_centers, conf, cover_idx_to_use)
+
+        cover_idx_to_use = cover_idx_to_use.reshape(lin_features.shape[:2])
+        cover_idx_to_use = handle_upsample_early(upsample_early, cover_idx_to_use, dense_affnet_filter)
+        components_indices, valid_components_dict = get_eligible_components(cover_idx_to_use, conf, len(win_centers))
         components_indices = handle_upsample_late(upsample_early, components_indices, dense_affnet_filter)
 
-        visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices, valid_components_dict)
+        visualize_covered_pixels_and_connected_comp(conf, win_centers, cover_idx_to_use, img_name, components_indices, valid_components_dict)
 
         return ImageData(img=img,
                          real_K=None,
                          key_points=None,
                          descriptions=None,
                          normals=None,
-                         ts_phis=ts_phis,
+                         ts_phis=win_centers,
                          components_indices=components_indices,
                          valid_components_dict=valid_components_dict)
 
