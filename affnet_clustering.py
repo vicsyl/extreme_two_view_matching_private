@@ -277,6 +277,7 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
             win_centers, cover_idx = winning_centers(covering, data, conf, return_cover_idxs=True)
         else:
             win_centers, cover_idx = winning_centers_old(covering, all_data, conf, return_cover_idxs=True, valid_px_mask=non_sky_mask_flat)
+            cover_idx = cover_idx[non_sky_mask_flat]
 
         # NOTE: index value convention
         # range(len(ts_phis)) -> all_valid
