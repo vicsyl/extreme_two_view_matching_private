@@ -7,7 +7,7 @@ import torch
 import config
 from kornia_utils import *
 from opt_covering import *
-from utils import update_stats_map_static, append_update_stats_map_static
+from utils import update_stats_map_static, append_update_stats_map_static, timer_label_decorator
 from config import CartesianConfig
 
 
@@ -611,10 +611,13 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         _, _, ts_affnet_final, phis_affnet_final = decompose_lin_maps_lambda_psi_t_phi(laffs_final_no_scale[:, :, :, :2])
 
         mask_in = ts_affnet_final < tilt_r_exp
-        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added"], ts_affnet_final.shape[1], stats_map)
-        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_close"], mask_in.sum().item(), stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_added_kpts"], ts_affnet_final.shape[1], stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_kpts"], ts_affnet_final.shape[1], stats_map)
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_kpts_id_close"], mask_in.sum().item(), stats_map)
+        # TODO fixme this I think only keeps adding the same number for each iteration of the loop
         append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_component.shape[0], stats_map)
-        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_img_size"], img_warped.shape[0] * img_warped.shape[1], stats_map)
+        warp_size = img_warped.shape[0] * img_warped.shape[1]
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_img_size"], warp_size, stats_map)
 
         Timer.end_check_point("affnet filtering keypoints")
 
@@ -651,7 +654,8 @@ def visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering, img_dat
                                                                    ts_affnet_out.shape[1])
     # TODO valid, etc
     print("{}: count: {}".format(label, ts.shape))
-    plot_space_of_tilts(label, img_name, list(img_data.valid_components_dict.keys()), None, covering.r_max, covering.t_max, [
+    valid_components = list(img_data.valid_components_dict.keys()) if img_data.valid_components_dict is not None else None
+    plot_space_of_tilts(label, img_name, valid_components, None, covering.r_max, covering.t_max, [
         PointsStyle(ts=ts_affnet_in_or_no_comp, phis=phis_affnet_in_or_no_comp, color="b", size=0.5),
         PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
         PointsStyle(ts=ts[way_out_mask], phis=phis[way_out_mask], color="g", size=0.5),
@@ -666,6 +670,7 @@ def visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_a
     # visualize_LAF_custom(t_img_all, unrectified_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
 
+@timer_label_decorator
 def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key="", stats_map=None, device=torch.device('cpu'), mask=None):
     """ This seems to do a lot, but it just
         a) compute the HardNet kps, descs and lafs
@@ -681,10 +686,9 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     :return:
     """
 
+    # let's merge conf_map, params_key and stats_map
     if params_key is None or params_key == "":
         params_key = "default"
-
-    Timer.start_check_point("affnet_rectify")
 
     Timer.start_check_point("affnet_init")
 
@@ -731,16 +735,12 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
                             laffs=all_laffs,
                             reprojected_laffs=reprojected_laffs)
 
+    append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_added_kpts"], len(all_kps), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_all"], len(identity_kps), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component"], mask_no_valid_component.sum().item(), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_close"], mask_in.sum().item(), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component_or_close"], mask_in_or_no_component.sum().item(), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_added"], mask_to_add.sum().item(), stats_map)
-
-    # print("affnet_identity_no_component: {}".format(mask_no_valid_component.sum()))
-    # print("affnet_identity_close: {}".format(mask_in.sum()))
-    # print("affnet_identity_no_component_or_close: {}".format(mask_in_or_no_component.sum()))
-    # print("affnet_identity_added: {}".format(mask_to_add.sum()))
 
     t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
 
@@ -798,8 +798,6 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
             PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
             PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
         ], show_affnet)
-
-    Timer.end_check_point("affnet_rectify")
 
     return kpts_struct
 

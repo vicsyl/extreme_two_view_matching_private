@@ -8,7 +8,7 @@ from kornia_moons.feature import *
 
 from affnet import show_sets_of_linear_maps
 from transforms import get_rectification_rotations
-from utils import Timer
+from utils import Timer, timer_label_decorator
 from transforms import decompose_homographies, homographies_jacobians
 
 """
@@ -61,8 +61,8 @@ class HardNetDescriptor:
         self.custom_normals = custom_normals
         self.custom_K = custom_K
 
+    @timer_label_decorator("HardNet.detectAndCompute")
     def detectAndCompute(self, img, mask=None, give_laffs=False):
-        # Timer.start_check_point("HardNet.detectAndCompute")
         # NOTE this is just how it was called before (see SuperPoint.detectAndCompute)
         # assert mask is None
 
@@ -79,7 +79,6 @@ class HardNetDescriptor:
         else:
             descs, laffs = ret
 
-        Timer.end_check_point("HardNet.detectAndCompute")
         if give_laffs:
             return kps, descs, laffs
         else:
@@ -116,7 +115,6 @@ class HardNetDescriptor:
                     lafs_to_use = self.orienter(lafs2, timg)
                 else:
                     lafs_to_use = lafs
-
             Timer.end_check_point("HardNet.lafs_computation")
 
             patches = KF.extract_patches_from_pyramid(timg, lafs_to_use, 32)
@@ -130,6 +128,7 @@ class HardNetDescriptor:
             descs = batched_forward(self.hardnet, patches, self.device, 128).view(B * N, -1)
 
         return descs.detach().cpu().numpy(), lafs_to_use.detach().cpu()
+
 
     def get_Hs_from_custom_normals(self, cv2_sift_kpts, timg):
 

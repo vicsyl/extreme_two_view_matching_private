@@ -13,7 +13,7 @@ from depth_to_normals import show_sky_mask
 import kornia as K
 import kornia.feature as KF
 from config import CartesianConfig
-from utils import adjust_affine_transform
+from utils import timer_label_decorator
 from img_utils import create_plot_only_img
 
 import sys
@@ -217,11 +217,13 @@ def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter
     return components_indices
 
 
+@timer_label_decorator
 def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cuda=False):
     gs_timg = K.image_to_tensor(img, False).float() / 255.
     return affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=use_cuda, enable_sky_filtering=True)
 
 
+@timer_label_decorator
 def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=False, enable_sky_filtering=False):
     """
     The main function to call here.
@@ -250,7 +252,10 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
     gs_timg, dense_affnet_filter = apply_affnet_filter(gs_timg, conf)
 
     with torch.no_grad():
+        dense_aff_l = Timer.start_check_point("dense_affnet_call")
         lafs = dense_affnet(gs_timg)
+        Timer.end_check_point(dense_aff_l)
+
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
         show_affnet_features(lafs, conf)
 
@@ -260,9 +265,11 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         _, _, all_ts1, all_phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
         all_data = torch.vstack((all_ts1.reshape(1, -1), all_phis1.reshape(1, -1)))
 
-        # TODO save
-        # with open("resources/covering_data.pkl", "wb") as f:
-        #     pickle.dump(all_data, f)
+        # TODO
+        temporarily_not_saved = True
+        if not temporarily_not_saved:
+            with open("resources/covering_data.pkl", "wb") as f:
+                pickle.dump(all_data, f)
 
         if enable_sky_filtering:
             non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)

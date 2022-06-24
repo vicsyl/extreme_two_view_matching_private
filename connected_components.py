@@ -7,7 +7,7 @@ import glob
 
 import torch
 
-from utils import Timer, identity_map_from_range_of_iter, merge_keys_for_same_value
+from utils import Timer, identity_map_from_range_of_iter, merge_keys_for_same_value, timer_label_decorator
 from img_utils import *
 import torch.nn as nn
 
@@ -123,7 +123,11 @@ def read_img_normals_info(parent_dir, img_name_dir):
 #     return cluster_colors
 
 
+@timer_label_decorator
 def get_and_show_components(cluster_indices, valid_component_dict, title=None, normals=None, show=True, save=False, path=None, file_name=None):
+
+    if not show and not save:
+        return
 
     colors = [
         [255, 0, 0],
@@ -186,7 +190,6 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
         plt.savefig(full_path)
 
     show_or_close(show)
-    return cluster_colors
 
 
 # def get_and_show_components_new(cluster_indices, valid_component_dict, title=None, normals=None, show=True, save=False, path=None, file_name=None, iterate_through_all=False, img=None, non_sky_mask=None):
@@ -246,10 +249,9 @@ def flood_fill(input_img):
     return flood_filled
 
 
+@timer_label_decorator
 def get_connected_components(normal_indices, valid_indices, show=False,
                              fraction_threshold=0.03, closing_size=None, flood_filling=False, connectivity=4):
-
-    Timer.start_check_point("get_connected_components")
 
     component_size_threshold = normal_indices.shape[0] * normal_indices.shape[1] * fraction_threshold
 
@@ -288,8 +290,6 @@ def get_connected_components(normal_indices, valid_indices, show=False,
         if show:
             # NOTE not very revealing btw.
             get_and_show_components(out, out_valid_indices_dict, "out after normal index={}".format(v_i))
-
-    Timer.end_check_point("get_connected_components")
 
     return out, out_valid_indices_dict
 

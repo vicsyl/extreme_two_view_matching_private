@@ -400,9 +400,60 @@ class Pipeline:
             self.feature_descriptor.set_normals(normals, real_K)
             Timer.end_check_point("Custom normals")
 
+    @timer_label_decorator("sky mask")
+    def get_potential_sky_mask(self, img, h, w):
+        if self.config[CartesianConfig.filter_sky]:
+            non_sky_mask = get_nonsky_mask(img, h, w)
+        else:
+            non_sky_mask = np.ones((h, w), dtype=bool)
+        return non_sky_mask
+
+    @timer_label_decorator
+    def cluster_normals(self, normals, filter_mask):
+        normals_deviced = normals.to(self.device)
+        print("normals_deviced.device: {}".format(normals_deviced.device))
+        normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
+                                                                               filter_mask=filter_mask,
+                                                                               mean_shift_type=self.config["mean_shift_type"],
+                                                                               device=self.device,
+                                                                               handle_antipodal_points=self.config["handle_antipodal_points"])
+        return normals_clusters_repr, normal_indices, valid_normals
+
+    @timer_label_decorator
+    def possibly_upsample_early(self, img, normal_indices):
+        if self.upsample_early:
+            return possibly_upsample_normals(img, normal_indices)
+        else:
+            return normal_indices
+
+    @timer_label_decorator
+    def filter_valid_normals(self, normals):
+        # LAST_MINUTE !!!
+        valid_normal_indices = []
+        for i, normal in enumerate(normals):
+            angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
+            angle_degrees = angle_rad * 180 / math.pi
+            # print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
+            if angle_degrees >= Config.plane_threshold_degrees:
+                print("WARNING: too sharp of an angle with the -z axis, skipping the rectification")
+                continue
+            else:
+                print("angle ok")
+                valid_normal_indices.append(i)
+
+        return valid_normal_indices
+
+    @timer_label_decorator
+    def possibly_upsample_late(self, components_indices):
+        if not self.upsample_early:
+            assert np.all(components_indices < 256), "could not retype to np.uint8"
+            components_indices = components_indices.astype(dtype=np.uint8)
+            components_indices = possibly_upsample_normals(img, components_indices)
+            components_indices = components_indices.astype(dtype=np.uint32)
+        return components_indices
+
     def process_image(self, img_name, order):
 
-        Timer.start_check_point("processing img")
         print("Processing: {}".format(img_name))
         img_processing_dir = self.get_and_create_img_processing_dir()
         Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
@@ -461,7 +512,10 @@ class Pipeline:
         # rectify
         else:
 
+            Timer.start_check_point("processing img from scratch")
+
             rectify_affine_affnet = self.config["rectify_affine_affnet"]
+            # NOTE 'affnet_no_clustering' means to (possibly rectify affine affnet but don't use clustering)
             affnet_no_clustering = self.config["affnet_no_clustering"]
             if rectify_affine_affnet and affnet_no_clustering:
                 print("no prior clustering")
@@ -475,9 +529,6 @@ class Pipeline:
                                      valid_components_dict=None)
             else:
 
-                Timer.start_check_point("processing img from scratch")
-
-                # TODO shorten also the else branch
                 if self.config[CartesianConfig.affnet_clustering]:
                     # (img, dense_affnet, conf, upsample_early):
                     img_data = affnet_clustering(img, img_name, self.dense_affnet, self.config, self.upsample_early)
@@ -488,39 +539,12 @@ class Pipeline:
                     normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'),
                                                                  svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
 
-                    #NOTE this is just to get the #visualization
-                    #'frame_0000001535_4' - just to first img from scene1
-                    # self.counter += 1
-                    # normals_np = normals.numpy()
-                    # normals_np[:, :, 2] *= -1
-                    # plt.imshow(normals)
-                    # plt.show()
-                    # #cv.imwrite("thesis_work/normals_{}.png".format(self.counter), normals * 255)
-                    # plt.imshow(img)
-                    # plt.show()
-                    # #cv.imwrite("thesis_work/normals_original{}.png".format(self.counter), img)
+                    non_sky_mask = self.get_potential_sky_mask(img, *normals.shape[:2])
 
-                    Timer.start_check_point("sky_mask")
-                    if self.config[CartesianConfig.filter_sky]:
-                        non_sky_mask = get_nonsky_mask(img, normals.shape[0], normals.shape[1])
-                    else:
-                        non_sky_mask = np.ones(normals.shape[0:2], dtype=bool)
-                    Timer.end_check_point("sky_mask")
+                    filter_mask = self.apply_quantil_mask(img, img_name, depth_data, s_values, non_sky_mask)
 
-                    Timer.start_check_point("quantil_mask")
-                    quantil_mask = self.get_quantil_mask(img, img_name, self.config["singular_value_quantil"], depth_data[2:4], s_values, depth_data, non_sky_mask)
-                    filter_mask = non_sky_mask & quantil_mask
-                    Timer.end_check_point("quantil_mask")
+                    normals_clusters_repr, normal_indices, valid_normals = self.cluster_normals(normals, filter_mask)
 
-                    Timer.start_check_point("clustering")
-                    normals_deviced = normals.to(self.device)
-                    print("normals_deviced.device: {}".format(normals_deviced.device))
-                    normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
-                                                                                           filter_mask=filter_mask,
-                                                                                           mean_shift_type=self.config["mean_shift_type"],
-                                                                                           device=self.device,
-                                                                                           handle_antipodal_points=self.config["handle_antipodal_points"])
-                    Timer.end_check_point("clustering")
                     self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.all_combinations], img_name)
 
                     # to be redesigned and removed
@@ -533,32 +557,16 @@ class Pipeline:
                                           show=self.show_clusters,
                                           save=self.save_clusters)
 
-                    if self.upsample_early:
-                        normal_indices = possibly_upsample_normals(img, normal_indices)
+                    normal_indices = self.possibly_upsample_early(img, normal_indices)
 
-                    # LAST_MINUTE !!!
-                    valid_normal_indices = []
-                    for i, normal in enumerate(normals_clusters_repr):
-                        angle_rad = math.acos(np.dot(normal, np.array([0, 0, -1])))
-                        angle_degrees = angle_rad * 180 / math.pi
-                        # print("angle: {} vs. angle threshold: {}".format(angle_degrees, Config.plane_threshold_degrees))
-                        if angle_degrees >= Config.plane_threshold_degrees:
-                            print("WARNING: too sharp of an angle with the -z axis, skipping the rectification")
-                            continue
-                        else:
-                            print("angle ok")
-                            valid_normal_indices.append(i)
+                    valid_normal_indices = self.filter_valid_normals(normals_clusters_repr)
+
 
                     components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices,
                                                                                          closing_size=self.connected_components_closing_size,
                                                                                          flood_filling=self.connected_components_flood_fill,
                                                                                          connectivity=self.connected_components_connectivity)
-
-                    if not self.upsample_early:
-                        assert np.all(components_indices < 256), "could not retype to np.uint8"
-                        components_indices = components_indices.astype(dtype=np.uint8)
-                        components_indices = possibly_upsample_normals(img, components_indices)
-                        components_indices = components_indices.astype(dtype=np.uint32)
+                    components_indices = self.possibly_upsample_late(components_indices)
 
                     components_out_path = "{}/{}_cluster_connected_components".format(img_processing_dir, img_name)
                     get_and_show_components(components_indices,
@@ -577,15 +585,16 @@ class Pipeline:
                                          components_indices=components_indices,
                                          valid_components_dict=valid_components_dict)
 
+
             fixed_rot_condition = self.config["rectify_by_fixed_rotation"]
             finish_cond = self.get_stage_number() <= self.stages_map["before_rectification"]
-
             if fixed_rot_condition or finish_cond:
                 print("rectify_by_fixed_rotation: {}, finish before_rectification: {}".format(fixed_rot_condition, finish_cond))
                 print("process_image done")
 
             elif self.config["rectify_affine_affnet"]:
 
+                # FIXME fail fast!!!
                 assert isinstance(self.feature_descriptor, HardNetDescriptor), "rectify_affine_affnet on, but without HardNet descriptor"
 
                 # TODO ideally remove this hack
@@ -686,6 +695,7 @@ class Pipeline:
         Timer.end_check_point("compute_normals")
         return ret
 
+    @timer_label_decorator
     def update_normals_stats(self, normal_indices, normals_clusters_repr, valid_normals, params_key, img_name):
 
         sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])
@@ -704,6 +714,13 @@ class Pipeline:
         self.update_stats_map(["normals_degrees", params_key, img_name], degrees_list)
         self.update_stats_map(["normals", params_key, img_name], normals_clusters_repr)
         self.update_stats_map(["valid_normals", params_key, img_name], valid_normals)
+
+    @timer_label_decorator("quantil_mask")
+    def apply_quantil_mask(self, img, img_name, depth_data, s_values, non_sky_mask):
+        quantil_mask = self.get_quantil_mask(img, img_name, self.config["singular_value_quantil"], depth_data[2:4],
+                                             s_values, depth_data, non_sky_mask)
+        filter_mask = non_sky_mask & quantil_mask
+        return filter_mask
 
     def get_quantil_mask(self, img, img_name, singular_value_quantil, h_w_size, s_values, depth_data, sky_mask_np):
         if singular_value_quantil == 1.0: # and False: NOTE #visualizations
@@ -738,7 +755,6 @@ class Pipeline:
 
     def compute_img_normals(self, img, img_name, stats_key_prefix=None, use_normals_cache=True):
 
-        Timer.start_check_point("processing img", img_name)
         print("processing img {}".format(img_name))
 
         # get focal_length

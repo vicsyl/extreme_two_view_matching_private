@@ -175,6 +175,7 @@ def diff_normal_from_depth_data_old(focal_length,
     return normals
 
 
+@timer_label_decorator
 def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, out_dir, img_name, show=False, save=False):
 
     if show or save:
@@ -351,6 +352,7 @@ def compute_normals_convolution(camera,
     return normals
 
 
+@timer_label_decorator
 def compute_normals_from_svd(
         focal_length,
         orig_height,

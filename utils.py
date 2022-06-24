@@ -8,7 +8,82 @@ import cv2 as cv
 from resize import upsample_bilinear
 import torch.nn.functional as F
 import kornia.geometry as KG
-import torch.nn as nn
+
+
+class Timer:
+
+    log_enabled = False
+    start_time = None
+    global_start_time = None
+
+    stats_times = {}
+    stats_counts = {}
+    stats_start_times = {}
+
+    @staticmethod
+    def log(message):
+        if Timer.log_enabled:
+            print(message)
+
+    @staticmethod
+    def start():
+        Timer.stats_times = {}
+        Timer.stats_counts = {}
+        Timer.stats_start_times = {}
+        Timer.log("Starting the timer")
+        Timer.start_time = time.time()
+        if Timer.global_start_time is None:
+            Timer.global_start_time = time.time()
+
+    @staticmethod
+    def start_check_point(label, parameter=None):
+        assert label is not None
+        Timer.log("{} starting: {}".format(label, parameter))
+        start = Timer.stats_start_times.get(label)
+        if start is not None:
+            Timer.log("WARNING: missing call of end_check_point for label '{}'".format(label))
+        Timer.stats_start_times[label] = time.time()
+        return label
+
+    @staticmethod
+    def end_check_point(label):
+        assert label is not None
+        end = time.time()
+        start = Timer.stats_start_times.get(label)
+        if start is None:
+            Timer.log("WARNING: missing call of start_check_point for label '{}'".format(label))
+        else:
+            duration = end - start
+            Timer.log("{} finished. It took {}".format(label, duration))
+            Timer.stats_start_times[label] = None
+            if Timer.stats_counts.get(label) is None:
+                Timer.stats_counts[label] = 0
+            Timer.stats_counts[label] += 1
+            if Timer.stats_times.get(label) is None:
+                Timer.stats_times[label] = 0
+            Timer.stats_times[label] += duration
+
+    @staticmethod
+    def log_stats():
+        end = time.time()
+        print("Time elapsed from start: {:.4f}., ".format(end - Timer.start_time))
+        print("Global time elapsed from start: {:.4f}., ".format(end - Timer.global_start_time))
+        print("Statistics: ")
+        for key in Timer.stats_times:
+            print("{} called {} times and it took {:.4f} secs. on average".format(key, Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))
+
+
+def timer_label_decorator(label=None):
+    def timer_decorator(func):
+        label_i = label if label is not None else ""
+        label_u = "{}:{}".format(label_i, func.__name__)
+        def run(*args, **kwargs):
+            Timer.start_check_point(label_u)
+            ret = func(*args, **kwargs)
+            Timer.end_check_point(label_u)
+            return ret
+        return run
+    return timer_decorator
 
 
 # TODO option: frame or mask sensitive
@@ -328,6 +403,7 @@ class DepthReader:
     def __init__(self, input_dir):
         self.input_dir = input_dir
 
+    @timer_label_decorator("DepthReader")
     def read_depth_data(self, img_name, height=None, width=None, device=torch.device("cpu")):
         depth_data_file_name = "{}.npy".format(img_name)
         file_path = '{}/{}'.format(self.input_dir, depth_data_file_name)
@@ -410,68 +486,6 @@ def save_img_with_timestamp_jpg(path_prefix, np_img):
     t = time.time()
     timestamp = str(round(t * 1000) / 1000).replace(".", "_")
     cv.imwrite("{}_{}.jpg".format(path_prefix, timestamp), np_img)
-
-
-class Timer:
-
-    log_enabled = False
-    start_time = None
-    global_start_time = None
-
-    stats_times = {}
-    stats_counts = {}
-    stats_start_times = {}
-
-    @staticmethod
-    def log(message):
-        if Timer.log_enabled:
-            print(message)
-
-    @staticmethod
-    def start():
-        Timer.stats_times = {}
-        Timer.stats_counts = {}
-        Timer.stats_start_times = {}
-        Timer.log("Starting the timer")
-        Timer.start_time = time.time()
-        if Timer.global_start_time is None:
-            Timer.global_start_time = time.time()
-
-    @staticmethod
-    def start_check_point(label, parameter=None):
-        assert label is not None
-        Timer.log("{} starting: {}".format(label, parameter))
-        start = Timer.stats_start_times.get(label)
-        if start is not None:
-            Timer.log("WARNING: missing call of end_check_point for label '{}'".format(label))
-        Timer.stats_start_times[label] = time.time()
-
-    @staticmethod
-    def end_check_point(label):
-        assert label is not None
-        end = time.time()
-        start = Timer.stats_start_times.get(label)
-        if start is None:
-            Timer.log("WARNING: missing call of start_check_point for label '{}'".format(label))
-        else:
-            duration = end - start
-            Timer.log("{} finished. It took {}".format(label, duration))
-            Timer.stats_start_times[label] = None
-            if Timer.stats_counts.get(label) is None:
-                Timer.stats_counts[label] = 0
-            Timer.stats_counts[label] += 1
-            if Timer.stats_times.get(label) is None:
-                Timer.stats_times[label] = 0
-            Timer.stats_times[label] += duration
-
-    @staticmethod
-    def log_stats():
-        end = time.time()
-        print("Time elapsed from start: {:.4f}., ".format(end - Timer.start_time))
-        print("Global time elapsed from start: {:.4f}., ".format(end - Timer.global_start_time))
-        print("Statistics: ")
-        for key in Timer.stats_times:
-            print("{} called {} times and it took {:.4f} secs. on average".format(key, Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))
 
 
 if __name__ == "__main__":

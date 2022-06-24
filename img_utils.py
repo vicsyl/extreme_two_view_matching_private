@@ -176,3 +176,18 @@ def show_normals_components(normals, title, figsize=None):
         ax = fig.add_subplot(131 + index)
         ax.imshow(img[:, :, index])
     show_or_close(True)
+
+
+# previously used in pipeline.process_img
+# NOTE this is just to get the #visualization
+# 'frame_0000001535_4' - just to first img from scene1
+# self.counter += 1
+# normals_np = normals.numpy()
+# normals_np[:, :, 2] *= -1
+# plt.imshow(normals)
+# plt.show()
+# #cv.imwrite("thesis_work/normals_{}.png".format(self.counter), normals * 255)
+# plt.imshow(img)
+# plt.show()
+# #cv.imwrite("thesis_work/normals_original{}.png".format(self.counter), img)
+
