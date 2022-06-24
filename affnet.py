@@ -670,7 +670,7 @@ def visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_a
     # visualize_LAF_custom(t_img_all, unrectified_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
 
-@timer_label_decorator
+@timer_label_decorator()
 def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key="", stats_map=None, device=torch.device('cpu'), mask=None):
     """ This seems to do a lot, but it just
         a) compute the HardNet kps, descs and lafs

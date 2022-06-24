@@ -131,7 +131,7 @@ def get_perspective_transform(img, R, K, K_inv, component_indices, index, clip_a
     return P, bounding_box_new
 
 
-@timer_label_decorator
+@timer_label_decorator()
 def get_rectified_keypoints(normals,
                             components_indices,
                             valid_components_dict,

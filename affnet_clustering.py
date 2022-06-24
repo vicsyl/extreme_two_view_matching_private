@@ -217,13 +217,13 @@ def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter
     return components_indices
 
 
-@timer_label_decorator
+@timer_label_decorator()
 def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cuda=False):
     gs_timg = K.image_to_tensor(img, False).float() / 255.
     return affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=use_cuda, enable_sky_filtering=True)
 
 
-@timer_label_decorator
+@timer_label_decorator()
 def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=False, enable_sky_filtering=False):
     """
     The main function to call here.

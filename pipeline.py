@@ -408,7 +408,7 @@ class Pipeline:
             non_sky_mask = np.ones((h, w), dtype=bool)
         return non_sky_mask
 
-    @timer_label_decorator
+    @timer_label_decorator()
     def cluster_normals(self, normals, filter_mask):
         normals_deviced = normals.to(self.device)
         print("normals_deviced.device: {}".format(normals_deviced.device))
@@ -419,14 +419,14 @@ class Pipeline:
                                                                                handle_antipodal_points=self.config["handle_antipodal_points"])
         return normals_clusters_repr, normal_indices, valid_normals
 
-    @timer_label_decorator
+    @timer_label_decorator()
     def possibly_upsample_early(self, img, normal_indices):
         if self.upsample_early:
             return possibly_upsample_normals(img, normal_indices)
         else:
             return normal_indices
 
-    @timer_label_decorator
+    @timer_label_decorator()
     def filter_valid_normals(self, normals):
         # LAST_MINUTE !!!
         valid_normal_indices = []
@@ -443,7 +443,7 @@ class Pipeline:
 
         return valid_normal_indices
 
-    @timer_label_decorator
+    @timer_label_decorator()
     def possibly_upsample_late(self, components_indices):
         if not self.upsample_early:
             assert np.all(components_indices < 256), "could not retype to np.uint8"
@@ -560,7 +560,6 @@ class Pipeline:
                     normal_indices = self.possibly_upsample_early(img, normal_indices)
 
                     valid_normal_indices = self.filter_valid_normals(normals_clusters_repr)
-
 
                     components_indices, valid_components_dict = get_connected_components(normal_indices, valid_normal_indices,
                                                                                          closing_size=self.connected_components_closing_size,
@@ -695,7 +694,7 @@ class Pipeline:
         Timer.end_check_point("compute_normals")
         return ret
 
-    @timer_label_decorator
+    @timer_label_decorator()
     def update_normals_stats(self, normal_indices, normals_clusters_repr, valid_normals, params_key, img_name):
 
         sums = np.array([np.sum(normal_indices == i) for i in range(len(normals_clusters_repr))])

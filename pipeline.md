@@ -1,5 +1,6 @@
 
 
+
  # compute normals
  
 ---> down-sampled img -> depth map

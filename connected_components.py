@@ -123,7 +123,7 @@ def read_img_normals_info(parent_dir, img_name_dir):
 #     return cluster_colors
 
 
-@timer_label_decorator
+@timer_label_decorator()
 def get_and_show_components(cluster_indices, valid_component_dict, title=None, normals=None, show=True, save=False, path=None, file_name=None):
 
     if not show and not save:
@@ -249,7 +249,7 @@ def flood_fill(input_img):
     return flood_filled
 
 
-@timer_label_decorator
+@timer_label_decorator()
 def get_connected_components(normal_indices, valid_indices, show=False,
                              fraction_threshold=0.03, closing_size=None, flood_filling=False, connectivity=4):
 
