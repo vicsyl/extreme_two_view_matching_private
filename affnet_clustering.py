@@ -4,7 +4,7 @@ import torch
 from evaluation import ImageData
 from affnet import affnet_rectify
 from sky_filter import get_nonsky_mask_torch
-from affnet import winning_centers, decompose_lin_maps_lambda_psi_t_phi
+from affnet import winning_centers, winning_centers_old, decompose_lin_maps_lambda_psi_t_phi
 from dense_affnet import *
 from scene_info import *
 from opt_covering import *
@@ -272,7 +272,11 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         data = all_data[:, non_sky_mask_flat]
 
         covering: CoveringParams = CoveringParams.get_effective_covering_by_cfg(conf)
-        win_centers, cover_idx = winning_centers(covering, data, conf, return_cover_idxs=True)
+        sof_coverings_new_wc_impl = conf.get(CartesianConfig.sof_coverings_new_wc_impl, True)
+        if sof_coverings_new_wc_impl:
+            win_centers, cover_idx = winning_centers(covering, data, conf, return_cover_idxs=True)
+        else:
+            win_centers, cover_idx = winning_centers_old(covering, all_data, conf, return_cover_idxs=True, valid_px_mask=non_sky_mask_flat)
 
         # NOTE: index value convention
         # range(len(ts_phis)) -> all_valid

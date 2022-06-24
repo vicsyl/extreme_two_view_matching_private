@@ -126,6 +126,7 @@ class CartesianConfig:
     affnet_dense_affnet_enforce_connected_components = "affnet_dense_affnet_enforce_connected_components"
     affnet_clustering_restart_affnet = "affnet_clustering_restart_affnet"
 
+    sof_coverings_new_wc_impl = "sof_coverings_new_wc_impl"
     sof_coverings_closest_winning_center = "sof_coverings_closest_winning_center"
     sof_coverings_distance_for_identity = "sof_coverings_distance_for_identity"
 
@@ -194,6 +195,7 @@ class CartesianConfig:
         affnet_dense_affnet_enforce_connected_components: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
         affnet_clustering_restart_affnet: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
 
+        sof_coverings_new_wc_impl: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
         sof_coverings_closest_winning_center: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
         sof_coverings_distance_for_identity: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
 

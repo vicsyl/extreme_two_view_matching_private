@@ -380,11 +380,9 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
 def winning_centers(covering_params: CoveringParams, data, config, return_cover_idxs=False):
     """
     :param covering_params:
-    :param data_all_ts:
-    :param data_all_phis:
+    :param data:
     :param config:
     :param return_cover_idxs:
-    :param valid_px_mask:
     :return: winning_centers, cover_idx (=None if return_cover_idxs == False)
         winning_centers: rows of with 2 columns - (tau_i, phi_i)
         cover_idx: index of centers for the data points
@@ -403,6 +401,41 @@ def winning_centers(covering_params: CoveringParams, data, config, return_cover_
                                           return_cover_idxs=return_cover_idxs)
 
     return ret_winning_centers, cover_idx
+
+
+def winning_centers_old(covering_params: CoveringParams, data, config, return_cover_idxs=False, valid_px_mask=None):
+    """
+    :param covering_params:
+    :param data:
+    :param config:
+    :param return_cover_idxs:
+    :param valid_px_mask:
+    :return: winning_centers, cover_idx (=None if return_cover_idxs == False)
+        winning_centers: rows of with 2 columns - (tau_i, phi_i)
+        cover_idx: index of centers for the data points
+                    -1 : no winning center
+                    -2 : identity equivalence class
+                    >=0: winning center index
+    """
+
+    covering_fraction_th = config["affnet_covering_fraction_th"]
+    covering_max_iter = config["affnet_covering_max_iter"]
+
+    centers = covering_params.covering_coordinates()
+    r_max = covering_params.r_max
+    t_max = covering_params.t_max
+
+    ret = vote_old(centers, data, r_max,
+                   fraction_th=covering_fraction_th,
+                   iter_th=covering_max_iter,
+                   return_cover_idxs=return_cover_idxs,
+                   valid_px_mask=valid_px_mask,
+                   t_max=t_max)
+
+    if return_cover_idxs:
+        return ret
+    else:
+        return ret, None
 
 
 def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
