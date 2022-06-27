@@ -1,7 +1,9 @@
+from typing import Optional
 import torch.nn as nn
 import torch
 import kornia as K
 from typing import Dict
+from affnet_clustering import affnet_coords
 
 """
 DISCLAIMER: Code adopted from Kornia's class LAFAffNetShapeEstimator (https://github.com/kornia/kornia/blob/master/kornia/feature/affine_shape.py)
@@ -72,11 +74,23 @@ class DenseAffNet(nn.Module):
         Returns:
             laf_out shape [BxNx2x3]
         """
+        return self.forward_with_mask(img)
+
+    def forward_with_mask(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+
         xy = self.features(self._normalize_input(img))
         BB, CH, HH, WW = xy.shape
         assert BB == 1
 
         xy = xy.permute(0, 2, 3, 1).view(-1, 3)
+        if mask is not None:
+            coords = affnet_coords((HH, WW))
+            mask = mask[0, 0]
+            mask = mask[coords[0].type(torch.long), coords[1].type(torch.long)]
+            #mask = mask.permute(0, 2, 3, 1).view(-1, 3)
+            mask = mask.view(-1)
+            xy = xy[mask]
+
         # a1, a2 -> paper
         a1 = torch.cat([1.0 + xy[:, 0].reshape(-1, 1, 1), 0 * xy[:, 0].reshape(-1, 1, 1)], dim=2)
         a2 = torch.cat([xy[:, 1].reshape(-1, 1, 1), 1.0 + xy[:, 2].reshape(-1, 1, 1)], dim=2)
@@ -86,5 +100,7 @@ class DenseAffNet(nn.Module):
         ellipse_scale = K.feature.get_laf_scale(new_laf)
         laf_out_flat = K.feature.scale_laf(K.feature.make_upright(new_laf), 1.0 / ellipse_scale)
         laf_out_flat = laf_out_flat.permute(1, 0, 2, 3)
+
+        # CONTINUE: here you need to apply to a larger zeros array !
         laf_out = laf_out_flat.reshape(HH, WW, 2, 3)
         return laf_out

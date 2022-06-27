@@ -47,7 +47,7 @@ class DenseAffnetFeature:
                                                               torch.Tensor,
                                                               torch.Tensor]:
 
-        assert mask is None, "non trivial mask (i.e. not None) not supported"
+        # assert mask is None, "non trivial mask (i.e. not None) not supported"
 
         img_data = affnet_clustering_torch(img=None,
                                            gs_timg=img,
@@ -55,7 +55,8 @@ class DenseAffnetFeature:
                                            dense_affnet=self.dense_affnet,
                                            conf=self.config,
                                            upsample_early=True,
-                                           use_cuda=self.device == torch.device("cuda"))
+                                           use_cuda=self.device == torch.device("cuda"),
+                                           mask=mask)
 
         kpts_struct: KptStruct = affnet_rectify(img_name=None,
                                                 hardnet_descriptor=self.hard_net,

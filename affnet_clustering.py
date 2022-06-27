@@ -154,7 +154,7 @@ def apply_affnet_filter(gs_timg, conf):
     return gs_timg, dense_affnet_filter
 
 
-def add_affnet_coodrs_to_lafs(lafs):
+def add_affnet_coords_to_lafs(lafs):
     coords = affnet_coords(lafs.shape[:2])
     # (H, W) (shape -> mesh-grid) => (H, W) (geometric coords)
     lafs[:, :, 0, 2] = coords[1]
@@ -165,7 +165,7 @@ def possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf):
 
     use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
     if use_orienter:
-        add_affnet_coodrs_to_lafs(lafs)
+        add_affnet_coords_to_lafs(lafs)
         orienter = KF.LAFOrienter(dense_affnet.patch_size, angle_detector=KF.OriNet(True))
         lafs_flat = lafs.reshape(1, lafs.shape[0] * lafs.shape[1], 2, 3)
         all_size = lafs_flat.shape[1]
@@ -224,7 +224,7 @@ def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cud
 
 
 @timer_label_decorator()
-def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=False, enable_sky_filtering=False):
+def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=False, enable_sky_filtering=False, mask=None):
     """
     The main function to call here.
     NOTE: especially when the orienter is on the lafs are very expensive to compute
@@ -253,7 +253,7 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
 
     with torch.no_grad():
         dense_aff_l = Timer.start_check_point("dense_affnet_call")
-        lafs = dense_affnet(gs_timg)
+        lafs = dense_affnet.forward_with_mask(gs_timg, mask)
         Timer.end_check_point(dense_aff_l)
 
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
@@ -279,6 +279,7 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         data = all_data[:, non_sky_mask_flat]
 
         covering: CoveringParams = CoveringParams.get_effective_covering_by_cfg(conf)
+
         sof_coverings_new_wc_impl = conf.get(CartesianConfig.sof_coverings_new_wc_impl, True)
         if sof_coverings_new_wc_impl:
             win_centers, cover_idx = winning_centers(covering, data, conf, return_cover_idxs=True)

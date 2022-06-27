@@ -129,7 +129,6 @@ class HardNetDescriptor:
 
         return descs.detach().cpu().numpy(), lafs_to_use.detach().cpu()
 
-
     def get_Hs_from_custom_normals(self, cv2_sift_kpts, timg):
 
         kps_long = torch.tensor([[kp.pt[0] + 0.5, kp.pt[1] + 0.5] for kp in cv2_sift_kpts], dtype=torch.long, device=self.device)

@@ -1,3 +1,5 @@
+import torch
+
 from pipeline import *
 from dense_affnet_feature import DenseAffnetFeature
 import kornia as K
@@ -24,7 +26,10 @@ def process_files(file_paths):
         img = read_img(file_path)
         img_t = K.image_to_tensor(img, False).float() / 255.
 
-        laffs, responses, descs = dense_affnet_feature.forward(img_t, None)
+        mask = torch.ones_like(img_t, dtype=bool)
+        mask[:, :, :500] = 0
+
+        laffs, responses, descs = dense_affnet_feature.forward(img_t, mask)
         print("{} done".format(file_path))
 
 
