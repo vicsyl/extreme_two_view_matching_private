@@ -2,7 +2,7 @@ import torch.nn
 import torchvision as tv
 import numpy as np
 import os
-from utils import Timer
+from utils import Timer, timer_label_decorator
 
 from mit_semseg.models import ModelBuilder, SegmentationModule
 
@@ -35,10 +35,8 @@ net_decoder = ModelBuilder.build_decoder(
 
 
 # TODO still performing numpy-torch conversion (in: np_image)
+@timer_label_decorator()
 def get_nonsky_mask_torch(np_image, height, width, use_cuda=False):
-
-    sky_m_t = "sky masking torch"
-    Timer.start_check_point(sky_m_t)
 
     crit = torch.nn.NLLLoss(ignore_index=-1)
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
@@ -67,11 +65,10 @@ def get_nonsky_mask_torch(np_image, height, width, use_cuda=False):
         pred = pred.detach().cpu()[0]
         nonsky_mask = pred != 2
 
-    Timer.end_check_point(sky_m_t)
-
     return nonsky_mask
 
 
+@timer_label_decorator()
 def get_nonsky_mask(np_image, height, width, use_cuda=False):
 
     sky_m = "sky masking"

@@ -11,7 +11,7 @@ from matplotlib.patches import Circle
 from utils import Timer
 from img_utils import create_plot_only_img
 from connected_components import get_and_show_components
-from utils import adjust_affine_transform
+from utils import adjust_affine_transform, timer_label_decorator
 
 @dataclass
 class CoveringParams:
@@ -347,6 +347,7 @@ def draw_covered_data(ax, center, data, r_max, color):
     opt_conv_draw(ax, data_in, color, 0.5)
 
 
+@timer_label_decorator()
 def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices_arg, valid_components_dict_arg):
 
     valid_components_dict = valid_components_dict_arg.copy()
@@ -545,6 +546,7 @@ def prepare_coverings_plot_closest(covering_params, data, winning_centers, with_
     draw_identity_data(ax, data, covering_params.r_max)
 
 
+@timer_label_decorator()
 def potentially_show_sof(covering_params, data, winning_centers, config, cover_idx=None, enforce_show=False):
 
     show_affnet = config.get(CartesianConfig.show_affnet, enforce_show)

@@ -126,6 +126,7 @@ def filter_components(component_idxs, fraction_threshold):
     return component_idxs, valid_component_dict
 
 
+@timer_label_decorator()
 def get_eligible_components(component_idxs, conf, valid_length):
     """
     :param component_idxs:
@@ -161,6 +162,7 @@ def add_affnet_coodrs_to_lafs(lafs):
     lafs[:, :, 1, 2] = coords[0]
 
 
+@timer_label_decorator()
 def possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf):
 
     use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
@@ -184,6 +186,7 @@ def possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf):
     return lafs
 
 
+@timer_label_decorator()
 def possibly_invert_lin_features(lin_features, conf):
     invert_first = conf.get("invert_first", True)
     # NOTE backward compatibility
@@ -193,6 +196,7 @@ def possibly_invert_lin_features(lin_features, conf):
     return lin_features
 
 
+@timer_label_decorator()
 def handle_upsample_early(upsample_early, cover_idx, dense_affnet_filter):
     if upsample_early:
         cover_idx = affnet_upsample(cover_idx)
@@ -201,6 +205,7 @@ def handle_upsample_early(upsample_early, cover_idx, dense_affnet_filter):
     return cover_idx
 
 
+@timer_label_decorator()
 def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter):
     # NOTES
     # a) upsample_early is usually True, even though False may be more sensible

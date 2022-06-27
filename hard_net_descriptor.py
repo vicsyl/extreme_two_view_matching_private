@@ -118,6 +118,7 @@ class HardNetDescriptor:
                 else:
                     lafs_to_use = lafs
             Timer.end_check_point("HardNet.lafs_computation")
+            desc_label = Timer.start_check_point("HardNet.descriptors computation")
 
             patches = KF.extract_patches_from_pyramid(timg, lafs_to_use, 32)
 
@@ -129,7 +130,9 @@ class HardNetDescriptor:
             # descs = self.hardnet(patches).view(B * N, -1)
             descs = batched_forward(self.hardnet, patches, self.device, 128).view(B * N, -1)
 
-        return descs.detach().cpu().numpy(), lafs_to_use.detach().cpu()
+        ret = descs.detach().cpu().numpy(), lafs_to_use.detach().cpu()
+        Timer.end_check_point(desc_label)
+        return ret
 
 
     def get_Hs_from_custom_normals(self, cv2_sift_kpts, timg):
