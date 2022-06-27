@@ -699,7 +699,8 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
 
     show_affnet = conf_map.get("show_affnet", False)
 
-    identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, mask=mask)
+    mask_np = None if mask is None else mask.numpy().astype(np.uint8)
+    identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, mask=mask_np)
 
     if affnet_no_clustering:
         # NOTE component == 0 -> still a valid component
