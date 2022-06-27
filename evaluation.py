@@ -967,8 +967,10 @@ def evaluate_per_img_stats(stats_map):
                 for kpts in all_kpts:
                     sum_kpts += kpts
             img_count = len(m[configuration])
+            avg_components = sum_components / img_count
+            print("avg number of components (per imafe): {}".format(avg_components))
             avg_area = sum_area / img_count
-            print("avg rectified warped imgs area (per image): {}".format(avg_area))
+            print("avg rectified warped region area (per image): {}".format(avg_area))
             avg_kpts = sum_kpts / img_count
             print("avg kpts in the warps areas (per image): {}".format(avg_kpts))
             if sum_components != 0:
@@ -977,7 +979,7 @@ def evaluate_per_img_stats(stats_map):
             else:
                 avg_warps_per_component = 0.0
                 print("avg number of warps per component: N/A 'sum_components == 0'")
-            excel_friendly_format(["avg_area", "avg_kpts", "avg_warps_per_component"], [str(i) for i in [avg_area, avg_kpts, avg_warps_per_component]])
+            excel_friendly_format(["avg_components, avg_area", "avg_kpts", "avg_warps_per_component"], [str(i) for i in [avg_components, avg_area, avg_kpts, avg_warps_per_component]])
 
 
 def get_all_diffs(maps_all_params):

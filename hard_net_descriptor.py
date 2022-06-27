@@ -67,9 +67,11 @@ class HardNetDescriptor:
         # assert mask is None
 
         #mask_to_apply = None #if mask is None else mask.numpy().astype(np.uint8)
+        label_detect = Timer.start_check_point("detect in HardNet")
         kps = self.sift_descriptor.detect(img, mask)
         if self.filter is not None:
             kps = kps[::self.filter]
+        Timer.end_check_point(label_detect)
 
         ret = self.get_local_descriptors(img, kps, give_laffs=give_laffs)
         if len(ret) != 2:

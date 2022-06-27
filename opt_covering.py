@@ -79,7 +79,6 @@ class CoveringParams:
     # (1.7, 5.8) - BUT SPARSE!
     @staticmethod
     def sparse_covering_1_7():
-        bands = 6
         return CoveringParams(
             r_max=1.7,
             t_max=5.8,

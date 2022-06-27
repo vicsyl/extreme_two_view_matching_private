@@ -66,11 +66,15 @@ class Timer:
     @staticmethod
     def log_stats():
         end = time.time()
-        print("Time elapsed from start: {:.4f}., ".format(end - Timer.start_time))
+        config_time = end - Timer.start_time
+        print("Time elapsed from start: {:.4f}., ".format(config_time))
         print("Global time elapsed from start: {:.4f}., ".format(end - Timer.global_start_time))
         print("Statistics: ")
+        print("key calls avg_time")
+        print("all_time 1 {:.4f}".format(config_time))
         for key in Timer.stats_times:
-            print("{} called {} times and it took {:.4f} secs. on average".format(key, Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))
+            #print("{} called {} times and it took {:.4f} secs. on average".format(key, Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))
+            print("{} {} {:.4f}".format(key.replace(" ", "_"), Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))
 
 
 def timer_label_decorator(label=None):
