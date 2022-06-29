@@ -943,6 +943,9 @@ def excel_friendly_format(keys, stats):
 
 def evaluate_per_img_stats(stats_map):
 
+    def get_sum(m, key):
+        return sum(m.get(key, []))
+
     if not stats_map.__contains__("per_img_stats"):
         print("WARNING: 'per_img_stats' not found, skipping")
     else:
@@ -954,31 +957,47 @@ def evaluate_per_img_stats(stats_map):
             sum_warps = 0
             sum_components = 0
             sum_kpts = 0
-            for img in m[configuration]:
-                img_key = m[configuration][img]
-                all_kpts = img_key.get("affnet_added_kpts", [])
-                areas = img_key.get("affnet_warped_img_size", [])
+            sum_kpts_test = 0
+            sum_warped_kpts = 0
+            conf_stat = m[configuration]
+            for img in conf_stat:
+                img_key = conf_stat[img]
                 affnet_warps_per_component = img_key.get("affnet_warps_per_component", [])
                 sum_components += len(affnet_warps_per_component)
-                for warps in affnet_warps_per_component:
-                    sum_warps += warps
-                for area in areas:
-                    sum_area += area
+
+                sum_warps += get_sum(img_key, "affnet_warps_per_component")
+                sum_area += get_sum(img_key, "affnet_warped_img_size")
+                sum_kpts += get_sum(img_key, "affnet_added_kpts")
+                sum_warped_kpts += get_sum(img_key, "affnet_warped_added_kpts")
+
+                all_kpts = img_key.get("affnet_added_kpts", [])
                 for kpts in all_kpts:
-                    sum_kpts += kpts
+                    sum_kpts_test += kpts
+                assert sum_kpts == sum_kpts_test
+
             img_count = len(m[configuration])
+
             avg_components = sum_components / img_count
-            print("avg number of components (per imafe): {}".format(avg_components))
+            print("avg number of components (per image): {}".format(avg_components))
+
             avg_area = sum_area / img_count
             print("avg rectified warped region area (per image): {}".format(avg_area))
+
             avg_kpts = sum_kpts / img_count
-            print("avg kpts in the warps areas (per image): {}".format(avg_kpts))
+            print("avg kpts (per image): {}".format(avg_kpts))
+
+            avg_kpts_warped = sum_warped_kpts / img_count
+            print("avg kpts in warped regions (per image): {}".format(avg_kpts_warped))
+
             if sum_components != 0:
                 avg_warps_per_component = sum_warps / sum_components
                 print("avg number of warps per component: {}".format(avg_warps_per_component))
+                avg_area_component = sum_area / sum_components
+                print("avg rectified warped region area (per component): {}".format(avg_area_component))
             else:
                 avg_warps_per_component = 0.0
                 print("avg number of warps per component: N/A 'sum_components == 0'")
+                print("avg rectified warped region area (per component): N/A 'sum_components == 0'")
             excel_friendly_format(["avg_components, avg_area", "avg_kpts", "avg_warps_per_component"], [str(i) for i in [avg_components, avg_area, avg_kpts, avg_warps_per_component]])
 
 
