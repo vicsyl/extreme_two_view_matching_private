@@ -86,6 +86,7 @@ def compose_lin_maps(ts, phis, lambdas, psis):
 
 
 # TODO handle CUDA
+@timer_label_decorator("decompose_lin_maps")
 def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     """
     :param l_maps: torch.Tensor(D1, D2, 2, 2)
@@ -96,7 +97,6 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     """
 
     assert len(l_maps.shape) == 4
-    Timer.start_check_point("decompose_lin_maps")
 
     # NOTE for now just disallow CUDA
     assert l_maps.device == torch.device('cpu')
@@ -185,7 +185,6 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     ts = s[:, :, 0]
 
     assert_decomposition()
-    Timer.end_check_point("decompose_lin_maps")
 
     return lambdas, psis, ts, phis
 
@@ -488,6 +487,27 @@ def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, t
         return wcs
 
 
+def get_mask(img_warped_t, aff_maps_inv, current_component, img_data):
+    mesh = torch.where(img_warped_t[0, 0] > -500)
+    mesh_tensor = torch.vstack((mesh[1], mesh[0], torch.ones(mesh[0].shape[0]))).type(torch.float32).t()
+    inverted_pxs = aff_maps_inv.repeat(mesh_tensor.shape[0], 1, 1) @ mesh_tensor.unsqueeze(2)
+    inverted_pxs = inverted_pxs.squeeze(2)
+    inverted_pxs = torch.round(inverted_pxs).to(torch.long)
+    # DEBUG dimensions
+    mask_inv_pxs = (inverted_pxs[:, 1] < img_data.img.shape[0]) & (inverted_pxs[:, 1] >= 0) & \
+                   (inverted_pxs[:, 0] < img_data.img.shape[1]) & (inverted_pxs[:, 0] >= 0)
+    inverted_pxs = inverted_pxs[mask_inv_pxs]
+    mask_component = (torch.tensor(img_data.components_indices[inverted_pxs[:, 1], inverted_pxs[:, 0]]) == current_component)
+
+    mesh_tensor = mesh_tensor[mask_inv_pxs]
+    mesh_tensor = mesh_tensor[mask_component]
+
+    final_mask = torch.zeros_like(img_warped_t[0, 0], dtype=bool)
+    mesh_tensor = mesh_tensor.type(torch.long)
+    final_mask[mesh_tensor[:, 1], mesh_tensor[:, 0]] = True
+    return final_mask.numpy().astype(np.uint8)
+
+
 def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                      mask_cmp, ts, phis,
                      current_component, normal_index,
@@ -532,9 +552,12 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
     append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warps_per_component"], len(ts_phis), stats_map)
     for t_phi in ts_phis:
 
+        # t_img_all[(torch.tensor(img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]]) == current_component)]
+        t_img_all[0, :, torch.tensor(img_data.components_indices == current_component)] = torch.tensor([[0.], [128.], [0.]])
         img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=True)
         img_warped = k_to_img_np(img_warped_t)
 
+        affnet_warp_image_show_transformation = True
         if affnet_warp_image_show_transformation:
             img_normal_component_title = "{} - warped component {}, normal {}".format(img_name,
                                                                                       current_component,
@@ -544,12 +567,25 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
             plt.imshow(img_warped)
             plt.show()
 
+        aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
+
+        use_sift_mask = True
+        if use_sift_mask:
+            sift_mask = get_mask(img_warped_t, aff_maps_inv, current_component, img_data)
+            # plt.figure(figsize=(6, 8))
+            # plt.title("SIFT mask")
+            # plt.imshow(sift_mask)
+            # plt.show()
+        else:
+            sift_mask = None
+
         # not normalized by scale, which is good btw.
-        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, give_laffs=True)
+        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True)
+        #kps_warped_test, descs_warped_test, laffs_final_test = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True)
+        #kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=None, give_laffs=True)
+
         if len(kps_warped) == 0:
             continue
-
-        aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
 
         if affnet_warp_image_show_transformation:
             img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv,
@@ -598,6 +634,9 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         laffs_final = laffs_final[:, mask_cmp]
         laffs_reprojected = laffs_reprojected[:, mask_cmp]
+
+        #print("len(descs_warped_test), len(descs): {}, {}".format(len(descs_warped_test), len(descs)))
+        #assert len(descs_warped_test) == len(descs)
 
         kpts_struct.kps.extend(kps)
         kpts_struct.descs = np.vstack((kpts_struct.descs, descs))
