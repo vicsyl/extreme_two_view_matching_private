@@ -125,6 +125,7 @@ class CartesianConfig:
     affnet_dense_affnet_cc_fraction_th = "affnet_dense_affnet_cc_fraction_th"
     affnet_dense_affnet_enforce_connected_components = "affnet_dense_affnet_enforce_connected_components"
     affnet_clustering_restart_affnet = "affnet_clustering_restart_affnet"
+    affnet_use_eager_mask = "affnet_use_eager_mask"
 
     sof_coverings_new_wc_impl = "sof_coverings_new_wc_impl"
     sof_coverings_closest_winning_center = "sof_coverings_closest_winning_center"
@@ -194,6 +195,7 @@ class CartesianConfig:
         affnet_dense_affnet_cc_fraction_th: Property("float", default=0.008, cache=Property.cache_img_data, optional=False, list_allowed=True),
         affnet_dense_affnet_enforce_connected_components: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
         affnet_clustering_restart_affnet: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
+        affnet_use_eager_mask: Property("bool", default=False, cache=Property.cache_img_data, optional=False, list_allowed=True),
 
         sof_coverings_new_wc_impl: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),
         sof_coverings_closest_winning_center: Property("bool", default=True, cache=Property.cache_img_data, optional=False, list_allowed=True),

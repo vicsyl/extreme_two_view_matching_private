@@ -3,7 +3,6 @@ import kornia.feature as KF
 import matplotlib.pyplot as plt
 import numpy
 import torch
-import cv2 as cv
 
 import config
 from kornia_utils import *
@@ -589,7 +588,6 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=True)
         img_warped = k_to_img_np(img_warped_t)
 
-        affnet_warp_image_show_transformation = True
         if affnet_warp_image_show_transformation:
             img_normal_component_title = "{} - warped component {}, normal {}".format(img_name,
                                                                                       current_component,
@@ -619,10 +617,9 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
         kpt_s_back = kpt_s_back.squeeze(2)
 
-        laffs_final_orig_px = laffs_final.clone()
         laffs_final[0, :, :, 2] = kpt_s_back
 
-        # TODO!!!
+        # TODO - is this OK?
         laffs_reprojected = laffs_final.clone()
         laffs_reprojected[:, :, :, :2] = laffs_reprojected[:, :, :, :2] @ aff_maps_inv[:, :, :2]
 
