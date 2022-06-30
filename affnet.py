@@ -640,8 +640,10 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         kpt_s_back_int[~mask_cmp, 0] = 0
         kpt_s_back_int[~mask_cmp, 1] = 0
+        label = Timer.start_check_point("interest: single mask and current_component")
         if current_component is not None:
             mask_cmp = (mask_cmp) & (torch.tensor(img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]]) == current_component)
+        Timer.end_check_point(label)
 
         mask_cmp = mask_cmp.to(torch.bool)
 
