@@ -62,14 +62,14 @@ class HardNetDescriptor:
         self.custom_K = custom_K
 
     @timer_label_decorator("HardNet.detectAndCompute")
-    def detectAndCompute(self, img, mask=None, give_laffs=False):
+    def detectAndCompute(self, img, mask=None, give_laffs=False, skip_filter=False):
         # NOTE this is just how it was called before (see SuperPoint.detectAndCompute)
         # assert mask is None
 
         #mask_to_apply = None #if mask is None else mask.numpy().astype(np.uint8)
         label_detect = Timer.start_check_point("detect in HardNet")
         kps = self.sift_descriptor.detect(img, mask)
-        if self.filter is not None:
+        if self.filter is not None and not skip_filter:
             kps = kps[::self.filter]
         Timer.end_check_point(label_detect)
 
