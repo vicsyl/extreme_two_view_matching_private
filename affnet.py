@@ -509,6 +509,19 @@ def get_mask(img_warped_t, aff_maps_inv, current_component, img_data):
     return final_mask.numpy().astype(np.uint8)
 
 
+def get_effective_mask(img_warped_t, aff_maps_inv, current_component, img_data, config):
+    sift_mask = None
+    use_sift_mask = config.get(CartesianConfig.affnet_use_eager_mask, "False")
+    if use_sift_mask:
+        sift_mask = get_mask(img_warped_t, aff_maps_inv, current_component, img_data)
+        # plt.figure(figsize=(6, 8))
+        # plt.title("SIFT mask")
+        # plt.imshow(sift_mask)
+        # plt.show()
+    return sift_mask
+
+
+# TODO use this to modularize the pipeline
 def get_mask_kpts(cv_kpt, aff_map_back, img_data, current_component):
     kps_t = torch.tensor([kp.pt + (1,) for kp in cv_kpt])
     kpt_s_back = aff_map_back.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
@@ -587,47 +600,10 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
             plt.show()
 
         aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
-
-        use_sift_mask = True
-        if use_sift_mask:
-            sift_mask = get_mask(img_warped_t, aff_maps_inv, current_component, img_data)
-            plt.figure(figsize=(6, 8))
-            plt.title("SIFT mask")
-            plt.imshow(sift_mask)
-            plt.show()
-        else:
-            sift_mask = None
+        sift_mask = get_effective_mask(img_warped_t, aff_maps_inv, current_component, img_data, config)
 
         # not normalized by scale, which is good btw.
-        #kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True, skip_filter=True)
-        # descs_warped_test = []
-        kps_warped_test, descs_warped_test, laffs_final_test = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True, skip_filter=True)
-        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=None, give_laffs=True, skip_filter=True)
-
-        # just_show = True
-        # if just_show:
-        #     img_to_show = np.ascontiguousarray(img_warped, dtype=np.uint8)
-        #     img_to_show[sift_mask] = [0, 0, 128]
-        #
-        #     def draw_kpts(laffs, radius, color, thickness):
-        #         for i in range(laffs.shape[1]):
-        #             coords = (int(laffs[0, i, 0, 2].item()), int(laffs[0, i, 1, 2].item()))
-        #             cv.circle(img_to_show, coords, radius, color, thickness)
-        #
-        #     # def draw_kpts_fake(laffs, radius, color, thickness):
-        #     #     for i in range(laffs.shape[1]):
-        #     #         coords = laffs[0, i, :, 2]
-        #     #         img_warped[c], coords, radius + i * 2, color, thickness)
-        #
-        #     #  BGR - blue
-        #     draw_kpts(laffs_final, 8, (255, 0, 0), 4)
-        #     #  BGR - red
-        #     draw_kpts(laffs_final_test, 12, (0, 0, 255), 4)
-        #
-        #     plt.figure(figsize=(6, 8))
-        #     plt.title("foo")
-        #     plt.imshow(img_to_show)
-        #     plt.show()
+        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True)
 
         if len(kps_warped) == 0:
             continue
@@ -672,14 +648,6 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         mask_cmp = mask_cmp.to(torch.bool)
 
-        # mask_comp = get_mask_kpts(kps_warped, aff_maps_inv, img_data, current_component)
-        # cmp = mask_comp == mask_cmp
-        # assert torch.all(cmp)
-        #
-        # kpts_test_masked = [kp for i, kp in enumerate(kps_warped) if mask_cmp[i]]
-        # mask_comp2 = get_mask_kpts(kpts_test_masked, aff_maps_inv, img_data, current_component)
-        # assert torch.all(mask_comp2)
-
         kps = []
         for i, kp in enumerate(kps_warped):
             if mask_cmp[i]:
@@ -689,65 +657,6 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         laffs_final = laffs_final[:, mask_cmp]
         laffs_reprojected = laffs_reprojected[:, mask_cmp]
-
-        just_show = True
-        if just_show:
-            img_to_show = np.ascontiguousarray(img_warped, dtype=np.uint8)
-            img_to_show[sift_mask] = [0, 0, 128]
-
-            def draw_kpts(laffs, radius, color, thickness):
-                for i in range(laffs.shape[1]):
-                    coords = (int(laffs[0, i, 0, 2].item()), int(laffs[0, i, 1, 2].item()))
-                    cv.circle(img_to_show, coords, radius, color, thickness)
-
-            # def draw_kpts_fake(laffs, radius, color, thickness):
-            #     for i in range(laffs.shape[1]):
-            #         coords = laffs[0, i, :, 2]
-            #         img_warped[c], coords, radius + i * 2, color, thickness)
-
-            #  BGR - red
-            draw_kpts(laffs_final_test, 12, (0, 0, 255), 4)
-            #  BGR - blue
-            laffs_to_show = laffs_final_orig_px[:, mask_cmp]
-            draw_kpts(laffs_to_show, 8, (255, 0, 0), 4)
-
-            plt.figure(figsize=(6, 8))
-            plt.title("foo")
-            plt.imshow(img_to_show)
-            plt.show()
-
-        # just_show = True
-        # if just_show:
-        #
-        #     img_warped_back_t = KR.geometry.warp_affine(img_warped_t, aff_maps_inv,
-        #                                                 dsize=(t_img_all.shape[2], t_img_all.shape[3]))
-        #     img_to_show = k_to_img_np(img_warped_back_t)
-        #
-        #     # img_to_show = np.ascontiguousarray(img_warped, dtype=np.uint8)
-        #     # img_to_show[sift_mask] = [0, 0, 128]
-        #
-        #     def draw_kpts(laffs, radius, color, thickness):
-        #         for i in range(laffs.shape[1]):
-        #             coords = (int(laffs[0, i, 0, 2].item()), int(laffs[0, i, 1, 2].item()))
-        #             cv.circle(img_to_show, coords, radius, color, thickness)
-        #
-        #     # def draw_kpts_fake(laffs, radius, color, thickness):
-        #     #     for i in range(laffs.shape[1]):
-        #     #         coords = laffs[0, i, :, 2]
-        #     #         img_warped[c], coords, radius + i * 2, color, thickness)
-        #
-        #     #  BGR - blue
-        #     draw_kpts(laffs_final_orig_px, 8, (255, 0, 0), 4)
-        #     #  BGR - red
-        #     draw_kpts(laffs_final_test, 12, (0, 0, 255), 4)
-        #
-        #     plt.figure(figsize=(6, 8))
-        #     plt.title("foo")
-        #     plt.imshow(img_to_show)
-        #     plt.show()
-
-        print("len(descs_warped_test), len(descs): {}, {}".format(len(descs_warped_test), len(descs)))
-        #assert len(descs_warped_test) == len(descs)
 
         kpts_struct.kps.extend(kps)
         kpts_struct.descs = np.vstack((kpts_struct.descs, descs))
