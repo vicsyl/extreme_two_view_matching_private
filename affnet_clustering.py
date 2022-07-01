@@ -345,7 +345,7 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         # TODO not tested with CUDA
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
         # => CPU
-        lafs.detach().cpu()
+        lafs = lafs.detach().cpu()
         show_affnet_features(lafs, conf)
 
         lin_features = lafs[:, :, :, :2]
