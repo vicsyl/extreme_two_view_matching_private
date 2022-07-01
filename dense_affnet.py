@@ -21,7 +21,7 @@ class DenseAffNet(nn.Module):
         pretrained: Download and set pretrained weights to the model.
     """
 
-    def __init__(self, pretrained: bool = False):
+    def __init__(self, pretrained: bool=False, device=torch.device("cpu")):
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
@@ -55,6 +55,11 @@ class DenseAffNet(nn.Module):
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.eval()
+        print("DenseAffNet device: {}".format(device))
+        if device == torch.device('cuda'):
+            self.cuda()
+        else:
+            self.cpu()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:

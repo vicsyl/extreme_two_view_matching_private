@@ -285,7 +285,7 @@ class Pipeline:
         self.scene_info = SceneInfo.read_scene(scene_name=self.config["scene_name"], type=self.config["scene_type"], file_name_suffix=self.file_name_suffix)
         self.setup_descriptor()
         if self.config[CartesianConfig.affnet_clustering]:
-            self.dense_affnet = DenseAffNet(True)
+            self.dense_affnet = DenseAffNet(True, self.device)
             assert self.config["rectify_affine_affnet"], "'{}' without 'rectify_affine_affnet' doesn't work".format(CartesianConfig.affnet_clustering)
 
         if self.config["rectify_affine_affnet"]:
