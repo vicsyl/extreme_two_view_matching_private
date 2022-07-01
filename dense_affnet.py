@@ -23,6 +23,7 @@ class DenseAffNet(nn.Module):
 
     def __init__(self, pretrained: bool=False, device=torch.device("cpu")):
         super().__init__()
+        self.device = device
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(16, affine=False),
@@ -56,7 +57,7 @@ class DenseAffNet(nn.Module):
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.eval()
         print("DenseAffNet device: {}".format(device))
-        if device == torch.device('cuda'):
+        if self.device == torch.device('cuda'):
             self.cuda()
         else:
             self.cpu()
@@ -87,7 +88,7 @@ class DenseAffNet(nn.Module):
         a2 = torch.cat([xy[:, 1].reshape(-1, 1, 1), 1.0 + xy[:, 2].reshape(-1, 1, 1)], dim=2)
         new_laf_no_center = torch.cat([a1, a2], dim=1).reshape(-1, 1, 2, 2)
         N = new_laf_no_center.size(0)
-        new_laf = torch.cat([new_laf_no_center, torch.zeros(N, 1, 2, 1)], dim=3)
+        new_laf = torch.cat([new_laf_no_center, torch.zeros((N, 1, 2, 1), device=self.device)], dim=3)
         ellipse_scale = K.feature.get_laf_scale(new_laf)
         laf_out_flat = K.feature.scale_laf(K.feature.make_upright(new_laf), 1.0 / ellipse_scale)
         laf_out_flat = laf_out_flat.permute(1, 0, 2, 3)
