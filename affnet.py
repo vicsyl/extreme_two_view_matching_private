@@ -314,9 +314,8 @@ def warp_affine(img_t, mask, affine_map, mode='biliner'):
     return warped_img, new_h, new_w
 
 
+@timer_label_decorator(tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
 def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp_image_show_transformation=False):
-
-    Timer.start_check_point("warp_image")
 
     assert invert_first, "current impl needs invert_first to be set to True"
     if warp_image_show_transformation:
@@ -374,7 +373,6 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
         img_warped_back = KR.geometry.warp_affine(img_warped_test, aff_map_inv, dsize=(img.shape[2], img.shape[3]))
         show_torch_img(img_warped_back, title="img warped back")
 
-    Timer.start_check_point("warp_image")
     return img_tilt, affine_transform
 
 
@@ -440,7 +438,7 @@ def winning_centers_old(covering_params: CoveringParams, data, config, return_co
 
 
 @timer_label_decorator(tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
-def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, ts_in, phis_in, img_name, component_index, normal_index, config):
+def get_covering_transformations(data_all_ts, data_all_phis, config):
     """ BEWARE - just an unnecessarily long delegation method (because of the 'mean' covering type - just skip to winning_centers
     :param data_all_ts:
     :param data_all_phis:
@@ -460,25 +458,7 @@ def get_covering_transformations(data_all_ts, data_all_phis, ts_out, phis_out, t
 
     # NOTE - naive approach
     if covering_type == "mean":
-
-        # only for this approach via taking means
-        max_tilt_r = covering.t_max
-        tilt_r_exp = covering.r_max
-
-        t_mean_affnet = torch.mean(ts_out)
-        phi_mean_affnet = torch.mean(phis_out)
-
-        show_affnet = config.get("show_affnet", False)
-        if show_affnet:
-            label = "unrectified: {}/{}".format(ts_in.shape[0], ts_out.shape[0])
-            plot_space_of_tilts(label, img_name, component_index, normal_index, tilt_r_exp, max_tilt_r, [
-                PointsStyle(ts=ts_in, phis=phis_in, color="b", size=0.5),
-                PointsStyle(ts=ts_out, phis=phis_out, color="y", size=0.5),
-                PointsStyle(ts=t_mean_affnet, phis=phi_mean_affnet, color="r", size=3)
-            ], show_affnet)
-
-        return torch.hstack((t_mean_affnet, phi_mean_affnet)).unsqueeze(0)
-
+        raise "not supported"
     else:
         data = torch.vstack((data_all_ts, data_all_phis))
         wcs, _ = winning_centers(covering, data, config)
@@ -511,7 +491,8 @@ def get_mask(img_warped_t, aff_maps_inv, current_component, img_data):
     return final_mask.numpy().astype(np.uint8)
 
 
-def get_effective_mask(img_warped_t, aff_maps_inv, current_component, img_data, config):
+@timer_label_decorator(tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
+def get_effective_sift_mask(img_warped_t, aff_maps_inv, current_component, img_data, config):
     sift_mask = None
     use_sift_mask = config.get(CartesianConfig.affnet_use_eager_mask, "False")
     if use_sift_mask:
@@ -557,18 +538,17 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
     affnet_warp_image_show_transformation = config.get("affnet_warp_image_show_transformation", False)
     covering = CoveringParams.get_effective_covering_by_cfg(config)
     tilt_r_exp = covering.r_max
-    max_tilt_r = covering.t_max
 
     # mark
     ts_component, phis_component = ts[mask_cmp], phis[mask_cmp]
 
     mask_in = ts_component < tilt_r_exp
-    ts_affnet_in = ts_component[mask_in]
-    ts_affnet_out = ts_component[~mask_in]
-    phis_affnet_in = phis_component[mask_in]
-    phis_affnet_out = phis_component[~mask_in]
+    # ts_affnet_in = ts_component[mask_in]
+    # ts_affnet_out = ts_component[~mask_in]
+    # phis_affnet_in = phis_component[mask_in]
+    # phis_affnet_out = phis_component[~mask_in]
 
-    if ts_affnet_out.shape[0] == 0:
+    if (~mask_in).sum() == 0:
         print("Component no {} will be skipped from rectification, no features with a large tilt".format(current_component))
         return
 
@@ -585,28 +565,22 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         ts_phis = img_data.ts_phis[current_ts_phis_idx]
         ts_phis = ts_phis.unsqueeze(0)
     else:
-        ts_phis = get_covering_transformations(ts_component, phis_component,
-                                               ts_affnet_out, phis_affnet_out,
-                                               ts_affnet_in, phis_affnet_in,
-                                               img_name, current_component, normal_index, config)
+        ts_phis = get_covering_transformations(ts_component, phis_component, config)
 
     append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warps_per_component"], len(ts_phis), stats_map)
     for t_phi in ts_phis:
 
-        warp_label = Timer.start_check_point("warp image", tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
         img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=True)
+        img_to_img_label = Timer.start_check_point("img torch to np", tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
         img_warped = k_to_img_np(img_warped_t)
-        Timer.end_check_point(warp_label)
+        Timer.end_check_point(img_to_img_label)
 
         possibly_show_normal_component(affnet_warp_image_show_transformation, img_name, current_component, normal_index, img_warped)
 
-        sift_label = Timer.start_check_point("warp image", tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
         aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
-        sift_mask = get_effective_mask(img_warped_t, aff_maps_inv, current_component, img_data, config)
-        Timer.end_check_point(sift_label)
+        sift_mask = get_effective_sift_mask(img_warped_t, aff_maps_inv, current_component, img_data, config)
 
         # not normalized by scale, which is good btw.
-
         hn_label = Timer.start_check_point("HardNet just in add covering kpts", tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
         kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True)
         Timer.end_check_point(hn_label)
@@ -697,6 +671,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
             label = "rectified (Id class/others):\n{}/{}".format(ts_affnet_in.shape[0], ts_affnet_out.shape[0])
             print("{}: count: {}".format(label, ts_affnet_final.shape))
+            max_tilt_r = covering.t_max
             plot_space_of_tilts(label, img_name, current_component, normal_index, tilt_r_exp, max_tilt_r, [
                 PointsStyle(ts=ts_affnet_in, phis=phis_affnet_in, color="b", size=0.5),
                 PointsStyle(ts=ts_affnet_out, phis=phis_affnet_out, color="y", size=0.5),
@@ -733,6 +708,28 @@ def visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_a
     # visualize_LAF_custom(t_img_all, unrectified_laffs[:, mask_no_valid_component], title=title, figsize=(8, 12))
 
 
+@timer_label_decorator(tags=[AFFNET_RECTIFY_TAG])
+def hardnet_for_affnet_rectify(hardnet_descriptor, img, mask):
+    # CUDA is potentially used just internally
+    return hardnet_descriptor.detectAndCompute(img, give_laffs=True, mask=mask)
+
+
+@timer_label_decorator(tags=[AFFNET_RECTIFY_TAG])
+def get_kpts_component_indices(affnet_no_clustering, unrectified_laffs, img_data):
+    if affnet_no_clustering:
+        # NOTE component == 0 -> still a valid component
+        kpts_component_indices = torch.zeros((unrectified_laffs.shape[:2]))
+    else:
+        kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, unrectified_laffs)
+    return kpts_component_indices
+
+
+@timer_label_decorator(tags=[AFFNET_RECTIFY_TAG])
+def get_ts_phis(affnet_lin_maps):
+    _, _, ts, phis = decompose_lin_maps_lambda_psi_t_phi(affnet_lin_maps)
+    return ts, phis
+
+
 @timer_label_decorator(tags=[AFFNET_RECTIFY_TAG, "main"])
 def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key="", stats_map=None, device=torch.device('cpu'), mask=None):
     """ This seems to do a lot, but it just
@@ -753,21 +750,17 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     if params_key is None or params_key == "":
         params_key = "default"
 
-    init_label = Timer.start_check_point("affnet_rectify unrectified descriptions", tags=[AFFNET_RECTIFY_TAG])
-
     covering = CoveringParams.get_effective_covering_by_cfg(conf_map)
     affnet_include_all_from_identity = conf_map.get("affnet_include_all_from_identity", False)
     affnet_no_clustering = conf_map["affnet_no_clustering"]
     show_affnet = conf_map.get("show_affnet", False)
 
     # CUDA is potentially used just internally
-    identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, mask=mask)
+    identity_kps, identity_descs, unrectified_laffs = hardnet_for_affnet_rectify(hardnet_descriptor, img_data.img, mask)
 
-    if affnet_no_clustering:
-        # NOTE component == 0 -> still a valid component
-        kpts_component_indices = torch.zeros((unrectified_laffs.shape[:2]))
-    else:
-        kpts_component_indices = get_kpts_components_indices(img_data.components_indices, img_data.valid_components_dict, unrectified_laffs)
+    kpts_component_indices = get_kpts_component_indices(affnet_no_clustering, unrectified_laffs, img_data)
+
+    init_label = Timer.start_check_point("affnet_rectify unrectified descriptions 1", tags=[AFFNET_RECTIFY_TAG])
 
     affnet_lin_maps = unrectified_laffs[:, :, :, :2]
     orig_laffs_identity = unrectified_laffs[:, :, :, :2]
@@ -776,8 +769,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     assert invert_first
     if invert_first:
         affnet_lin_maps = torch.inverse(affnet_lin_maps)
+    Timer.end_check_point(init_label)
 
-    _, _, ts, phis = decompose_lin_maps_lambda_psi_t_phi(affnet_lin_maps)
+    ts, phis = get_ts_phis(affnet_lin_maps)
+
+    init_label2 = Timer.start_check_point("affnet_rectify unrectified descriptions 2", tags=[AFFNET_RECTIFY_TAG])
 
     mask_no_valid_component = (kpts_component_indices == -1)[0]
     mask_in = (ts < covering.r_max)[0]
@@ -804,15 +800,17 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_no_component_or_close"], mask_in_or_no_component.sum().item(), stats_map)
     update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_added"], mask_to_add.sum().item(), stats_map)
 
-    # TODO cuda
+    Timer.end_check_point(init_label2)
+
+    t_label = Timer.start_check_point("affnet_rectify numpy to torch", tags=[AFFNET_RECTIFY_TAG])
+    # TODO cuda -> from now on it can IMHO be CUDA bound
     t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
+    Timer.end_check_point(t_label)
 
     if show_affnet:
         # components - this would require computing the components (again) here
         visualize_sot(ts, phis, mask_in_or_no_component, img_name, covering, img_data)
         visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_all)
-
-    Timer.end_check_point(init_label)
 
     if affnet_no_clustering:
 

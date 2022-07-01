@@ -105,7 +105,11 @@ class Timer:
                 title = "All"
                 main_key_count = None
             print("\n{} keys:".format(title))
-            sorted_keys = list(sorted(keys, key=lambda key: -Timer.stats_times[key] / Timer.stats_counts[key]))
+            if main_key_count is None:
+                sorted_keys = list(sorted(keys, key=lambda key: -Timer.stats_times[key] / Timer.stats_counts[key]))
+            else:
+                sorted_keys = list(sorted(keys, key=lambda key: -Timer.stats_times[key] / main_key_count))
+
             sum = 0.0
             for key in sorted_keys:
                 counts = Timer.stats_counts[key]

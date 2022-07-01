@@ -225,7 +225,7 @@ def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter
 
 
 @timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
-def get_non_sky_mask(enable_sky_filtering, img, lafs, use_cuda):
+def get_non_sky_mask_ac(enable_sky_filtering, img, lafs, use_cuda):
     if enable_sky_filtering:
         non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
         non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]
@@ -357,7 +357,7 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         assert lin_features.shape[0] == lafs.shape[0]
         assert lin_features.shape[1] == lafs.shape[1]
 
-        non_sky_mask_flat = get_non_sky_mask(enable_sky_filtering, img, lafs, use_cuda)
+        non_sky_mask_flat = get_non_sky_mask_ac(enable_sky_filtering, img, lafs, use_cuda)
 
         covering: CoveringParams = CoveringParams.get_effective_covering_by_cfg(conf)
         win_centers, cover_idx_to_use = get_win_centers_cover_idx(conf, all_data, non_sky_mask_flat, covering, lin_features.shape[0], lin_features.shape[1])
