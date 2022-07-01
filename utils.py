@@ -12,6 +12,9 @@ import kornia.geometry as KG
 
 class Timer:
 
+    TRANSFORMS_TAG = "transforms_tag"
+    NOT_NESTED_TAG = "not_nested"
+
     log_enabled = False
     start_time = None
     global_start_time = None
@@ -19,6 +22,7 @@ class Timer:
     stats_times = {}
     stats_counts = {}
     stats_start_times = {}
+    tags_labels_map = {}
 
     @staticmethod
     def log(message):
@@ -30,19 +34,26 @@ class Timer:
         Timer.stats_times = {}
         Timer.stats_counts = {}
         Timer.stats_start_times = {}
+        Timer.tags_labels_map = {}
         Timer.log("Starting the timer")
         Timer.start_time = time.time()
         if Timer.global_start_time is None:
             Timer.global_start_time = time.time()
 
     @staticmethod
-    def start_check_point(label, parameter=None):
+    def start_check_point(label, parameter=None, tags=None):
         assert label is not None
         Timer.log("{} starting: {}".format(label, parameter))
         start = Timer.stats_start_times.get(label)
         if start is not None:
             Timer.log("WARNING: missing call of end_check_point for label '{}'".format(label))
         Timer.stats_start_times[label] = time.time()
+        if tags is not None:
+            for tag in tags:
+                if not Timer.tags_labels_map.__contains__(tag):
+                    Timer.tags_labels_map[tag] = set()
+                Timer.tags_labels_map[tag].add(label)
+
         return label
 
     @staticmethod
@@ -72,17 +83,57 @@ class Timer:
         print("Statistics: ")
         print("key calls avg_time")
         print("all_time 1 {:.4f}".format(config_time))
-        for key in Timer.stats_times:
-            #print("{} called {} times and it took {:.4f} secs. on average".format(key, Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))
-            print("{} {} {:.4f}".format(key.replace(" ", "_"), Timer.stats_counts[key], Timer.stats_times[key]/Timer.stats_counts[key]))
+
+        def print_keys(tag_param=None):
+            keys = list(Timer.stats_times.keys())
+            if tag_param is not None:
+                keys = list(filter(lambda k: Timer.tags_labels_map[tag_param].__contains__(k), keys))
+                if tag_param == "main":
+                    main_keys = []
+                    keys = keys
+                else:
+                    main_keys = list(filter(lambda k: Timer.tags_labels_map["main"].__contains__(k), keys))
+                    keys = list(filter(lambda k: not Timer.tags_labels_map["main"].__contains__(k), keys))
+                main_key_count = None
+                if len(main_keys) == 1:
+                    main_key_count = Timer.stats_counts[main_keys[0]]
+                    main_avg_time = Timer.stats_times[main_keys[0]] / main_key_count
+                elif len(main_keys) > 1:
+                    raise "too many main keys for {}: {}".format(tag_param, main_keys)
+                title = "'{}'".format(tag_param)
+            else:
+                title = "All"
+                main_key_count = None
+            print("\n{} keys:".format(title))
+            sorted_keys = list(sorted(keys, key=lambda key: -Timer.stats_times[key] / Timer.stats_counts[key]))
+            sum = 0.0
+            for key in sorted_keys:
+                counts = Timer.stats_counts[key]
+                real_avg = Timer.stats_times[key] / Timer.stats_counts[key]
+                if main_key_count is None:
+                    print("{} {} {:.4f}".format(key.replace(" ", "_"), counts, real_avg))
+                    sum += real_avg
+                else:
+                    main_avg = Timer.stats_times[key] / main_key_count
+                    print("{} {} {:.4f} ({:.4f})".format(key.replace(" ", "_"), counts, main_avg, real_avg))
+                    sum += main_avg
+
+            if main_key_count is None:
+                print("whole runtime: {:.4f}".format(sum))
+            else:
+                print("whole runtime: {:.4f}, main key runtime: {:.4f}".format(sum, main_avg_time))
+
+        print_keys()
+        for tag in Timer.tags_labels_map:
+            print_keys(tag)
 
 
-def timer_label_decorator(label=None):
+def timer_label_decorator(label=None, tags=[]):
     def timer_decorator(func):
         label_i = label if label is not None else ""
         label_u = "{}:{}".format(label_i, func.__name__)
         def run(*args, **kwargs):
-            Timer.start_check_point(label_u)
+            Timer.start_check_point(label_u, tags=tags)
             ret = func(*args, **kwargs)
             Timer.end_check_point(label_u)
             return ret

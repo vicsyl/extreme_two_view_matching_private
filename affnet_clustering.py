@@ -21,6 +21,8 @@ import sys
 from rectification import possibly_upsample_normals
 from hard_net_descriptor import HardNetDescriptor
 
+AFFNET_CLUSTERING_TAG = "affnet_clustering"
+
 
 def affnet_coords(dims_2d):
     """
@@ -126,7 +128,7 @@ def filter_components(component_idxs, fraction_threshold):
     return component_idxs, valid_component_dict
 
 
-@timer_label_decorator()
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
 def get_eligible_components(component_idxs, conf, valid_length):
     """
     :param component_idxs:
@@ -162,7 +164,7 @@ def add_affnet_coodrs_to_lafs(lafs):
     lafs[:, :, 1, 2] = coords[0]
 
 
-@timer_label_decorator()
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
 def possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf):
 
     use_orienter = conf.get(CartesianConfig.affnet_dense_affnet_use_orienter, "True")
@@ -186,7 +188,7 @@ def possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf):
     return lafs
 
 
-@timer_label_decorator()
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
 def possibly_invert_lin_features(lin_features, conf):
     invert_first = conf.get("invert_first", True)
     # NOTE backward compatibility
@@ -196,7 +198,7 @@ def possibly_invert_lin_features(lin_features, conf):
     return lin_features
 
 
-@timer_label_decorator()
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
 def handle_upsample_early(upsample_early, cover_idx, dense_affnet_filter):
     if upsample_early:
         cover_idx = affnet_upsample(cover_idx)
@@ -205,7 +207,7 @@ def handle_upsample_early(upsample_early, cover_idx, dense_affnet_filter):
     return cover_idx
 
 
-@timer_label_decorator()
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
 def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter):
     # NOTES
     # a) upsample_early is usually True, even though False may be more sensible
@@ -222,13 +224,98 @@ def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter
     return components_indices
 
 
-@timer_label_decorator()
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
+def get_non_sky_mask(enable_sky_filtering, img, lafs, use_cuda):
+    if enable_sky_filtering:
+        non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
+        non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]
+    else:
+        non_sky_mask_flat = torch.ones(lafs.shape[0] * lafs.shape[1], dtype=torch.bool)
+    return non_sky_mask_flat
+
+
+def possibly_save_data(all_data):
+    # TODO
+    temporarily_not_saved = True
+    if not temporarily_not_saved:
+        with open("resources/covering_data.pkl", "wb") as f:
+            pickle.dump(all_data, f)
+
+
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
+def dense_affnet_call(dense_affnet, gs_timg):
+    return dense_affnet(gs_timg)
+
+
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
+def get_win_centers_cover_idx(conf, all_data, non_sky_mask_flat, covering, h, w):
+
+    # assert h * w == all_data.shape[1]
+
+    sof_coverings_new_wc_impl = conf.get(CartesianConfig.sof_coverings_new_wc_impl, True)
+    if sof_coverings_new_wc_impl:
+        data = all_data[:, non_sky_mask_flat]
+        win_centers, cover_idx = winning_centers(covering, data, conf, return_cover_idxs=True)
+    else:
+        win_centers, cover_idx = winning_centers_old(covering, all_data, conf, return_cover_idxs=True,
+                                                     valid_px_mask=non_sky_mask_flat)
+        cover_idx = cover_idx[non_sky_mask_flat]
+
+    # NOTE: index value convention
+    # range(len(ts_phis)) -> all_valid
+    # -3 sky
+    # -2 identity equivalence class
+    # -1 no valid center
+    cover_idx_to_use = torch.zeros(h * w)
+    cover_idx_to_use[non_sky_mask_flat] = cover_idx
+    cover_idx_to_use[~non_sky_mask_flat] = -3
+
+    for i in range(-4, len(win_centers)):
+        if i >= 0:
+            win_c = win_centers[i]
+            print("win_c no. {}: {}".format(i, win_c.tolist()))
+        print("cover_idx #{}: {} data points".format(i, (cover_idx_to_use == i).sum().item()))
+
+    potentially_show_sof(covering, all_data, win_centers, conf, cover_idx_to_use)
+    cover_idx_to_use = cover_idx_to_use.reshape(h, w)
+
+    return win_centers, cover_idx_to_use
+
+
+def handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg):
+    # # TODO hack
+    if enable_sky_filtering:
+        assert img is not None
+    else:
+        assert img is None
+        # used in DenseAffnetFeature
+        img = (gs_timg.clone()[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)
+    return img
+
+
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
+def bgr_to_grayscale(gs_timg):
+    return K.color.bgr_to_grayscale(gs_timg)
+
+
+@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
+def get_sot_data(lin_features):
+    _, _, all_ts1, all_phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
+    all_data = torch.vstack((all_ts1.reshape(1, -1), all_phis1.reshape(1, -1)))
+    possibly_save_data(all_data)
+    return all_data
+
+
+@timer_label_decorator(tags=["main", AFFNET_CLUSTERING_TAG])
 def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cuda=False):
+    print("affnet_clustering - cuda: {}".format(use_cuda))
+    label = Timer.start_check_point("image_to_tensor in affnet cl", tags=[Timer.TRANSFORMS_TAG, AFFNET_CLUSTERING_TAG])
     gs_timg = K.image_to_tensor(img, False).float() / 255.
+    Timer.end_check_point(label)
     return affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=use_cuda, enable_sky_filtering=True)
 
 
-@timer_label_decorator()
+@timer_label_decorator(tags=[Timer.NOT_NESTED_TAG])
 def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=False, enable_sky_filtering=False):
     """
     The main function to call here.
@@ -244,71 +331,31 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
     :return:
     """
 
-    # # TODO hack
-    if enable_sky_filtering:
-        assert img is not None
-    else:
-        assert img is None
+    img = handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg)
 
-    if img is None:
-        img = (gs_timg.clone()[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)
+    gs_timg = bgr_to_grayscale(gs_timg)
 
-    gs_timg = K.color.bgr_to_grayscale(gs_timg)
     gs_timg, dense_affnet_filter = apply_affnet_filter(gs_timg, conf)
 
     with torch.no_grad():
-        dense_aff_l = Timer.start_check_point("dense_affnet_call")
-        lafs = dense_affnet(gs_timg)
-        Timer.end_check_point(dense_aff_l)
-
+        lafs = dense_affnet_call(dense_affnet, gs_timg)
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
         show_affnet_features(lafs, conf)
 
         lin_features = lafs[:, :, :, :2]
         lin_features = possibly_invert_lin_features(lin_features, conf)
 
-        _, _, all_ts1, all_phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
-        all_data = torch.vstack((all_ts1.reshape(1, -1), all_phis1.reshape(1, -1)))
+        all_data = get_sot_data(lin_features)
 
-        # TODO
-        temporarily_not_saved = True
-        if not temporarily_not_saved:
-            with open("resources/covering_data.pkl", "wb") as f:
-                pickle.dump(all_data, f)
+        # TODO get rid of lin_features below
+        assert lin_features.shape[0] == lafs.shape[0]
+        assert lin_features.shape[1] == lafs.shape[1]
 
-        if enable_sky_filtering:
-            non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
-            non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]
-        else:
-            non_sky_mask_flat = torch.ones(lin_features.shape[0] * lin_features.shape[1], dtype=torch.bool)
-        data = all_data[:, non_sky_mask_flat]
+        non_sky_mask_flat = get_non_sky_mask(enable_sky_filtering, img, lafs, use_cuda)
 
         covering: CoveringParams = CoveringParams.get_effective_covering_by_cfg(conf)
-        sof_coverings_new_wc_impl = conf.get(CartesianConfig.sof_coverings_new_wc_impl, True)
-        if sof_coverings_new_wc_impl:
-            win_centers, cover_idx = winning_centers(covering, data, conf, return_cover_idxs=True)
-        else:
-            win_centers, cover_idx = winning_centers_old(covering, all_data, conf, return_cover_idxs=True, valid_px_mask=non_sky_mask_flat)
-            cover_idx = cover_idx[non_sky_mask_flat]
+        win_centers, cover_idx_to_use = get_win_centers_cover_idx(conf, all_data, non_sky_mask_flat, covering, lin_features.shape[0], lin_features.shape[1])
 
-        # NOTE: index value convention
-        # range(len(ts_phis)) -> all_valid
-        # -3 sky
-        # -2 identity equivalence class
-        # -1 no valid center
-        cover_idx_to_use = torch.zeros(lin_features.shape[0] * lin_features.shape[1])
-        cover_idx_to_use[non_sky_mask_flat] = cover_idx
-        cover_idx_to_use[~non_sky_mask_flat] = -3
-
-        for i in range(-4, len(win_centers)):
-            if i >= 0:
-                win_c = win_centers[i]
-                print("win_c no. {}: {}".format(i, win_c.tolist()))
-            print("cover_idx #{}: {} data points".format(i, (cover_idx_to_use == i).sum().item()))
-
-        potentially_show_sof(covering, all_data, win_centers, conf, cover_idx_to_use)
-
-        cover_idx_to_use = cover_idx_to_use.reshape(lin_features.shape[:2])
         cover_idx_to_use = handle_upsample_early(upsample_early, cover_idx_to_use, dense_affnet_filter)
         components_indices, valid_components_dict = get_eligible_components(cover_idx_to_use, conf, len(win_centers))
         components_indices = handle_upsample_late(upsample_early, components_indices, dense_affnet_filter)

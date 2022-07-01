@@ -350,6 +350,10 @@ def draw_covered_data(ax, center, data, r_max, color):
 @timer_label_decorator()
 def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_name, components_indices_arg, valid_components_dict_arg):
 
+    show = conf.get(CartesianConfig.show_dense_affnet_components, False)
+    if not show:
+        return
+
     valid_components_dict = valid_components_dict_arg.copy()
     components_indices = np.copy(components_indices_arg)
 
@@ -361,10 +365,6 @@ def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_na
 
     # TODO hack -> sky => no valid components
     components_indices[components_indices == -3] = -1
-
-    show = conf.get(CartesianConfig.show_dense_affnet_components, False)
-    if not show:
-        return
 
     center_names = {-3: "sky",
                     -2: "identity eq. class",

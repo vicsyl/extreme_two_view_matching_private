@@ -397,7 +397,7 @@ class Pipeline:
             depth_map = self.depth_reader.read_depth_data(img_name)
             normals, _ = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_map, device=torch.device('cpu'),
                                                          svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
-            self.feature_descriptor.set_normals(normals, real_K)
+            self.feature_descriptor.set_normals_np(normals, real_K)
             Timer.end_check_point("Custom normals")
 
     @timer_label_decorator("sky mask")
@@ -512,7 +512,7 @@ class Pipeline:
         # rectify
         else:
 
-            Timer.start_check_point("processing img from scratch")
+            label_scratch = Timer.start_check_point("processing img from scratch", tags=["main"])
 
             rectify_affine_affnet = self.config["rectify_affine_affnet"]
             # NOTE 'affnet_no_clustering' means to (possibly rectify affine affnet but don't use clustering)
@@ -638,7 +638,7 @@ class Pipeline:
                                                      all_unrectified=self.config[CartesianConfig.all_unrectified]
                                                      )
 
-            Timer.end_check_point("processing img from scratch")
+            Timer.end_check_point(label_scratch)
 
             Pipeline.save_img_data(img_data, img_data_path, img_name)
 
@@ -1186,11 +1186,13 @@ class Pipeline:
                     # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
 
                     image_data = []
+                    processed_img_index = 0
                     try:
                         for idx, img in enumerate([img_pair.img1, img_pair.img2]):
                             image_data.append(self.process_image(img, idx))
+                            processed_img_index += 1
                     except:
-                        print("(processing image) {}_{} couldn't be processed, skipping the matching pair".format(img_pair.img1, img_pair.img2))
+                        print("(processing image) {}st/nd image from {}_{} couldn't be processed, skipping the matching pair".format(processed_img_index, img_pair.img1, img_pair.img2))
                         print(traceback.format_exc(), file=sys.stdout)
                         continue
 

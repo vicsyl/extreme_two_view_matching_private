@@ -9,11 +9,13 @@ from kornia_moons.feature import *
 from affnet import show_sets_of_linear_maps
 from transforms import get_rectification_rotations
 from utils import Timer, timer_label_decorator
-from transforms import decompose_homographies, homographies_jacobians
+from transforms import homographies_jacobians
 
 """
-DISCLAIMER: taken from https://github.com/kornia/kornia-examples/blob/master/MKD_TFeat_descriptors_in_kornia.ipynb
+DISCLAIMER: originally taken from https://github.com/kornia/kornia-examples/blob/master/MKD_TFeat_descriptors_in_kornia.ipynb
 """
+
+HARD_NET_LABEL = "HardNet"
 
 
 class HardNetDescriptor:
@@ -25,7 +27,7 @@ class HardNetDescriptor:
         self.affine = KF.LAFAffNetShapeEstimator(True)
         self.orienter = KF.LAFOrienter(32, angle_detector=KF.OriNet(True))
         self.set_device_eval_to_nets([self.hardnet, self.affine, self.orienter], self.device)
-        self.custom_normals = None
+        self.custom_normals_np = None
         self.custom_K = None
         self.filter = filter
         self.compute_laffs = compute_laffs
@@ -57,17 +59,17 @@ class HardNetDescriptor:
         return data_in
 
     # TODO I don't like this hack
-    def set_normals(self, custom_normals, custom_K):
-        self.custom_normals = custom_normals
+    def set_normals_np(self, custom_normals, custom_K):
+        self.custom_normals_np = custom_normals
         self.custom_K = custom_K
 
-    @timer_label_decorator("HardNet.detectAndCompute")
+    @timer_label_decorator("HardNet.detectAndCompute", tags=[HARD_NET_LABEL, "main"])
     def detectAndCompute(self, img, mask=None, give_laffs=False, skip_filter=False):
         # NOTE this is just how it was called before (see SuperPoint.detectAndCompute)
         # assert mask is None
 
         #mask_to_apply = None #if mask is None else mask.numpy().astype(np.uint8)
-        label_detect = Timer.start_check_point("detect in HardNet")
+        label_detect = Timer.start_check_point("detect in HardNet", tags=[HARD_NET_LABEL])
         kps = self.sift_descriptor.detect(img, mask)
         if self.filter is not None and not skip_filter:
             kps = kps[::self.filter]
@@ -92,6 +94,8 @@ class HardNetDescriptor:
 
         # We will not train anything, so let's save time and memory by no_grad()
         with torch.no_grad():
+
+            np_t_label = Timer.start_check_point("HardNet.np_to_torch", tags=[HARD_NET_LABEL])
             #self.hardnet.eval()
             if len(img.shape) == 3:
                 pass # OK
@@ -101,11 +105,12 @@ class HardNetDescriptor:
             else:
                 raise Exception("Unexpected shape of the img: {}".format(img.shape))
             timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.).to(self.device)
+            Timer.end_check_point(np_t_label)
 
-            Timer.start_check_point("HardNet.lafs_computation")
-            if self.custom_normals is not None:
+            lafs_t_label = Timer.start_check_point("HardNet.lafs_computation", tags=[HARD_NET_LABEL])
+            if self.custom_normals_np is not None:
                 lafs_to_use = self.get_lafs_from_normals(cv2_sift_kpts, timg)
-                self.custom_normals = None
+                self.custom_normals_np = None
                 self.custom_K = None
             else:
                 lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
@@ -117,8 +122,8 @@ class HardNetDescriptor:
                     lafs_to_use = self.orienter(lafs2, timg)
                 else:
                     lafs_to_use = lafs
-            Timer.end_check_point("HardNet.lafs_computation")
-            desc_label = Timer.start_check_point("HardNet.descriptors computation")
+            Timer.end_check_point(lafs_t_label)
+            desc_label = Timer.start_check_point("HardNet.descriptors computation", tags=[HARD_NET_LABEL])
 
             patches = KF.extract_patches_from_pyramid(timg, lafs_to_use, 32)
 
@@ -134,7 +139,6 @@ class HardNetDescriptor:
         Timer.end_check_point(desc_label)
         return ret
 
-
     def get_Hs_from_custom_normals(self, cv2_sift_kpts, timg):
 
         kps_long = torch.tensor([[kp.pt[0] + 0.5, kp.pt[1] + 0.5] for kp in cv2_sift_kpts], dtype=torch.long, device=self.device)
@@ -144,7 +148,7 @@ class HardNetDescriptor:
         in_img_mask = torch.logical_and(in_img_mask, kps_long[:, 1] < timg.shape[2])
         kps_long = kps_long[in_img_mask]
 
-        normals = HardNetDescriptor.resample_normals_to_img_size(self.custom_normals, timg.shape[2:]).to(self.device)
+        normals = HardNetDescriptor.resample_normals_to_img_size(self.custom_normals_np, timg.shape[2:]).to(self.device)
         normals = normals[kps_long[:, 1], kps_long[:, 0]]
 
         Rs = get_rectification_rotations(normals, self.device)
@@ -161,21 +165,21 @@ class HardNetDescriptor:
         affines[:, :, :, :2] = torch.inverse(affines[:, :, :, :2])
         return affines
 
-    def update_translations_from_cv2(self, affines, cv2_sift_kpts):
-
-        locations = torch.tensor([list(cv_kpt.pt) for cv_kpt in cv2_sift_kpts], device=self.device)
-        affines[0, :, :, 2] = locations
-        return affines
-
-    def get_lafs_from_normals_old(self, cv2_sift_kpts, timg):
-
-        Hs = self.get_Hs_from_custom_normals(cv2_sift_kpts, timg)
-        # the problem is also that the translation component is not zero (but will be updated below)
-        _, affines = decompose_homographies(Hs, self.device)
-        affines = self.batch_and_invert_affines(affines, cv2_sift_kpts, timg)
-        affines = self.update_translations_from_cv2(affines, cv2_sift_kpts)
-        return affines
-
+    # def update_translations_from_cv2(self, affines, cv2_sift_kpts):
+    #
+    #     locations = torch.tensor([list(cv_kpt.pt) for cv_kpt in cv2_sift_kpts], device=self.device)
+    #     affines[0, :, :, 2] = locations
+    #     return affines
+    #
+    # def get_lafs_from_normals_old(self, cv2_sift_kpts, timg):
+    #
+    #     Hs = self.get_Hs_from_custom_normals(cv2_sift_kpts, timg)
+    #     # the problem is also that the translation component is not zero (but will be updated below)
+    #     _, affines = decompose_homographies(Hs, self.device)
+    #     affines = self.batch_and_invert_affines(affines, cv2_sift_kpts, timg)
+    #     affines = self.update_translations_from_cv2(affines, cv2_sift_kpts)
+    #     return affines
+    #
     def get_lafs_from_normals(self, cv2_sift_kpts, timg):
 
         Hs = self.get_Hs_from_custom_normals(cv2_sift_kpts, timg)
