@@ -335,6 +335,7 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
     img = handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg)
 
     # TODO brg - really?
+    # => CUDA
     gs_timg = bgr_to_grayscale(gs_timg, use_cuda)
 
     gs_timg, dense_affnet_filter = apply_affnet_filter(gs_timg, conf)
@@ -343,6 +344,8 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         lafs = dense_affnet_call(dense_affnet, gs_timg)
         # TODO not tested with CUDA
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
+        # => CPU
+        lafs.detach().cpu()
         show_affnet_features(lafs, conf)
 
         lin_features = lafs[:, :, :, :2]
