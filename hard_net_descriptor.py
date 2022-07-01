@@ -96,7 +96,6 @@ class HardNetDescriptor:
         with torch.no_grad():
 
             np_t_label = Timer.start_check_point("HardNet.np_to_torch", tags=[HARD_NET_LABEL])
-            #self.hardnet.eval()
             if len(img.shape) == 3:
                 pass # OK
             elif len(img.shape) == 2:
@@ -116,8 +115,6 @@ class HardNetDescriptor:
                 lafs = laf_from_opencv_SIFT_kpts(cv2_sift_kpts, device=self.device)
                 if self.compute_laffs or give_laffs:
                     # We will estimate affine shape of the feature and re-orient the keypoints with the OriNet
-                    # self.affine.eval()
-                    # orienter.eval()
                     lafs2 = self.affine(lafs, timg)
                     lafs_to_use = self.orienter(lafs2, timg)
                 else:

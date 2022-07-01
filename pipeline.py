@@ -403,7 +403,7 @@ class Pipeline:
     @timer_label_decorator("sky mask")
     def get_potential_sky_mask(self, img, h, w):
         if self.config[CartesianConfig.filter_sky]:
-            non_sky_mask = get_nonsky_mask(img, h, w)
+            non_sky_mask = get_nonsky_mask(img, h, w, self.device == torch.device("cuda"))
         else:
             non_sky_mask = np.ones((h, w), dtype=bool)
         return non_sky_mask
@@ -531,7 +531,7 @@ class Pipeline:
 
                 if self.config[CartesianConfig.affnet_clustering]:
                     # (img, dense_affnet, conf, upsample_early):
-                    img_data = affnet_clustering(img, img_name, self.dense_affnet, self.config, self.upsample_early)
+                    img_data = affnet_clustering(img, img_name, self.dense_affnet, self.config, self.upsample_early, self.device == torch.device("cuda"))
                     img_data.real_K = real_K
                 else:
 

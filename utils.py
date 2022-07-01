@@ -121,7 +121,7 @@ class Timer:
             if main_key_count is None:
                 print("whole runtime: {:.4f}".format(sum))
             else:
-                print("whole runtime: {:.4f}, main key runtime: {:.4f}".format(sum, main_avg_time))
+                print("whole runtime: {:.4f}, main key runtime: {:.4f}, difference(remains): {:.4f}".format(sum, main_avg_time, main_avg_time - sum))
 
         print_keys()
         for tag in Timer.tags_labels_map:

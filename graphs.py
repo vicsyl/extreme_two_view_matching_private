@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+import matplotlib.pyplot as plt
 
 # TODO
 # - especially for tables format the numbers like {:.3} or something
 # - join the tables somehow
-
+import numpy as np
 
 
 @dataclass
@@ -509,7 +510,7 @@ def EVD():
 20	0	0	2	9	10""", together=False, matching=True)[1])
 
 
-def test():
+def footest():
 
     print("Basic use case")
     print(convert_to_graph("hn new title", [
@@ -560,5 +561,118 @@ def test():
 17	0.005	0	0.005	0.005"""))
 
 
+def plot_bar(interesting_keys, data, ylabel, title):
+
+    value_index = 7
+
+    interesting_keys_keys = [key[0] for key in interesting_keys]
+
+    config_names = [d[0] for d in data]
+
+    stats = [[0.0] * len(data) for _ in range(len(interesting_keys))]
+    for conf_index, config_data in enumerate(data):
+        #stats_line = [0.0 for i in range(len(interesting_keys_keys))]
+        lines = config_data[1].split("\n")
+        for line in lines:
+            tokens = line.strip().split(" ")
+            key = tokens[0]
+            if key in interesting_keys_keys:
+                data_index = interesting_keys_keys.index(key)
+                value = float(tokens[value_index])
+                if key == "matching":
+                    value = value / 2.0
+                stats[data_index][conf_index] = value
+
+    stats_cum = [stats[0]]
+    for i in range(1, len(stats)):
+        stats_cum.append([stats_cum[i-1][j] + stats[i][j] for j in range(len(data))])
+
+    print("Keys: {}".format(interesting_keys_keys))
+    print("Stats: {}".format(stats))
+
+    fig, ax = plt.subplots()
+    width = 0.35
+
+    for i in range(len(interesting_keys_keys)):
+        data = stats[i]
+        label = interesting_keys[i][1]
+        if i == 0:
+            ax.bar(config_names, data, width, label=label)
+        else:
+            print("label: {}; data: {}, bottom={}".format(label, data, stats_cum[i-1]))
+            ax.bar(config_names, data, width, bottom=stats_cum[i-1], label=label)
+
+    ax.set_ylim([0, 30])
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend()
+
+    plt.show()
+
+
+def example_stacked_bars():
+
+    data = [["dense AffNet",
+    """
+:affnet_clustering called 1421 times and it took 3.6307 secs. on average
+:affnet_rectify called 1421 times and it took 6.6345 secs. on average
+processing img from scratch called 1421 times and it took 10.2654 secs. on average
+matching called 3590 times and it took 4.7471 secs. on average
+    """],
+
+    ["MonoDepth + AffNet",
+    """
+    MonoDepth called 1421 times and it took 0.7
+:affnet_rectify called 1421 times and it took 5.5726 secs. on average
+:compute_normals_from_svd called 1421 times and it took 0.9551 secs. on average
+sky masking called 1421 times and it took 0.5229 secs. on average
+:cluster_normals called 1421 times and it took 0.0468 secs. on average
+:possibly_upsample_early called 1421 times and it took 0.0047 secs. on average
+:get_connected_components called 1421 times and it took 0.0821 secs. on average
+processing img from scratch called 1421 times and it took 7.1972 secs. on average
+matching called 3590 times and it took 5.9668 secs. on average
+
+    """]]
+
+    interesting_keys = [
+        ["MonoDepth", "depth maps (MonoDepth)"],
+        ["sky_masking", "sky semantic segmentation"],
+        [":compute_normals_from_svd", "compute normals"],
+        #[":get_connected_components", ""],
+        [":affnet_rectify", "affine rectification"],
+        [":affnet_clustering", "dense affnet"],  # ?
+        ["matching", "matching/2"]]
+
+    plot_bar(interesting_keys, data, 'Computation complexity', 'dense AffNet vs. MonoDepth + AffNet computation complexity')
+
+
+def bar_plot_example():
+
+    config_names = ['G1', 'G2', 'G3', 'G4', 'G5']
+    men_means = [20, 35, 30, 35, 27]
+    women_means = [25, 32, 34, 20, 25]
+    ch_means = [20, 35, 30, 35, 27]
+
+    mw = [men_means[i] + women_means[i] for i in range(len(men_means))]
+
+    men_std = [2, 3, 4, 1, 2]
+    women_std = [3, 5, 2, 3, 3]
+    width = 0.35       # the width of the bars: can also be len(x) sequence
+
+    fig, ax = plt.subplots()
+
+    ax.bar(config_names, men_means, width, label='Men')
+    ax.bar(config_names, women_means, width, bottom=men_means, label='Women')
+    ax.bar(config_names, ch_means, width, bottom=mw, label='Children')
+
+    ax.set_ylabel('Scores')
+    ax.set_title('Scores by group and gender')
+    ax.legend()
+
+    plt.show()
+
+
 if __name__ == '__main__':
-    EVD()
+    #EVD()
+    example_stacked_bars()
+    # bar_plot_example()

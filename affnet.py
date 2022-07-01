@@ -756,12 +756,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     init_label = Timer.start_check_point("affnet_rectify unrectified descriptions", tags=[AFFNET_RECTIFY_TAG])
 
     covering = CoveringParams.get_effective_covering_by_cfg(conf_map)
-
     affnet_include_all_from_identity = conf_map.get("affnet_include_all_from_identity", False)
     affnet_no_clustering = conf_map["affnet_no_clustering"]
-
     show_affnet = conf_map.get("show_affnet", False)
 
+    # CUDA is potentially used just internally
     identity_kps, identity_descs, unrectified_laffs = hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, mask=mask)
 
     if affnet_no_clustering:

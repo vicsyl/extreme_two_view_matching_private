@@ -294,8 +294,9 @@ def handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg):
 
 
 @timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
-def bgr_to_grayscale(gs_timg):
-    return K.color.bgr_to_grayscale(gs_timg)
+def bgr_to_grayscale(gs_timg, use_cuda):
+    device = torch.device('cuda') if use_cuda else torch.device('cpu')
+    return K.color.bgr_to_grayscale(gs_timg).to(device)
 
 
 @timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
@@ -333,12 +334,14 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
 
     img = handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg)
 
-    gs_timg = bgr_to_grayscale(gs_timg)
+    # TODO brg - really?
+    gs_timg = bgr_to_grayscale(gs_timg, use_cuda)
 
     gs_timg, dense_affnet_filter = apply_affnet_filter(gs_timg, conf)
 
     with torch.no_grad():
         lafs = dense_affnet_call(dense_affnet, gs_timg)
+        # TODO not tested with CUDA
         lafs = possibly_apply_orienter(gs_timg, lafs, dense_affnet, conf)
         show_affnet_features(lafs, conf)
 
