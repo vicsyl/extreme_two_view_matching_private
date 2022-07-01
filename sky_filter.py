@@ -38,6 +38,8 @@ net_decoder = ModelBuilder.build_decoder(
 @timer_label_decorator()
 def get_nonsky_mask_torch(np_image, height, width, use_cuda=False):
 
+    print("get_nonsky_mask_torch: use_cude = {}".format(use_cuda))
+
     crit = torch.nn.NLLLoss(ignore_index=-1)
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
     segmentation_module.eval()
