@@ -166,8 +166,7 @@ class SceneInfo:
         if self.type == "orig":
             return "{}/original_dataset/{}/images".format(SceneInfo.base_dir, self.name)
         elif self.type == "EVD":
-            # TODO 1/2 #, self.name)
-            return "{}/EVD".format(SceneInfo.base_dir) #, self.name)
+            return "{}/EVD".format(SceneInfo.base_dir)
         elif self.type == "google":
             return "{}/{}/set_100/images".format(SceneInfo.base_dir, self.name)
         else:

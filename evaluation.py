@@ -348,33 +348,33 @@ def evaluate_matching(scene_info,
     src_pts_inliers = src_tentatives_2d[inlier_mask[:, 0] == [1]]
     dst_pts_inliers = dst_tentatives_2d[inlier_mask[:, 0] == [1]]
 
+    inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
+
     if scene_info.type == SceneInfo.EVD:
         H_est = E
         H_gt = np.loadtxt("EVD/{}.txt".format(img_pair.img1.replace("1", "h")))
         MAE = get_visible_part_mean_absolute_reprojection_error(img_data_list[0].img, img_data_list[1].img, H_gt, H_est)
 
         error_R, error_T = MAE, 0
+        count_symmetrical_gt = 0
+
     else:
         error_R, error_T = compare_poses(E, img_pair, scene_info, src_pts_inliers, dst_pts_inliers, img_data_list)
-
-    inliers = np.sum(np.where(inlier_mask[:, 0] == [1], 1, 0))
+        count_sampson_gt, \
+        count_symmetrical_gt, \
+        count_sampson_estimated, \
+        count_symmetrical_estimated = evaluate_tentatives_agains_ground_truth(scene_info,
+                                                                              img_pair,
+                                                                              img_data_list,
+                                                                              src_tentatives_2d,
+                                                                              dst_tentatives_2d,
+                                                                              [ransac_th, 0.1, 0.5, 1, 3],
+                                                                              E, inliers)
 
     if is_rectified_condition(img_data_list[0]):
         _, unique, counts = get_normals_stats(img_data_list, src_tentatives_2d, dst_tentatives_2d)
         print("Matching stats in evaluation:")
         print("unique plane correspondence counts of tentatives:\n{}".format(np.vstack((unique.T, counts)).T))
-
-    # TODO caused problems?
-    count_sampson_gt, \
-    count_symmetrical_gt, \
-    count_sampson_estimated, \
-    count_symmetrical_estimated = evaluate_tentatives_agains_ground_truth(scene_info,
-                                                                          img_pair,
-                                                                          img_data_list,
-                                                                          src_tentatives_2d,
-                                                                          dst_tentatives_2d,
-                                                                          [ransac_th, 0.1, 0.5, 1, 3],
-                                                                          E, inliers)
 
     stats = Stats(inliers_against_gt=count_symmetrical_gt,
                   tentatives_1=src_tentatives_2d,

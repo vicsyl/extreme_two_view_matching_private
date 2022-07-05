@@ -318,7 +318,10 @@ class Pipeline:
 
     def get_and_create_img_processing_dir(self):
         img_processing_dir = self.get_img_processing_dir()
-        if not os.path.exists(img_processing_dir):
+        if self.scene_info.type == SceneInfo.EVD:
+            for i in ["1", "2"]:
+                Path("{}/{}".format(img_processing_dir, i)).mkdir(parents=True, exist_ok=True)
+        else:
             Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
         return img_processing_dir
 
@@ -455,8 +458,8 @@ class Pipeline:
     def process_image(self, img_name, order):
 
         print("Processing: {}".format(img_name))
+        # TODO imho can be moved
         img_processing_dir = self.get_and_create_img_processing_dir()
-        Path(img_processing_dir).mkdir(parents=True, exist_ok=True)
 
         img = self.read_img(img_name)
 
@@ -472,6 +475,7 @@ class Pipeline:
         if self.scene_info.type == SceneInfo.EVD:
             real_K = K_est
             K_for_rectification = K_est
+            focal_length = focal_length_est
         else:
             real_K = self.scene_info.get_img_K(img_name, img)
             if self.estimate_k:
