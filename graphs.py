@@ -607,43 +607,115 @@ def plot_bar(interesting_keys, data, ylabel, title):
     ax.set_title(title)
     ax.legend()
 
+    plt.savefig("work/graph.pdf")
     plt.show()
+
+
+def plot_bar_simple(method_times_data, ylabel, title=None):
+
+    keys_s = set()
+    keys = []
+    for _, method in enumerate(method_times_data):
+        for k in method[1]:
+            if not keys_s.__contains__(k):
+                keys_s.add(k)
+                keys.append(k)
+
+    # HACK
+    cummulative_times = [[], []]
+    times = [[], []]
+    last_ct = [0.0, 0.0]
+    for key in keys:
+        for i, data in enumerate(method_times_data):
+            if data[1].__contains__(key):
+                last_ct[i] = last_ct[i] + data[1][key]
+                times[i].append(data[1][key])
+            else:
+                times[i].append(0.0)
+            cummulative_times[i].append(last_ct[i])
+
+    print("cummulative_times: {}".format(cummulative_times))
+    print("keys: {}".format(keys))
+
+    fig, ax = plt.subplots(figsize=(4, 5))
+    width = 0.10
+
+    xpos = [0.2, 0.4]
+    method_names = [mtd[0] for _, mtd in enumerate(method_times_data)]
+    for i, key in enumerate(keys):
+        data = [time[i] for time in times]
+        if i == 0:
+            ax.bar(xpos, data, align='center', width=width, label=key)
+        else:
+            cum_data = [time[i-1] for time in cummulative_times]
+            print("label: {}; data: {}, bottom={}".format(key, method_times_data, cum_data))
+            ax.bar(xpos, data, align='center', width=width, bottom=cum_data, label=key)
+
+    plt.xticks(xpos, method_names)
+
+    # ax.get_xaxis().set_visible(False)
+    ax.set_ylim([0, 15])
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend()
+
+    plt.savefig("work/running_time_comparison.pdf")
+    plt.show()
+
+
+@dataclass
+class Stat:
+    c: int
+    avg: float
+    avg_gr: float
 
 
 def example_stacked_bars():
 
-    data = [["dense AffNet",
-    """
-:affnet_clustering called 1421 times and it took 3.6307 secs. on average
-:affnet_rectify called 1421 times and it took 6.6345 secs. on average
-processing img from scratch called 1421 times and it took 10.2654 secs. on average
-matching called 3590 times and it took 4.7471 secs. on average
-    """],
+    data = [
+        ["MonoDepth + AffNet",
+         {"Rectification": 8.8,
+          "Clustering": 2.5,
+          "Depth maps": 0.65}],
+        ["dense AffNet",
+             {"Rectification": 5.9558,
+             "Clustering": 1.4904}],
+            ]
 
-    ["MonoDepth + AffNet",
-    """
-    MonoDepth called 1421 times and it took 0.7
-:affnet_rectify called 1421 times and it took 5.5726 secs. on average
-:compute_normals_from_svd called 1421 times and it took 0.9551 secs. on average
-sky masking called 1421 times and it took 0.5229 secs. on average
-:cluster_normals called 1421 times and it took 0.0468 secs. on average
-:possibly_upsample_early called 1421 times and it took 0.0047 secs. on average
-:get_connected_components called 1421 times and it took 0.0821 secs. on average
-processing img from scratch called 1421 times and it took 7.1972 secs. on average
-matching called 3590 times and it took 5.9668 secs. on average
+    plot_bar_simple(data, 'Running time [s.]')
 
-    """]]
+    #     data = [["dense AffNet",
+    #     """
+    # :affnet_clustering called 1421 times and it took 3.6307 secs. on average
+    # :affnet_rectify called 1421 times and it took 6.6345 secs. on average
+    # processing img from scratch called 1421 times and it took 10.2654 secs. on average
+    # matching called 3590 times and it took 4.7471 secs. on average
+    #     """],
+    #
+    #     ["MonoDepth + AffNet",
+    #     """
+    #     MonoDepth called 1421 times and it took 0.7
+    # :affnet_rectify called 1421 times and it took 5.5726 secs. on average
+    # :compute_normals_from_svd called 1421 times and it took 0.9551 secs. on average
+    # sky masking called 1421 times and it took 0.5229 secs. on average
+    # :cluster_normals called 1421 times and it took 0.0468 secs. on average
+    # :possibly_upsample_early called 1421 times and it took 0.0047 secs. on average
+    # :get_connected_components called 1421 times and it took 0.0821 secs. on average
+    # processing img from scratch called 1421 times and it took 7.1972 secs. on average
+    # matching called 3590 times and it took 5.9668 secs. on average
+    #
+    #     """]]
 
-    interesting_keys = [
-        ["MonoDepth", "depth maps (MonoDepth)"],
-        ["sky_masking", "sky semantic segmentation"],
-        [":compute_normals_from_svd", "compute normals"],
-        #[":get_connected_components", ""],
-        [":affnet_rectify", "affine rectification"],
-        [":affnet_clustering", "dense affnet"],  # ?
-        ["matching", "matching/2"]]
-
-    plot_bar(interesting_keys, data, 'Computation complexity', 'dense AffNet vs. MonoDepth + AffNet computation complexity')
+    # interesting_keys = [
+    #     ["MonoDepth", "depth maps (MonoDepth)"],
+    #     ["sky_masking", "sky semantic segmentation"],
+    #     [":compute_normals_from_svd", "compute normals"],
+    #     #[":get_connected_components", ""],
+    #     [":affnet_rectify", "affine rectification"],
+    #     [":affnet_clustering", "dense affnet"],  # ?
+    #     ["matching", "matching/2"]]
+    #
+    # plot_bar(data, 'Computation complexity', 'dense AffNet vs. MonoDepth + AffNet computation complexity', interesting_keys=interesting_keys)
 
 
 def bar_plot_example():
@@ -672,7 +744,25 @@ def bar_plot_example():
     plt.show()
 
 
+def graph_grid():
+
+    x = [1, 2, 3, 4]
+    y = [234, 124, 368, 343]
+
+    fig = plt.figure(1, figsize=(8, 6))
+    fig.suptitle('Example Of Plot With Grid Lines')
+
+    plt.plot(x, y)
+
+    plt.grid(b=True, which='major', color='#666666', linestyle='-', alpha=0.2)
+
+    plt.minorticks_on()
+    plt.grid(b=False, which='minor', color='#999999', linestyle='-', alpha=0.2)
+    plt.show()
+
+
 if __name__ == '__main__':
-    #EVD()
-    example_stacked_bars()
+    # EVD()
+    # example_stacked_bars()
     # bar_plot_example()
+    graph_grid()
