@@ -495,7 +495,7 @@ def get_mask(img_warped_t, aff_maps_inv, current_component, img_data):
 def get_effective_sift_mask(img_warped_t, aff_maps_inv, current_component, img_data, config):
     sift_mask = None
     use_sift_mask = config.get(CartesianConfig.affnet_use_eager_mask, "False")
-    if use_sift_mask:
+    if use_sift_mask and current_component is not None:
         sift_mask = get_mask(img_warped_t, aff_maps_inv, current_component, img_data)
         # plt.figure(figsize=(6, 8))
         # plt.title("SIFT mask")
