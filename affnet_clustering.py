@@ -113,6 +113,7 @@ def show_affnet_features(aff_features, conf):
         show_or_save_affnet_features(aff_features, show_or_save=False)
 
 
+# TODO this can be returned from winning centers - it is expensive
 def filter_components(component_idxs, fraction_threshold):
 
     component_size_threshold = component_idxs.shape[0] * component_idxs.shape[1] * fraction_threshold
@@ -128,7 +129,7 @@ def filter_components(component_idxs, fraction_threshold):
     return component_idxs, valid_component_dict
 
 
-@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
+@timer_label_decorator("filter components", tags=[AFFNET_CLUSTERING_TAG])
 def get_eligible_components(component_idxs, conf, valid_length):
     """
     :param component_idxs:
@@ -247,7 +248,7 @@ def dense_affnet_call(dense_affnet, gs_timg):
     return dense_affnet(gs_timg)
 
 
-@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
+@timer_label_decorator("covering SoT", tags=[AFFNET_CLUSTERING_TAG])
 def get_win_centers_cover_idx(conf, all_data, non_sky_mask_flat, covering, h, w):
 
     # assert h * w == all_data.shape[1]
@@ -299,7 +300,7 @@ def bgr_to_grayscale(gs_timg, use_cuda):
     return K.color.bgr_to_grayscale(gs_timg).to(device)
 
 
-@timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
+@timer_label_decorator("laffs decomposition", tags=[AFFNET_CLUSTERING_TAG])
 def get_sot_data(lin_features):
     _, _, all_ts1, all_phis1 = decompose_lin_maps_lambda_psi_t_phi(lin_features, asserts=False)
     all_data = torch.vstack((all_ts1.reshape(1, -1), all_phis1.reshape(1, -1)))

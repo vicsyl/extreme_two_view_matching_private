@@ -724,7 +724,7 @@ def get_kpts_component_indices(affnet_no_clustering, unrectified_laffs, img_data
     return kpts_component_indices
 
 
-@timer_label_decorator(tags=[AFFNET_RECTIFY_TAG])
+@timer_label_decorator("laffs decomposition affnet identity", tags=[AFFNET_RECTIFY_TAG])
 def get_ts_phis(affnet_lin_maps):
     _, _, ts, phis = decompose_lin_maps_lambda_psi_t_phi(affnet_lin_maps)
     return ts, phis
