@@ -1144,12 +1144,21 @@ class Pipeline:
         img_data.descriptions = descs
         return img_data
 
+    def find_cached_pair_update_stat(self, img_pair: ImagePairEntry, difficulty):
+        s_map = self.stats_map[self.get_stats_key()]
+        key = SceneInfo.get_key_from_pair(img_pair)
+        for cached_diff in s_map:
+            cached_diff_map = s_map[cached_diff]
+            if cached_diff_map.__contains__(key):
+                s_map[difficulty][key] = cached_diff_map[key]
+                return True
+        return False
+
     def run_matching_pipeline(self):
 
         self.start()
 
         self.ensure_stats_key(self.stats_map)
-        already_processed = set()
 
         stats_counter = 0
 
@@ -1163,73 +1172,74 @@ class Pipeline:
             for img_pair in self.scene_info.img_pairs_lists[difficulty]:
 
                 pair_key = SceneInfo.get_key(img_pair.img1, img_pair.img2)
-                if self.matching_pairs is not None:
-                    if pair_key not in self.matching_pairs or pair_key in already_processed:
-                        continue
-                    else:
-                        already_processed.add(pair_key)
+                if self.matching_pairs is not None and pair_key not in self.matching_pairs:
+                    continue
 
                 if self.matching_pairs is None and self.matching_limit is not None and processed_pairs >= self.matching_limit:
                     print("Reached matching limit of {} for difficulty {}".format(self.matching_limit, difficulty))
                     break
 
-                Timer.start_check_point("complete image pair matching")
                 print("Will be matching pair {}".format(pair_key))
                 stats_counter = stats_counter + 1
 
-                try:
+                if self.find_cached_pair_update_stat(img_pair, difficulty):
+                    print("{} is cached, skipping the computation".format(SceneInfo.get_key_from_pair(img_pair)))
+                else:
+                    Timer.start_check_point("complete image pair matching")
 
-                    matching_out_dir = "{}/matching".format(self.output_dir)
-                    Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
-
-                    # I might not need normals yet
-                    # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
-
-                    image_data = []
-                    processed_img_index = 0
                     try:
-                        for idx, img in enumerate([img_pair.img1, img_pair.img2]):
-                            image_data.append(self.process_image(img, idx))
-                            processed_img_index += 1
-                    except:
-                        print("(processing image) {}st/nd image from {}_{} couldn't be processed, skipping the matching pair".format(processed_img_index, img_pair.img1, img_pair.img2))
-                        print(traceback.format_exc(), file=sys.stdout)
-                        continue
 
-                    rectify_affine_affnet = self.config["rectify_affine_affnet"]
-                    affnet_no_clustering = self.config["affnet_no_clustering"]
-                    if self.config[CartesianConfig.rectify] and (not rectify_affine_affnet or not affnet_no_clustering) and not self.config[CartesianConfig.affnet_clustering]:
-                        zero_around_z = self.config["rectify_by_0_around_z"]
-                        estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
+                        matching_out_dir = "{}/matching".format(self.output_dir)
+                        Path(matching_out_dir).mkdir(parents=True, exist_ok=True)
 
-                    if self.config["rectify_by_fixed_rotation"]:
+                        # I might not need normals yet
+                        # img1, K_1, kps1, descs1, normals1, components_indices1, valid_components_dict1
 
-                        if self.config["rectify_by_GT"]:
-                            GT_R, _ = get_GT_R_t(img_pair, self.scene_info)
-                            r_vec_full = KG.rotation_matrix_to_angle_axis(torch.from_numpy(GT_R)[None]).detach().cpu().numpy()[0]
-                        else:
-                            r_vec_full = estimated_r_vec
+                        image_data = []
+                        processed_img_index = 0
+                        try:
+                            for idx, img in enumerate([img_pair.img1, img_pair.img2]):
+                                image_data.append(self.process_image(img, idx))
+                                processed_img_index += 1
+                        except:
+                            print("(processing image) {}st/nd image from {}_{} couldn't be processed, skipping the matching pair".format(processed_img_index, img_pair.img1, img_pair.img2))
+                            print(traceback.format_exc(), file=sys.stdout)
+                            continue
 
-                        for idx, image_data_item in enumerate(image_data):
-                            if idx == 0:
-                                r_vec = r_vec_full / 2
-                                img_name = img_pair.img1
+                        rectify_affine_affnet = self.config["rectify_affine_affnet"]
+                        affnet_no_clustering = self.config["affnet_no_clustering"]
+                        if self.config[CartesianConfig.rectify] and (not rectify_affine_affnet or not affnet_no_clustering) and not self.config[CartesianConfig.affnet_clustering]:
+                            zero_around_z = self.config["rectify_by_0_around_z"]
+                            estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
+
+                        if self.config["rectify_by_fixed_rotation"]:
+
+                            if self.config["rectify_by_GT"]:
+                                GT_R, _ = get_GT_R_t(img_pair, self.scene_info)
+                                r_vec_full = KG.rotation_matrix_to_angle_axis(torch.from_numpy(GT_R)[None]).detach().cpu().numpy()[0]
                             else:
-                                r_vec = -r_vec_full / 2
-                                img_name = img_pair.img2
+                                r_vec_full = estimated_r_vec
 
-                            self.rectify_by_fixed_rotation_update(image_data_item, r_vec, img_name)
+                            for idx, image_data_item in enumerate(image_data):
+                                if idx == 0:
+                                    r_vec = r_vec_full / 2
+                                    img_name = img_pair.img1
+                                else:
+                                    r_vec = -r_vec_full / 2
+                                    img_name = img_pair.img2
 
-                    if self.get_stage_number() >= self.stages_map["final"]:
-                        self.do_matching(image_data, img_pair, matching_out_dir, stats_map_diff, difficulty)
+                                self.rectify_by_fixed_rotation_update(image_data_item, r_vec, img_name)
 
-                    processed_pairs = processed_pairs + 1
+                        if self.get_stage_number() >= self.stages_map["final"]:
+                            self.do_matching(image_data, img_pair, matching_out_dir, stats_map_diff, difficulty)
 
-                except:
-                    print("(matching) {} couldn't be processed, skipping the matching pair".format(pair_key))
-                    print(traceback.format_exc(), file=sys.stdout)
+                        processed_pairs = processed_pairs + 1
 
-                Timer.end_check_point("complete image pair matching")
+                    except:
+                        print("(matching) {} couldn't be processed, skipping the matching pair".format(pair_key))
+                        print(traceback.format_exc(), file=sys.stdout)
+
+                    Timer.end_check_point("complete image pair matching")
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats, all=stats_counter % 100 == 0)
