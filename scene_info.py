@@ -150,6 +150,8 @@ class CameraEntry:
 @dataclass
 class SceneInfo:
 
+    EVD = "EVD"
+
     img_pairs_lists: list
     img_pairs_maps: list
     img_info_map: dict
@@ -163,6 +165,9 @@ class SceneInfo:
     def get_input_dir(self):
         if self.type == "orig":
             return "{}/original_dataset/{}/images".format(SceneInfo.base_dir, self.name)
+        elif self.type == "EVD":
+            # TODO 1/2 #, self.name)
+            return "{}/EVD".format(SceneInfo.base_dir) #, self.name)
         elif self.type == "google":
             return "{}/{}/set_100/images".format(SceneInfo.base_dir, self.name)
         else:
@@ -189,6 +194,8 @@ class SceneInfo:
     def depth_input_dir(self):
         if self.type == "orig":
             return "{}/depth_data/mega_depth/{}".format(SceneInfo.base_dir, self.name)
+        elif self.type == "EVD":
+            return "{}/depth_data/EVD".format(SceneInfo.base_dir)
         elif self.type == "google":
             return "{}/depth_data/{}".format(SceneInfo.base_dir, self.name)
         else:
@@ -244,7 +251,16 @@ class SceneInfo:
             file_name_suffix = ".png" if scene_name[-1] in ["6", "7", "8"] else ".jpg"
             return SceneInfo(img_pairs_lists, img_pairs_maps, img_info_map, cameras, scene_name, type="orig", file_name_suffix=file_name_suffix)
         elif type == "google":
-            return read_google_scene(scene_name, file_name_suffix, show_first)
+            g = read_google_scene(scene_name, file_name_suffix, show_first)
+            return g
+        elif type == "EVD":
+            img_pairs_lists = [[]]
+            img_pairs_maps = [{}]
+            for img_name in ["adam", "cafe", "cat", "dum", "face", "fox", "girl", "graf", "grand", "index", "mag", "pkk", "shop", "there", "vin"]:
+                entry = ImagePairEntry("1/{}".format(img_name), "2/{}".format(img_name), 0)
+                img_pairs_lists[0].append(entry)
+                img_pairs_maps[0]["1/{}_2/{}".format(img_name, img_name)] = entry
+            return SceneInfo(img_pairs_lists, img_pairs_maps, None, None, "EDV_only_scene", type="EVD", file_name_suffix=".png")
         else:
             raise Exception("unexpected type: {}".format(type))
 

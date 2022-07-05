@@ -141,7 +141,7 @@ class CartesianConfig:
 
         # dataset
         "scene_name": Property("string", default=False, cache=Property.cache_img_data),
-        "scene_type": Property("enum", default="orig", cache=Property.cache_img_data, allowed_values=["orig", "google"]),
+        "scene_type": Property("enum", default="orig", cache=Property.cache_img_data, allowed_values=["orig", "google", "EVD"]),
 
         # preprocessing
         "handle_antipodal_points": Property("bool", default=False, cache=Property.cache_img_data),

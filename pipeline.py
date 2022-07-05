@@ -12,7 +12,7 @@ from superpoint import SuperPointDescriptor
 from config import *
 from connected_components import get_connected_components, get_and_show_components
 from depth_to_normals import *
-from matching import match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
+from matching import match_homography, match_epipolar, match_find_F_degensac, match_images_with_dominant_planes
 from rectification import possibly_upsample_normals, get_rectified_keypoints
 from img_utils import get_degrees_between_normals
 from evaluation import *
@@ -462,17 +462,24 @@ class Pipeline:
 
         orig_height = img.shape[0]
         orig_width = img.shape[1]
-        real_K = self.scene_info.get_img_K(img_name, img)
-        if self.estimate_k:
-            focal_length = (orig_width + orig_height) * self.focal_point_mean_factor
-            K_for_rectification = np.array([
-                [focal_length, 0,            orig_width / 2.0],
-                [0,            focal_length, orig_height / 2.0],
-                [0,            0,            1]
-            ])
+
+        focal_length_est = (orig_width + orig_height) * self.focal_point_mean_factor
+        K_est = np.array([
+            [focal_length_est, 0, orig_width / 2.0],
+            [0, focal_length_est, orig_height / 2.0],
+            [0, 0, 1]
+        ])
+        if self.scene_info.type == SceneInfo.EVD:
+            real_K = K_est
+            K_for_rectification = K_est
         else:
-            K_for_rectification = real_K
-            focal_length = real_K[0, 0]
+            real_K = self.scene_info.get_img_K(img_name, img)
+            if self.estimate_k:
+                focal_length = focal_length_est
+                K_for_rectification = K_est
+            else:
+                K_for_rectification = real_K
+                focal_length = real_K[0, 0]
 
         img_data_path = "{}/{}_img_data.pkl".format(img_processing_dir, img_name)
         cached_img_data = self.get_cached_image_data_or_none(img_name, img, real_K)
@@ -504,6 +511,7 @@ class Pipeline:
                              components_indices=None,
                              valid_components_dict=None)
 
+            # TODO caused problems
             Pipeline.save_img_data(img_data, img_data_path, img_name)
 
             Timer.end_check_point("processing img without rectification")
@@ -640,6 +648,7 @@ class Pipeline:
 
             Timer.end_check_point(label_scratch)
 
+            # TODO caused problem?
             Pipeline.save_img_data(img_data, img_data_path, img_name)
 
             return img_data
@@ -1055,6 +1064,21 @@ class Pipeline:
                 ransac_iters=self.ransac_iters
             )
 
+        elif self.scene_info.type == SceneInfo.EVD:
+            # NOTE using img_datax.real_K for a call to findE
+            E, inlier_mask, src_pts, dst_pts, tentative_matches = match_homography(
+                image_data_list[0], image_data_list[1],
+                find_fundamental=self.estimate_k,
+                img_pair=img_pair,
+                out_dir=matching_out_dir,
+                show=self.show_matching,
+                save=self.save_matching,
+                ratio_thresh=self.knn_ratio_threshold,
+                ransac_th=self.ransac_th,
+                ransac_conf=self.ransac_conf,
+                ransac_iters=self.ransac_iters,
+                cfg=self.config,
+            )
         else:
             # NOTE using img_datax.real_K for a call to findE
             E, inlier_mask, src_pts, dst_pts, tentative_matches = match_epipolar(
@@ -1071,8 +1095,8 @@ class Pipeline:
                 cfg=self.config,
             )
 
-            if E is None:
-                ValueError("E is None")
+        if E is None:
+            ValueError("E is None")
 
         stats_struct = evaluate_matching(self.scene_info,
                                          E,
@@ -1208,10 +1232,13 @@ class Pipeline:
 
                         rectify_affine_affnet = self.config["rectify_affine_affnet"]
                         affnet_no_clustering = self.config["affnet_no_clustering"]
+
+                        # TODO caused problems?
                         if self.config[CartesianConfig.rectify] and (not rectify_affine_affnet or not affnet_no_clustering) and not self.config[CartesianConfig.affnet_clustering]:
                             zero_around_z = self.config["rectify_by_0_around_z"]
                             estimated_r_vec = self.estimate_rotation_via_normals(image_data[0].normals, image_data[1].normals, img_pair, pair_key, zero_around_z)
 
+                        # TODO caused problems?
                         if self.config["rectify_by_fixed_rotation"]:
 
                             if self.config["rectify_by_GT"]:
@@ -1243,12 +1270,14 @@ class Pipeline:
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats, all=stats_counter % 100 == 0)
+                # TODO caused problems # n_examples=30
                 evaluate_all_matching_stats_even_normalized(self.stats_map)
 
                 Timer.log_stats()
 
             if processed_pairs > 0:
                 norm_scene_info = self.scene_info if self.matching_pairs is None else None
+                # n_examples=30
                 evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(difficulty), scene_info=norm_scene_info)
                 evaluate_stats(self.stats, all=True)
 
@@ -1266,6 +1295,7 @@ class Pipeline:
         # These two are different approaches to stats
         evaluate_stats(self.stats, all=True)
         norm_scene_info = self.scene_info if self.matching_pairs is None else None
+        # n_examples=30
         evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100), scene_info=norm_scene_info)
 
     def save_stats(self, key=""):

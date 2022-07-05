@@ -399,6 +399,8 @@ def match_images_with_dominant_planes(image_data1: ImageData, image_data2: Image
                                   ransac_iters=ransac_iters)
 
         else:
+            if True:
+                raise "API broken, match_homography/match_epipolar depending on scene_info.type=='EVD', which is not available here"
             return match_epipolar(image_data1.img,
                                   image_data1.descriptions,
                                   image_data1.real_K,
@@ -603,6 +605,57 @@ def show_save_matching(img1,
         if save:
             plt.savefig("{}/matches_{}.jpg".format(out_dir, save_suffix))
         show_or_close(show)
+
+
+def match_homography(img_data1,
+                     img_data2,
+                     find_fundamental, img_pair, out_dir, show, save, ratio_thresh,
+                     ransac_th, ransac_conf, ransac_iters, cfg):
+
+    Timer.start_check_point("matching")
+
+    save_suffix = "{}_{}".format(img_pair.img1, img_pair.img2)
+
+    tentative_matches = find_correspondences(img_data1,
+                                             img_data2,
+                                             cfg, out_dir, save_suffix, ratio_thresh=ratio_thresh, show=show, save=save)
+
+    src_pts, dst_pts = split_points(tentative_matches, img_data1.key_points, img_data2.key_points)
+
+    print("inlier th: {}".format(ransac_th))
+    H, inlier_mask = cv.findHomography(src_pts, dst_pts, cv.USAC_MAGSAC, 5.0, maxIters=ransac_iters, confidence=ransac_conf)
+
+    #np.logspace(np.log2(1.0), np.log2(20), 10, base=2.0)):
+
+    # # TODO threshold and prob params left to default values
+    # if find_fundamental:
+    #     F, inlier_mask = cv.findFundamentalMat(src_pts, dst_pts, method=cv.USAC_MAGSAC, ransacReprojThreshold=ransac_th, confidence=ransac_conf, maxIters=ransac_iters)
+    #     if F is None or inlier_mask is None:
+    #         print("WARNING: F:{} or inlier mask:{} are None".format(F, inlier_mask))
+    #         raise ValueError("None")
+    #     print("F:\n{}".format(F))
+    #     E = img_data2.real_K.T @ F @ img_data1.real_K
+    # else:
+    #     # NOTE previously default RANSAC params used here; no iters param
+    #     E, inlier_mask = cv.findEssentialMat(src_pts, dst_pts, img_data1.real_K, None, img_data2.real_K, None, cv.RANSAC, prob=ransac_conf, threshold=ransac_th)
+    #     if E is None or inlier_mask is None:
+    #         print("WARNING: E:{} or inlier mask:{} are None".format(E, inlier_mask))
+    #         raise ValueError("None")
+
+    Timer.end_check_point("matching")
+
+    show_save_matching(img_data1.img,
+                       img_data1.key_points,
+                       img_data2.img,
+                       img_data2.key_points,
+                       tentative_matches,
+                       inlier_mask,
+                       out_dir,
+                       save_suffix,
+                       show,
+                       save)
+
+    return H, inlier_mask, src_pts, dst_pts, tentative_matches
 
 
 def match_epipolar(img_data1,
