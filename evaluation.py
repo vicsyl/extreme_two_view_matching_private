@@ -5,7 +5,6 @@ import traceback
 from typing import List
 
 import torch
-
 from scene_info import *
 from utils import *
 
@@ -593,6 +592,8 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
     all_diffs = list(all_diffs)
     all_diffs.sort()
 
+    if scene_info is not None and scene_info.type == SceneInfo.EVD:
+        n_examples = 30
     if n_examples is not None and n_examples > 0:
         for diff in all_diffs:
             if special_diff is not None and special_diff != diff:
@@ -601,13 +602,12 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
                 if stats_map_all[key].__contains__(diff): # and len(stats_map_all[key][diff]) > 0:
                     print_significant_instances(stats_map_all[key][diff], key, diff, n_examples=n_examples)
 
-
     angle_thresholds = [5, 10, 20]
-    accuracy_diff_acc_data_lists = [None] * len(angle_thresholds)
+    #accuracy_diff_acc_data_lists = [None] * len(angle_thresholds)
     for angle_threshold in angle_thresholds:
 
         diff_acc_data_lists = [[] for _ in parameters_keys_list]
-        accuracy_diff_acc_data_lists.append(diff_acc_data_lists)
+        #accuracy_diff_acc_data_lists.append(diff_acc_data_lists)
 
         print("Accuracy({}º) {}".format(angle_threshold, " ".join([str(k) for k in parameters_keys_list])))
         for diff in all_diffs:
@@ -666,7 +666,6 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
         # NOTE I don't think there is a good use case for this
         # print("All failed pairs:")
         # print("matching_pairs = [{}]".format(", ".join(all_failed_pairs)))
-
 
 
 # def evaluate(stats_map: dict, scene_info: SceneInfo):
@@ -730,7 +729,6 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
 #     evaluate(stats_map, scene_info)
 #
 #
-
 def print_significant_instances(stats_map, difficulty, key, n_examples=10):
 
     sorted_by_err_R = list(sorted(stats_map.items(), key=lambda key_value: -key_value[1].error_R))
