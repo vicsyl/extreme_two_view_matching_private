@@ -1269,10 +1269,15 @@ class Pipeline:
         evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100), scene_info=norm_scene_info)
 
     def save_stats(self, key=""):
-        file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key, get_tmsp())
-        with open(file_name, "wb") as f:
-            pickle.dump(self.stats, f)
-            print("stats saved")
+        file_name = None
+        try:
+            file_name = "{}/stats_{}_{}.pkl".format(self.output_dir, key.replace("/", "_"), get_tmsp())
+            with open(file_name, "wb") as f:
+                pickle.dump(self.stats, f)
+                print("stats saved")
+        except:
+            print("Stats under file name '{}' couldn't be saved".format(file_name))
+            print(traceback.format_exc(), file=sys.stdout)
 
 
 def get_tmsp():
