@@ -5,7 +5,15 @@ from graphs import is_numeric_my
 def convert_csv(title, csv_in_str, file_name,
                 difficulties=range(18),
                 y_ticks=[float(i)/10 for i in range(11)],
-                legend_fontsize='x-large'):
+                xlabel="Difficulty",
+                eps_on_top=0,
+                revertx=False,
+                vertical_bars=None,
+                ):
+
+    legend_fontsize = 'x-large'
+    axes_fontsize = 'xx-large'
+
 
     # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot:~:text=Notes-,Format,-Strings
     # markers: . , o v ^ > < s p * + x d | _
@@ -59,37 +67,40 @@ def convert_csv(title, csv_in_str, file_name,
         # tokens_to_read = []
         for i, t in enumerate(tokens[start:]):
             if len(t) > 0:
-                acc_data_lists_x[i].append(float(diff))
+                acc_data_lists_x[i].append(float(list(difficulties)[diff]))
                 acc_data_lists_y[i].append(float(t.strip()))
 
     fig, ax = plt.subplots(1, figsize=(8, 6))
-    fig.suptitle(title)
+
+    if vertical_bars is not None:
+        min_y_t = min(y_ticks)
+        m = max(vertical_bars)
+        vertical_bars = [v * (1 - min_y_t) / m + min_y_t for v in vertical_bars]
+        width = 0.05
+        ax.bar(acc_data_lists_x[0], vertical_bars, align='center', width=width)
 
     for i, _ in enumerate(acc_data_lists_x):
         ax.plot(acc_data_lists_x[i], acc_data_lists_y[i], styles[i % len(styles)], label=entries[i])
 
-    l_d = list(difficulties)
-    #ax.set_xlim([0, len(acc_data_lists_x[0]) - 1])
-    ax.set_xlim([l_d[0], l_d[-1]])
-    ax.set_xticks(difficulties)
-    ax.set_ylim(min(y_ticks), max(y_ticks))
-    ax.set_yticks(y_ticks)
-    #ax.set_xticks(range(0, len(acc_data_lists_x[0])))
-    #plt.axis('auto')
-    ax.legend(shadow=True, framealpha=None, fontsize=legend_fontsize)
+    if revertx:
+        plt.xlim([difficulties[-1], difficulties[0]])
+    else:
+        plt.xlim([difficulties[0], difficulties[-1]])
 
-    ax.set_xlabel("Difficulty", fontsize=legend_fontsize)
-    ax.set_ylabel("Accuracy (relative rotation error < 5°)", fontsize=legend_fontsize)
+    plt.xticks(difficulties)
+    plt.ylim(min(y_ticks), max(y_ticks) + eps_on_top)
+    plt.yticks(y_ticks)
+
+    plt.legend(shadow=True, framealpha=None, fontsize=legend_fontsize)
+
+    plt.xlabel(xlabel, fontsize=axes_fontsize)
+    plt.ylabel("Accuracy (relative rotation error < 5°)", fontsize=axes_fontsize)
 
     plt.grid(b=True, which='major', color='#666666', linestyle='-')
     plt.minorticks_on()
-    plt.grid(b=False, which='minor', color='#999999', linestyle='-', alpha=0.2)
-    plt.savefig(file_name)
+    plt.grid(b=False, which='minor', color='#999999', linestyle='-', alpha=0.2, axis='y')
+    plt.savefig(file_name, bbox_inches='tight', pad_inches=0)
     plt.show()
-
-
-    print()
-    print(title, entries, acc_data_lists_x)
 
 
 def graph_grid():
@@ -111,9 +122,8 @@ def graph_grid():
 def scene1():
 
     convert_csv(
-        #"Dense Affnet vs. MonoDepth+AffNet on scene 1 of the Strong ViewPoint Changes Dataset",
         "Accuracy on scene 1",
-"""	dense AffNet	MonoDepth+AffNet	homography recttification	AffNet	HardNet unrectified
+"""\tDenseAffNet\tDepthAffNet\tsimple depth-based\tsimple AffNet shapes\tunrectified(SIFT+HardNet)
 0	0.95	0.945	0.923	0.935	0.929
 1	0.925	0.94	0.903	0.91	0.882
 2	0.89	0.91	0.892	0.89	0.882
@@ -136,22 +146,115 @@ def scene1():
 )
 
 
-def st_peters():
+# def st_peters_cdf():
+#
+#     convert_csv(
+#         "Accuracy on St. Peter's Square",
+# """Acc 5	DenseAffNet	DepthAffNet
+# 7	0.778	0.774
+# 6	0.8	0.796
+# 5	0.854	0.848
+# 4	0.905	0.898
+# 3	0.937	0.934
+# 2	0.934	0.931
+# 1	0.939	0.97
+# 0	1	1""",
+# "work/st_peters_accuracy.pdf",
+# difficulties=range(7, -1, -1),
+#         y_ticks=[float(i) / 10 for i in range(7, 11)],
+#         xlabel="Category",
+#         eps_on_top=0.01,
+#         revertx=True,
+#     )
+#
+#
+def st_peters_pdf():
 
     convert_csv(
-        #"Dense Affnet vs. MonoDepth+AffNet on scene 1 of the Strong ViewPoint Changes Dataset",
         "Accuracy on St. Peter's Square",
 """Acc 5	DenseAffNet	DepthAffNet
-7	0.778	0.774
-6	0.8	0.796
-5	0.854	0.848
-4	0.905	0.898
-3	0.937	0.934
-2	0.934	0.931
-1	0.939	0.97
+7	0.3859315589	0.3819315589
+6	0.6625491679	0.6636399395
+5	0.7879365621	0.7832319236
+4	0.8796716981	0.8695056604
+3	0.9385846995	0.9355846995
+2	0.9325267857	0.9195089286
+1	0.9317627119	0.966440678
 0	1	1""",
-"work/st_peters_accuracy.pdf",
-difficulties=range(8), y_ticks=[float(i) / 10 for i in range(7, 11)])
+"work/st_peters_accuracy_pdf.pdf",
+difficulties=[i / 10 for i in range(1, 9)],
+        y_ticks=[float(i) / 10 for i in range(3, 11)],
+        xlabel="Category",
+        eps_on_top=0.01,
+        revertx=True,
+        vertical_bars = [263, 1322, 1466, 1060, 549, 224, 59, 7]
+    )
+
+
+def sacre_coeur_pdf():
+
+    convert_csv(
+        "Accuracy on Sacre Coeur",
+"""Counts	DenseAffNet	DepthAffNet
+0	0.5618181818	0.5695
+1	0.8559359561	0.8483659652
+2	0.9448722678	0.9142643443
+3	0.9539279701	0.9153554724
+4	0.964	0.9493333333
+5	0.9802941176	0.9701764706
+6	0.9705242718	0.980776699
+7	1	1
+8	1	1""",
+"work/sacre_coeur_pdf.pdf",
+difficulties=[i / 10 for i in range(1, 10)],
+        y_ticks=[float(i) / 10 for i in range(5, 11)],
+        xlabel="Category",
+        eps_on_top=0.01,
+        revertx=True,
+        vertical_bars=column_str_to_list("""484
+                                            1093
+                                            1464
+                                            1069
+                                            504
+                                            204
+                                            103
+                                            24
+                                            5"""),
+    )
+
+
+def reichstag_pdf():
+
+    convert_csv(
+        "Accuracy on Reichstag",
+"""	DenseAffNet	DepthAffNet
+7	0.6376394558	0.6667619048
+6	0.8842752294	0.8535806029
+5	0.9649294118	0.9017176471
+4	0.986835443	0.985443038
+3	0.98378125	0.984875
+2	0.9565217391	1
+1	1	1
+0	1	1""",
+"work/reichstag_pdf.pdf",
+difficulties=[i / 10 for i in range(1, 9)],
+        y_ticks=[float(i) / 10 for i in range(6, 11)],
+        xlabel="Category",
+        eps_on_top=0.01,
+        revertx=True,
+        vertical_bars=column_str_to_list("""147
+                                            763
+                                            680
+                                            869
+                                            192
+                                            23
+                                            18
+                                            9"""),
+    )
+
+
+def column_str_to_list(s):
+    return [int(token.strip()) for token in s.split("\n") if token.strip() != ""]
 
 
 if __name__ == '__main__':
@@ -159,5 +262,7 @@ if __name__ == '__main__':
     # example_stacked_bars()
     # bar_plot_example()
     # graph_grid()
-    #scene1()
-    st_peters()
+    scene1()
+    st_peters_pdf()
+    sacre_coeur_pdf()
+    reichstag_pdf()
