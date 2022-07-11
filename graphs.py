@@ -637,7 +637,7 @@ def plot_bar_simple(method_times_data, ylabel, title=None):
     print("cummulative_times: {}".format(cummulative_times))
     print("keys: {}".format(keys))
 
-    fig, ax = plt.subplots(figsize=(4, 5))
+    fig, ax = plt.subplots(figsize=(5, 5))
     width = 0.10
 
     xpos = [0.2, 0.4]
@@ -651,15 +651,18 @@ def plot_bar_simple(method_times_data, ylabel, title=None):
             print("label: {}; data: {}, bottom={}".format(key, method_times_data, cum_data))
             ax.bar(xpos, data, align='center', width=width, bottom=cum_data, label=key)
 
-    plt.xticks(xpos, method_names)
+    axes_fontsize = 'xx-large'
+    plt.xticks(xpos, method_names, fontsize=axes_fontsize)
 
     # ax.get_xaxis().set_visible(False)
     ax.set_ylim([0, 15])
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.legend()
 
-    plt.savefig("work/running_time_comparison.pdf")
+    ax.set_ylabel(ylabel, fontsize=axes_fontsize)
+    ax.set_title(title)
+    legend_fontsize = 'x-large'
+    ax.legend(fontsize=legend_fontsize)
+
+    plt.savefig("work/running_time_comparison.pdf", bbox_inches='tight', pad_inches=0)
     plt.show()
 
 
@@ -670,14 +673,14 @@ class Stat:
     avg_gr: float
 
 
-def example_stacked_bars():
+def running_time_stacked_bars():
 
     data = [
-        ["MonoDepth + AffNet",
+        ["DepthAffNet",
          {"Rectification": 8.8,
           "Clustering": 2.5,
           "Depth maps": 0.65}],
-        ["dense AffNet",
+        ["DenseAffNet",
              {"Rectification": 5.9558,
              "Clustering": 1.4904}],
             ]
@@ -763,6 +766,6 @@ def graph_grid():
 
 if __name__ == '__main__':
     # EVD()
-    # example_stacked_bars()
+    running_time_stacked_bars()
     # bar_plot_example()
-    graph_grid()
+    # graph_grid()

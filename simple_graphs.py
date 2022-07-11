@@ -9,20 +9,22 @@ def convert_csv(title, csv_in_str, file_name,
                 eps_on_top=0,
                 revertx=False,
                 vertical_bars=None,
+                styles=None,
+                location=None,
                 ):
 
     legend_fontsize = 'x-large'
     axes_fontsize = 'xx-large'
 
-
     # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot:~:text=Notes-,Format,-Strings
     # markers: . , o v ^ > < s p * + x d | _
     # line styles: - -- -. :
     # fmt=[marker][color][line]
-    styles = [
-        "bo-", "ro-", "yo-", "co-", "ko-"
-        #"bo-", "ro+--", "gx-.", "c*-", "ko-"
-    ]
+    if styles is None:
+        styles = [
+            "bo-", "ro-", "yo-", "co-", "ko-"
+            #"bo-", "ro+--", "gx-.", "c*-", "ko-"
+        ]
 
     # let's assume True for both
     leave_out_1st_column = False
@@ -77,10 +79,10 @@ def convert_csv(title, csv_in_str, file_name,
         m = max(vertical_bars)
         vertical_bars = [v * (1 - min_y_t) / m + min_y_t for v in vertical_bars]
         width = 0.05
-        ax.bar(acc_data_lists_x[0], vertical_bars, align='center', width=width)
+        ax.bar(acc_data_lists_x[0], vertical_bars, align='center', width=width, color="skyblue")
 
     for i, _ in enumerate(acc_data_lists_x):
-        ax.plot(acc_data_lists_x[i], acc_data_lists_y[i], styles[i % len(styles)], label=entries[i])
+        ax.plot(acc_data_lists_x[i], acc_data_lists_y[i], styles[i % len(styles)], label=entries[i],  linewidth=1.5)
 
     if revertx:
         plt.xlim([difficulties[-1], difficulties[0]])
@@ -91,7 +93,10 @@ def convert_csv(title, csv_in_str, file_name,
     plt.ylim(min(y_ticks), max(y_ticks) + eps_on_top)
     plt.yticks(y_ticks)
 
-    plt.legend(shadow=True, framealpha=None, fontsize=legend_fontsize)
+
+    if location is None:
+        location = 'best'
+    plt.legend(shadow=True, framealpha=None, fontsize=legend_fontsize, loc=location)
 
     plt.xlabel(xlabel, fontsize=axes_fontsize)
     plt.ylabel("Accuracy (relative rotation error < 5°)", fontsize=axes_fontsize)
@@ -123,7 +128,7 @@ def scene1():
 
     convert_csv(
         "Accuracy on scene 1",
-"""\tDenseAffNet\tDepthAffNet\tsimple depth-based\tsimple AffNet shapes\tunrectified(SIFT+HardNet)
+"""\tDenseAffNet\tDepthAffNet\tsimple depth map based\tsimple AffNet based\tunrectified HardNet
 0	0.95	0.945	0.923	0.935	0.929
 1	0.925	0.94	0.903	0.91	0.882
 2	0.89	0.91	0.892	0.89	0.882
@@ -143,6 +148,33 @@ def scene1():
 16	0.01	0.035	0	0.016	0.01
 17	0.005	0.021	0.005	0.005	0.016""",
 "work/scene1_accuracy.pdf"
+)
+
+
+def scenes2_8():
+
+    convert_csv(
+        "Accuracy on scene 2 to scene 8",
+"""\tDenseAffNet\tDepthAffNet\tsimple depth map based\tsimple AffNet based
+0	0.9422	0.9557142857	0.93	0.9528571429
+1	0.8607142857	0.8607142857	0.8192857143	0.8628571429
+2	0.7821507143	0.7892721429	0.7193057143	0.8064285714
+3	0.717815	0.7106828571	0.6236085714	0.7285714286
+4	0.63215	0.6306514286	0.5527985714	0.6492878571
+5	0.5656942857	0.5499321429	0.484265	0.5778342857
+6	0.4720935714	0.4721035714	0.4199957143	0.4950528571
+7	0.4377314286	0.4243492857	0.3621364286	0.4514757143
+8	0.3915	0.39153	0.3085721429	0.4093471429
+9	0.3385592857	0.3428457143	0.2499521429	0.3642857143
+10	0.3028942857	0.3193135714	0.2020464286	0.3243242857
+11	0.2756664286	0.2971635714	0.1828242857	0.3150528571
+12	0.2313678571	0.2764114286	0.1300192857	0.2878571429
+13	0.122879538	0.1379051155	0.05377722772	0.1559405941
+14	0.1153560682	0.1251504514	0.05417151454	0.1504262788
+15	0.09645970488	0.0896708286	0.02950056754	0.09421112372
+16	0.05226407507	0.04951608579	0.03488069705	0.04825737265
+17	0.0159	0.009090909091	0.009090909091	0.01819090909""",
+"work/scene2_8_accuracy.pdf"
 )
 
 
@@ -168,26 +200,34 @@ def scene1():
 #     )
 #
 #
+
+phototourism_styles = [
+        "bo-", "go-", "kD-", "rD-"
+        #"bo-", "ro+--", "gx-.", "c*-", "ko-"
+    ]
+
 def st_peters_pdf():
 
     convert_csv(
         "Accuracy on St. Peter's Square",
-"""Acc 5	DenseAffNet	DepthAffNet
-7	0.3859315589	0.3819315589
-6	0.6625491679	0.6636399395
-5	0.7879365621	0.7832319236
-4	0.8796716981	0.8695056604
-3	0.9385846995	0.9355846995
-2	0.9325267857	0.9195089286
-1	0.9317627119	0.966440678
-0	1	1""",
+"""Acc 5	DenseAffNet	DepthAffNet	simple depth map based	simple AffNet based
+7	0.3859315589	0.3819315589	0.3571102662	0.3154676806
+6	0.6625491679	0.6636399395	0.6550945537	0.658730711
+5	0.7879365621	0.7832319236	0.7756412005	0.7582783083
+4	0.8796716981	0.8695056604	0.8704632075	0.8690886792
+3	0.9385846995	0.9355846995	0.9249435337	0.9347540984
+2	0.9325267857	0.9195089286	0.9247589286	0.9156964286
+1	0.9317627119	0.966440678	0.9317627119	0.9317627119
+0	1	1	1	1""",
 "work/st_peters_accuracy_pdf.pdf",
 difficulties=[i / 10 for i in range(1, 9)],
         y_ticks=[float(i) / 10 for i in range(3, 11)],
         xlabel="Category",
         eps_on_top=0.01,
         revertx=True,
-        vertical_bars = [263, 1322, 1466, 1060, 549, 224, 59, 7]
+        vertical_bars = [263, 1322, 1466, 1060, 549, 224, 59, 7],
+        styles=phototourism_styles,
+        location=(0.01, 0.4),
     )
 
 
@@ -195,16 +235,16 @@ def sacre_coeur_pdf():
 
     convert_csv(
         "Accuracy on Sacre Coeur",
-"""Counts	DenseAffNet	DepthAffNet
-0	0.5618181818	0.5695
-1	0.8559359561	0.8483659652
-2	0.9448722678	0.9142643443
-3	0.9539279701	0.9153554724
-4	0.964	0.9493333333
-5	0.9802941176	0.9701764706
-6	0.9705242718	0.980776699
-7	1	1
-8	1	1""",
+"""Acc 5	DenseAffNet	DepthAffNet	simple depth map based	simple AffNet based
+0	0.5618181818	0.5695	0.5607272727	0.5485909091
+1	0.8559359561	0.8483659652	0.8324519671	0.8560219579
+2	0.9448722678	0.9142643443	0.8942643443	0.9408722678
+3	0.9539279701	0.9153554724	0.8992843779	0.9514995323
+4	0.964	0.9493333333	0.933	0.956
+5	0.9802941176	0.9701764706	0.9418823529	0.9701764706
+6	0.9705242718	0.980776699	0.9224271845	0.980776699
+7	1	1	0.9589166667	1
+8	1	1	1	1""",
 "work/sacre_coeur_pdf.pdf",
 difficulties=[i / 10 for i in range(1, 10)],
         y_ticks=[float(i) / 10 for i in range(5, 11)],
@@ -220,6 +260,8 @@ difficulties=[i / 10 for i in range(1, 10)],
                                             103
                                             24
                                             5"""),
+        styles=phototourism_styles,
+        location=(0.01, 0.4),
     )
 
 
@@ -227,15 +269,15 @@ def reichstag_pdf():
 
     convert_csv(
         "Accuracy on Reichstag",
-"""	DenseAffNet	DepthAffNet
-7	0.6376394558	0.6667619048
-6	0.8842752294	0.8535806029
-5	0.9649294118	0.9017176471
-4	0.986835443	0.985443038
-3	0.98378125	0.984875
-2	0.9565217391	1
-1	1	1
-0	1	1""",
+"""Acc 5	DenseAffNet	DepthAffNet	simple depth map based	simple AffNet based
+7	0.6376394558	0.6667619048	0.6250136054	0.5845170068
+6	0.8842752294	0.8535806029	0.8438859764	0.8815806029
+5	0.9649294118	0.9017176471	0.8987176471	0.9689294118
+4	0.986835443	0.985443038	0.9816075949	0.990556962
+3	0.98378125	0.984875	0.9900833333	0.9900833333
+2	0.9565217391	1	0.9565217391	0.9565217391
+1	1	1	1	1
+0	1	1	1	1""",
 "work/reichstag_pdf.pdf",
 difficulties=[i / 10 for i in range(1, 9)],
         y_ticks=[float(i) / 10 for i in range(6, 11)],
@@ -250,6 +292,8 @@ difficulties=[i / 10 for i in range(1, 9)],
                                             23
                                             18
                                             9"""),
+        styles=phototourism_styles,
+        location=(0.01, 0.4),
     )
 
 
@@ -262,7 +306,9 @@ if __name__ == '__main__':
     # example_stacked_bars()
     # bar_plot_example()
     # graph_grid()
+
     scene1()
+    scenes2_8()
     st_peters_pdf()
     sacre_coeur_pdf()
     reichstag_pdf()
