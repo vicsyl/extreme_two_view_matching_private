@@ -527,7 +527,7 @@ def get_mask_kpts(cv_kpt, aff_map_back, img_data, current_component):
 
 def update_kpts_mask_size(sift_mask, img_warped, params_key, img_name, stats_map):
     if sift_mask is None:
-        sift_mask_size = img_warped.size[0] * img_warped.size[1]
+        sift_mask_size = img_warped.shape[0] * img_warped.shape[1]
     else:
         sift_mask_size = sift_mask.sum()
     append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_effective_kpts_mask_size"], sift_mask_size, stats_map)

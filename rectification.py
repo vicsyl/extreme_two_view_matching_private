@@ -233,6 +233,7 @@ def get_rectified_keypoints(normals,
             # NOTE affnet_ keys are kept for now
             append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_added_kpts"], len(kps), stats_map)
             append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_kpts"], len(kps), stats_map)
+            # FIXME, this is not the correct value
             append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_effective_kpts_mask_size"], cluster_mask_bool.sum(), stats_map)
         else:
             # NOTE affnet_ keys are kept for now
