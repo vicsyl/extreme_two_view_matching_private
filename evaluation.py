@@ -933,11 +933,10 @@ def evaluate_file(scene_name, file_name):
 #     end = time.time()
 #     print("Time elapsed: {}".format(end - start))
 
-def evaluate_stats(stats_map, all):
+def evaluate_stats(stats_map):
     evaluate_normals_stats(stats_map)
     evaluate_matching_stats(stats_map)
-    if all:
-        evaluate_per_img_stats(stats_map)
+    evaluate_per_img_stats(stats_map)
 
 
 def excel_friendly_format(keys, stats):

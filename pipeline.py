@@ -1252,7 +1252,7 @@ class Pipeline:
                     Timer.end_check_point(COMPLETE_IMAGE_PAIR_MATCHING_TAG)
 
                 if stats_counter % 10 == 0:
-                    evaluate_stats(self.stats, all=stats_counter % 100 == 0)
+                    evaluate_stats(self.stats)
                 evaluate_all_matching_stats_even_normalized(self.stats_map)
 
                 Timer.log_stats()
@@ -1260,7 +1260,7 @@ class Pipeline:
             if processed_pairs > 0:
                 norm_scene_info = self.scene_info if self.matching_pairs is None else None
                 evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(difficulty), scene_info=norm_scene_info)
-                evaluate_stats(self.stats, all=True)
+                evaluate_stats(self.stats)
 
             stats_file_name = self.get_diff_stats_file(difficulty)
             with open(stats_file_name, "wb") as f:
@@ -1274,7 +1274,7 @@ class Pipeline:
         self.save_stats("matching_after_{}".format(self.cache_map[Property.all_combinations]))
         self.log()
         # These two are different approaches to stats
-        evaluate_stats(self.stats, all=True)
+        evaluate_stats(self.stats)
         norm_scene_info = self.scene_info if self.matching_pairs is None else None
         evaluate_all_matching_stats_even_normalized(self.stats_map, tex_save_path_prefix=self.get_tex_file_name(100), scene_info=norm_scene_info)
 
