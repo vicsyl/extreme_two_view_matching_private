@@ -309,6 +309,10 @@ class Stats:
         self.kpts2 = None
 
 
+COMPLETE_IMAGE_PAIR_MATCHING_TAG = "complete_image_pair_matching"
+
+
+@timer_label_decorator(tags=[COMPLETE_IMAGE_PAIR_MATCHING_TAG])
 def evaluate_matching(scene_info,
                       E,
                       img_data_list,
@@ -612,6 +616,7 @@ def evaluate_all_matching_stats(stats_map_all: dict, tex_save_path_prefix=None, 
                     value_list.append("0")
         print("{} {}".format(diff, " ".join(value_list)))
 
+    # TODO scene_info/matching limit is not None: totally useless - just create the failed pairs as you go(?)
     if scene_info is not None:
         print("Failed pairs")
         failed_pairs = {}
@@ -959,6 +964,8 @@ def evaluate_per_img_stats(stats_map):
             sum_kpts = 0
             sum_kpts_test = 0
             sum_warped_kpts = 0
+            sum_kpts_mask_size = 0
+            sum_corner_components = 0
             conf_stat = m[configuration]
             for img in conf_stat:
                 img_key = conf_stat[img]
@@ -969,6 +976,8 @@ def evaluate_per_img_stats(stats_map):
                 sum_area += get_sum(img_key, "affnet_warped_img_size")
                 sum_kpts += get_sum(img_key, "affnet_added_kpts")
                 sum_warped_kpts += get_sum(img_key, "affnet_warped_added_kpts")
+                sum_kpts_mask_size += get_sum(img_key, "affnet_effective_kpts_mask_size")
+                sum_corner_components += get_sum(img_key, "rect_components_without_keypoints")
 
                 all_kpts = img_key.get("affnet_added_kpts", [])
                 for kpts in all_kpts:
@@ -980,6 +989,9 @@ def evaluate_per_img_stats(stats_map):
             avg_components = sum_components / img_count
             print("avg number of components (per image): {}".format(avg_components))
 
+            avg_kpts_mask_size = sum_kpts_mask_size / img_count
+            print("avg size of kpts mask (per image): {}".format(avg_kpts_mask_size))
+
             avg_area = sum_area / img_count
             print("avg rectified warped region area (per image): {}".format(avg_area))
 
@@ -988,6 +1000,9 @@ def evaluate_per_img_stats(stats_map):
 
             avg_kpts_warped = sum_warped_kpts / img_count
             print("avg kpts in warped regions (per image): {}".format(avg_kpts_warped))
+
+            avg_corner_components = sum_corner_components / img_count
+            print("avg corner components (per image): {}".format(avg_corner_components))
 
             if sum_components != 0:
                 avg_warps_per_component = sum_warps / sum_components
@@ -998,7 +1013,8 @@ def evaluate_per_img_stats(stats_map):
                 avg_warps_per_component = 0.0
                 print("avg number of warps per component: N/A 'sum_components == 0'")
                 print("avg rectified warped region area (per component): N/A 'sum_components == 0'")
-            excel_friendly_format(["avg_components, avg_area", "avg_kpts", "avg_warps_per_component"], [str(i) for i in [avg_components, avg_area, avg_kpts, avg_warps_per_component]])
+            excel_friendly_format(["avg_components, avg_area", "avg_kpts", "avg_warps_per_component", "avg_kpts_mask_size"],
+                                  [str(i) for i in [avg_components, avg_area, avg_kpts, avg_warps_per_component, avg_kpts_mask_size]])
 
 
 def get_all_diffs(maps_all_params):

@@ -525,6 +525,14 @@ def get_mask_kpts(cv_kpt, aff_map_back, img_data, current_component):
     return mask_cmp
 
 
+def update_kpts_mask_size(sift_mask, img_warped, params_key, img_name, stats_map):
+    if sift_mask is None:
+        sift_mask_size = img_warped.size[0] * img_warped.size[1]
+    else:
+        sift_mask_size = sift_mask.sum()
+    append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_effective_kpts_mask_size"], sift_mask_size, stats_map)
+
+
 @timer_label_decorator(tags=["main", ADD_COVERING_KPS_TAG])
 def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
                      mask_cmp, ts, phis,
@@ -582,7 +590,10 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         # not normalized by scale, which is good btw.
         hn_label = Timer.start_check_point("HardNet just in add covering kpts", tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
+
+        update_kpts_mask_size(sift_mask, img_warped, params_key, img_name, stats_map)
         kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True)
+
         Timer.end_check_point(hn_label)
 
         if len(kps_warped) == 0:

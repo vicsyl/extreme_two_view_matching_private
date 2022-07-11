@@ -50,6 +50,10 @@ def possibly_expand_normals(normals):
     return normals
 
 
+PROCESSING_IMG_FROM_SCRATCH_TAG = "processing_img_from_scratch"
+COMPLETE_IMAGE_PAIR_MATCHING_TAG = "complete_image_pair_matching"
+
+
 @dataclass
 class Pipeline:
 
@@ -286,7 +290,7 @@ class Pipeline:
         self.setup_descriptor()
         if self.config[CartesianConfig.affnet_clustering]:
             self.dense_affnet = DenseAffNet(True, self.device)
-            assert self.config["rectify_affine_affnet"], "'{}' without 'rectify_affine_affnet' doesn't work".format(CartesianConfig.affnet_clustering)
+            assert self.config["rectify_affine_affnet"], "'affnet_clustering' without 'rectify_affine_affnet' doesn't work"
 
         if self.config["rectify_affine_affnet"]:
             assert isinstance(self.feature_descriptor, HardNetDescriptor), "rectify_affine_affnet on, but without HardNet descriptor"
@@ -444,7 +448,7 @@ class Pipeline:
         return valid_normal_indices
 
     @timer_label_decorator()
-    def possibly_upsample_late(self, components_indices):
+    def possibly_upsample_late(self, components_indices, img):
         if not self.upsample_early:
             assert np.all(components_indices < 256), "could not retype to np.uint8"
             components_indices = components_indices.astype(dtype=np.uint8)
@@ -452,6 +456,7 @@ class Pipeline:
             components_indices = components_indices.astype(dtype=np.uint32)
         return components_indices
 
+    @timer_label_decorator(tags=[COMPLETE_IMAGE_PAIR_MATCHING_TAG])
     def process_image(self, img_name, order):
 
         print("Processing: {}".format(img_name))
@@ -512,7 +517,7 @@ class Pipeline:
         # rectify
         else:
 
-            label_scratch = Timer.start_check_point("processing img from scratch", tags=["main"])
+            Timer.start_check_point(PROCESSING_IMG_FROM_SCRATCH_TAG, tags=["main"])
 
             rectify_affine_affnet = self.config["rectify_affine_affnet"]
             # NOTE 'affnet_no_clustering' means to (possibly rectify affine affnet but don't use clustering)
@@ -565,7 +570,7 @@ class Pipeline:
                                                                                          closing_size=self.connected_components_closing_size,
                                                                                          flood_filling=self.connected_components_flood_fill,
                                                                                          connectivity=self.connected_components_connectivity)
-                    components_indices = self.possibly_upsample_late(components_indices)
+                    components_indices = self.possibly_upsample_late(components_indices, img)
 
                     components_out_path = "{}/{}_cluster_connected_components".format(img_processing_dir, img_name)
                     get_and_show_components(components_indices,
@@ -623,22 +628,25 @@ class Pipeline:
                 # get rectification
                 rectification_path_prefix = "{}/{}".format(img_processing_dir, img_name)
 
-                img_data.key_points, img_data.descriptions, unrectified_indices = get_rectified_keypoints(normals_clusters_repr,
-                                                     components_indices,
-                                                     valid_components_dict,
-                                                     img,
-                                                     K_for_rectification,
-                                                     descriptor=self.feature_descriptor,
-                                                     img_name=img_name,
-                                                     clip_angle=self.clip_angle,
-                                                     show=self.show_rectification,
-                                                     save=self.save_rectification,
-                                                     out_prefix=rectification_path_prefix,
-                                                     rotation_factor=rotation_factor,
-                                                     all_unrectified=self.config[CartesianConfig.all_unrectified]
-                                                     )
+                img_data.key_points, img_data.descriptions, unrectified_indices = get_rectified_keypoints(
+                    normals_clusters_repr,
+                    components_indices,
+                    valid_components_dict,
+                    img,
+                    K_for_rectification,
+                    descriptor=self.feature_descriptor,
+                    img_name=img_name,
+                    clip_angle=self.clip_angle,
+                    show=self.show_rectification,
+                    save=self.save_rectification,
+                    out_prefix=rectification_path_prefix,
+                    rotation_factor=rotation_factor,
+                    all_unrectified=self.config[CartesianConfig.all_unrectified],
+                    params_key=self.cache_map[Property.all_combinations],
+                    stats_map=self.stats,
+                    )
 
-            Timer.end_check_point(label_scratch)
+            Timer.end_check_point(PROCESSING_IMG_FROM_SCRATCH_TAG)
 
             Pipeline.save_img_data(img_data, img_data_path, img_name)
 
@@ -1137,7 +1145,9 @@ class Pipeline:
                                                 show=self.show_rectification,
                                                 save=self.save_rectification,
                                                 out_prefix=rectification_path_prefix,
-                                                all_unrectified=self.config[CartesianConfig.all_unrectified]
+                                                all_unrectified=self.config[CartesianConfig.all_unrectified],
+                                                params_key=self.cache_map[Property.all_combinations],
+                                                stats_map=self.stats,
                                                 )
 
         img_data.key_points = kps
@@ -1185,7 +1195,7 @@ class Pipeline:
                 if self.find_cached_pair_update_stat(img_pair, difficulty):
                     print("{} is cached, skipping the computation".format(SceneInfo.get_key_from_pair(img_pair)))
                 else:
-                    Timer.start_check_point("complete image pair matching")
+                    Timer.start_check_point(COMPLETE_IMAGE_PAIR_MATCHING_TAG, tags=["main", COMPLETE_IMAGE_PAIR_MATCHING_TAG])
 
                     try:
 
@@ -1239,7 +1249,7 @@ class Pipeline:
                         print("(matching) {} couldn't be processed, skipping the matching pair".format(pair_key))
                         print(traceback.format_exc(), file=sys.stdout)
 
-                    Timer.end_check_point("complete image pair matching")
+                    Timer.end_check_point(COMPLETE_IMAGE_PAIR_MATCHING_TAG)
 
                 if stats_counter % 10 == 0:
                     evaluate_stats(self.stats, all=stats_counter % 100 == 0)

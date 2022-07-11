@@ -605,6 +605,10 @@ def show_save_matching(img1,
         show_or_close(show)
 
 
+COMPLETE_IMAGE_PAIR_MATCHING_TAG = "complete_image_pair_matching"
+
+
+@timer_label_decorator(tags=[COMPLETE_IMAGE_PAIR_MATCHING_TAG])
 def match_epipolar(img_data1,
                    img_data2,
                    find_fundamental, img_pair, out_dir, show, save, ratio_thresh,

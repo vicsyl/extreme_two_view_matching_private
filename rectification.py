@@ -11,7 +11,7 @@ from connected_components import get_and_show_components, read_img_normals_info,
 from img_utils import show_or_close
 from resize import resample_nearest_numpy
 from scene_info import SceneInfo
-from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix, get_rotation_matrix_safe, timer_label_decorator
+from utils import Timer, identity_map_from_range_of_iter, get_rotation_matrix, get_rotation_matrix_safe, timer_label_decorator, append_update_stats_map_static
 
 
 def get_rectification_rotation(normal, rotation_factor=1.0):
@@ -145,7 +145,10 @@ def get_rectified_keypoints(normals,
                             save=False,
                             out_prefix=None,
                             rotation_factor=1.0,
-                            all_unrectified=False):
+                            all_unrectified=False,
+                            params_key="",
+                            stats_map=None,
+                            ):
 
     K_inv = np.linalg.inv(K)
 
@@ -156,6 +159,7 @@ def get_rectified_keypoints(normals,
     # components_in_colors = get_and_show_components(components_indices, valid_components_dict, show=False)
 
     for component_index in valid_components_dict:
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warps_per_component"], 1, stats_map)
 
         normal_index = valid_components_dict[component_index]
         normal = normals[normal_index]
@@ -176,6 +180,10 @@ def get_rectified_keypoints(normals,
 
         rectified = cv.warpPerspective(img, T, bounding_box)
 
+        # NOTE affnet_ keys are kept for now
+        warp_size = rectified.shape[0] * rectified.shape[1]
+        append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_img_size"], warp_size, stats_map)
+
         kps, descs = descriptor.detectAndCompute(rectified, None)
 
         kps_raw = np.float32([kp.pt for kp in kps]).reshape(-1, 1, 2)
@@ -183,6 +191,7 @@ def get_rectified_keypoints(normals,
         new_kps = cv.perspectiveTransform(kps_raw, T_inv)
 
         if new_kps is not None:
+
             kps_int_coords = np.int32(new_kps).reshape(-1, 2)
 
             h = img.shape[0]
@@ -220,6 +229,14 @@ def get_rectified_keypoints(normals,
                 all_descs = descs
             else:
                 all_descs = np.vstack((all_descs, descs))
+
+            # NOTE affnet_ keys are kept for now
+            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_added_kpts"], len(kps), stats_map)
+            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_kpts"], len(kps), stats_map)
+            append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_effective_kpts_mask_size"], cluster_mask_bool.sum(), stats_map)
+        else:
+            # NOTE affnet_ keys are kept for now
+            append_update_stats_map_static(["per_img_stats", params_key, img_name, "rect_components_without_keypoints"], 1, stats_map)
 
         if show or save:
             plt.figure(figsize=(9, 9))
@@ -263,6 +280,8 @@ def get_rectified_keypoints(normals,
         kps = [kp for i, kp in enumerate(kps) if filter_non_valid[i]]
         descs = descs[filter_non_valid]
 
+    # NOTE affnet_ keys are kept for now
+    append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_added_kpts"], len(kps), stats_map)
     all_kps.extend(kps)
     unrectified_indices = np.zeros(len(all_kps), dtype=bool)
     unrectified_indices[-len(kps):] = True
