@@ -295,8 +295,8 @@ def opt_conv_draw_ellipses(ax, cov_params, centers, thickness=0.005, color="b"):
 
     factor = 1.4
     extend = factor * log_max_radius
-    range_x = torch.arange(start=-extend, end=extend, step=0.005)
-    range_y = torch.arange(start=0, end=extend, step=0.005)
+    range_x = torch.arange(start=-extend, end=extend, step=thickness)
+    range_y = torch.arange(start=0, end=extend, step=thickness)
     grid_x, grid_y = torch.meshgrid(range_x, range_y)
     grid_x = grid_x.ravel()
     grid_y = grid_y.ravel()
