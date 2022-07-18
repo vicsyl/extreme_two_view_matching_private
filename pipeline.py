@@ -493,12 +493,34 @@ class Pipeline:
 
             kps, descs = self.feature_descriptor.detectAndCompute(img, None)
 
-            cp_img = img.copy()
-            cv.drawKeypoints(cp_img, kps, cp_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-            plt.figure(figsize=(20, 20))
-            plt.title("New visos")
-            plt.imshow(cp_img)
-            plt.show()
+            for kp in kps:
+                kp.response = 1 * kp.response
+                kp.size = 5 * kp.size
+
+            ## NOTE: to visualize kpts without rectification
+
+            # import torch.nn as nn
+            # def upsample(data_2d, size_t):
+            #     data_2d = torch.from_numpy(data_2d)
+            #     data_2d = data_2d[None].permute(0, 3, 1, 2)
+            #     upsample = nn.Upsample(size=size_t, mode='nearest')
+            #     upsampled = upsample(data_2d)
+            #     return upsampled.permute(0, 2, 3, 1)[0].numpy()
+            #
+            # # cp_img = img.copy()
+            # cp_img = plt.imread("demos/work/frame_out.png")[:, :, :3]
+            # cp_img = upsample(cp_img, (img.shape[:2])) * 255
+            # cp_img = cp_img.astype(np.uint8).copy()
+            #
+            # cv.drawKeypoints(cp_img, kps, cp_img, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            # fig, ax = plt.subplots(figsize=(10, 10))
+            # #fig = plt.figure(figsize=(20, 20))
+            # #plt.title("New visos")
+            # ax.set_axis_off()
+            #
+            # plt.imshow(cp_img)
+            # plt.savefig("work/keypoints_new.png", bbox_inches='tight', pad_inches=0)
+            # plt.show()
 
             img_data = ImageData(img=img,
                              real_K=real_K,

@@ -87,6 +87,15 @@ class CoveringParams:
             name="narrow_covering")
 
     @staticmethod
+    def sparse_covering_1_8_corrected():
+        return CoveringParams(
+            r_max=1.8,
+            t_max=6.0,
+            ts_opt=[2.88447, 6.2197],
+            phis_opt=[math.pi / 8.0, math.pi / 16.0],
+            name="sparse_covering_1_8_corrected")
+
+    @staticmethod
     def get_effective_covering_by_cfg(config):
         covering_type = config["affnet_covering_type"]
         if covering_type == "mean":
@@ -120,7 +129,8 @@ class CoveringParams:
         return torch.tensor(t_phi_list).T
 
     def covering_coordinates_count(self):
-        count = 0
+        # include the identity class
+        count = 1
         for index in range(len(self.ts_opt)):
             count = count + len(torch.arange(start=0.0, end=math.pi, step=self.phis_opt[index]))
         return count
@@ -275,16 +285,18 @@ def vote(covering_params, data, fraction_th, iter_th, conf, return_cover_idxs=Fa
     return winning_centers, cover_idx
 
 
-def opt_conv_draw_ellipses(ax, cov_params, centers):
+def opt_conv_draw_ellipses(ax, cov_params, centers, thickness=0.005, color="b"):
 
     log_max_radius = math.log(cov_params.t_max)
-    log_unit_radius = math.log(cov_params.r_max)
-    rhs = (math.exp(2 * log_unit_radius) + 1) / (2 * math.exp(log_unit_radius))
+    # log_unit_radius_bigger = math.log(cov_params.r_max * 1.05)
+    # log_unit_radius = math.log(cov_params.r_max)
+    # rhs = (math.exp(2 * log_unit_radius) + 1) / (2 * math.exp(log_unit_radius))
+    rhs = (cov_params.r_max ** 2 + 1) / (2 * cov_params.r_max)
 
-    factor = 1.2
+    factor = 1.4
     extend = factor * log_max_radius
     range_x = torch.arange(start=-extend, end=extend, step=0.005)
-    range_y = torch.arange(start=-extend, end=extend, step=0.005)
+    range_y = torch.arange(start=0, end=extend, step=0.005)
     grid_x, grid_y = torch.meshgrid(range_x, range_y)
     grid_x = grid_x.ravel()
     grid_y = grid_y.ravel()
@@ -295,10 +307,10 @@ def opt_conv_draw_ellipses(ax, cov_params, centers):
     distances_close = torch.abs(distance_matrix(ts, centers[0], phis, centers[1]) - rhs)
     distances_close = distances_close.min(axis=1)[0]
 
-    grid_x = grid_x[distances_close < 0.005]
-    grid_y = grid_y[distances_close < 0.005]
+    grid_x = grid_x[distances_close < thickness]
+    grid_y = grid_y[distances_close < thickness]
 
-    ax.plot(grid_x, grid_y, 'o', color="b", markersize=0.2)
+    ax.plot(grid_x, grid_y, 'o', color=color, markersize=0.5)
 
 
 def opt_conv_draw(ax, ts_phis, color, size, shape='o'):
@@ -310,12 +322,41 @@ def opt_conv_draw(ax, ts_phis, color, size, shape='o'):
 
 
 # NOTE probably can be inline
-def set_cov_axis(cov_params: CoveringParams, ax):
+def set_cov_axis(cov_params: CoveringParams, ax, positive_only=False):
     log_max_radius = math.log(cov_params.t_max)
-    factor = 1.2
+    factor = 1.4
     abs_lim = factor * log_max_radius
     ax.set_xlim((-abs_lim, abs_lim))
-    ax.set_ylim((-abs_lim, abs_lim))
+    plt.yticks(range(3), ("0", "1", "2"), size="large")
+    plt.xticks(range(-2, 3), ("2", "1", "0", "1", "2"), size="large")
+
+    plt.xlabel("log(τ).cos(φ)", fontsize='x-large')
+    plt.ylabel("log(τ).sin(φ)", fontsize='x-large')
+
+    if positive_only:
+        ax.set_ylim((0, abs_lim))
+    else:
+        ax.set_ylim((-abs_lim, abs_lim))
+
+
+# TODO centralize with opt_cov_prepare_plot_custom
+def opt_cov_prepare_plot_custom(ax, cov_params: CoveringParams, title=None, positive_only=False):
+
+    if title is not None:
+        plt.title(title)
+
+    log_max_radius = math.log(cov_params.t_max)
+    log_unit_radius = math.log(cov_params.r_max)
+
+    ax.set_aspect(1.0)
+    set_cov_axis(cov_params, ax, positive_only)
+
+    circle = Circle((0, 0), log_max_radius, color='r', fill=False, lw=2.0)
+    ax.add_artist(circle)
+    circle = Circle((0, 0), log_unit_radius, color='r', fill=False, lw=2.0)
+    ax.add_artist(circle)
+
+    return ax
 
 
 def opt_cov_prepare_plot(cov_params: CoveringParams, title=None):
@@ -622,7 +663,7 @@ def vote_test():
 def demo():
 
     #covering_params = CoveringParams.log_1_8_covering()
-    covering_params = CoveringParams.dense_covering_1_7()
+    covering_params = CoveringParams.sparse_covering_1_8_corrected()
     print("count: {}".format(covering_params.covering_coordinates_count()))
 
     data_count = 5000
@@ -630,14 +671,21 @@ def demo():
     data[0] = torch.abs(data[0] * 5.0 + 1)
     data[1] = data[1] * math.pi
 
-    ax = opt_cov_prepare_plot(covering_params, title="Covering - centers, cover sets, data points...")
-
     #opt_conv_draw(ax, data, "b", 1.0)
 
     covering_centers = covering_params.covering_coordinates()
-    opt_conv_draw(ax, covering_centers, "r", 5.0)
 
-    #opt_conv_draw_ellipses(ax, covering_params, covering_centers)
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    opt_cov_prepare_plot_custom(ax, covering_params, title=None, positive_only=True) # "Covering - centers, cover sets, data points...")
+
+    opt_conv_draw(ax, covering_centers, "k", 8.0)
+    ax.plot(0, 0, 'o', color="k", markersize=8.0)
+
+    opt_conv_draw_ellipses(ax, covering_params, covering_centers, thickness=0.005, color="blue")
+
+    plt.savefig("work/sot1.pdf", bbox_inches='tight', pad_inches=0)
+    plt.show()
 
     winning_centers = vote(covering_params, data, fraction_th=0.6, iter_th=30, conf={})
 
@@ -646,8 +694,6 @@ def demo():
     #     opt_conv_draw(ax, wc, "b", 5.0)
 
     #draw_identity_data(ax, data, covering_params.r_max)
-
-    plt.show()
 
 
 def vote_old(centers, data, r_param, fraction_th, iter_th, return_cover_idxs=False, valid_px_mask=None, t_max=None):
@@ -734,5 +780,5 @@ def vote_old(centers, data, r_param, fraction_th, iter_th, return_cover_idxs=Fal
 
 
 if __name__ == "__main__":
-    # demo()
-    vote_test()
+    demo()
+    # vote_test()
