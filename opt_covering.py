@@ -212,9 +212,9 @@ def vote(covering_params, data, fraction_th, iter_th, conf, return_cover_idxs=Fa
 
     # TODO effective_data_size - should be data and valid_px_mask and ~data_completely_off (but irrespective of data_around_identity_mask)
     data_completely_off = data[0] > t_max
-    print("all data points: {}".format(data.shape[1]))
+    #print("all data points: {}".format(data.shape[1]))
     init_data_size = data.shape[1] - data_completely_off.sum()
-    print("data points completely off: {}".format(data_completely_off.sum()))
+    #print("data points completely off: {}".format(data_completely_off.sum()))
 
     data_around_identity_mask = data[0] < r_param
     # NOTE data_around_identity_mask and data_completely_off are disjunctive sets

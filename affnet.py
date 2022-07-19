@@ -610,6 +610,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         laffs_final[0, :, :, 2] = kpt_s_back
 
         # TODO - is this OK?
+        # IMHO laffs final.clone is not needed
         laffs_reprojected = laffs_final.clone()
         laffs_reprojected[:, :, :, :2] = laffs_reprojected[:, :, :, :2] @ aff_maps_inv[:, :, :2]
 

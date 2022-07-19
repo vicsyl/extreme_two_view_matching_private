@@ -1,6 +1,3 @@
-import cv2 as cv
-import matplotlib.pyplot as plt
-import torch
 from evaluation import ImageData
 from affnet import affnet_rectify
 from sky_filter import get_nonsky_mask_torch
@@ -9,7 +6,6 @@ from dense_affnet import *
 from scene_info import *
 from opt_covering import *
 from connected_components import *
-from depth_to_normals import show_sky_mask
 import kornia as K
 import kornia.feature as KF
 from config import CartesianConfig
@@ -18,7 +14,6 @@ from img_utils import create_plot_only_img
 
 import sys
 
-from rectification import possibly_upsample_normals
 from hard_net_descriptor import HardNetDescriptor
 
 AFFNET_CLUSTERING_TAG = "affnet_clustering"
@@ -271,12 +266,6 @@ def get_win_centers_cover_idx(conf, all_data, non_sky_mask_flat, covering, h, w)
     cover_idx_to_use[non_sky_mask_flat] = cover_idx
     cover_idx_to_use[~non_sky_mask_flat] = -3
 
-    for i in range(-4, len(win_centers)):
-        if i >= 0:
-            win_c = win_centers[i]
-            print("win_c no. {}: {}".format(i, win_c.tolist()))
-        print("cover_idx #{}: {} data points".format(i, (cover_idx_to_use == i).sum().item()))
-
     potentially_show_sof(covering, all_data, win_centers, conf, cover_idx_to_use)
     cover_idx_to_use = cover_idx_to_use.reshape(h, w)
 
@@ -332,6 +321,9 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
     :param use_cuda:
     :return:
     """
+
+    # NOTE img can be None and torch -> np (handle_dense_affnet_hack) doesn't need to be done
+    # i.e. img can be None in get_non_sky_mask_ac and probably in ImageData too
 
     img = handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg)
 
