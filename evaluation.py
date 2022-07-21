@@ -247,6 +247,7 @@ copyreg.pickle(cv2.KeyPoint().__class__, _pickle_keypoints)
 @dataclass
 class ImageData:
     img: np.ndarray
+    img_t: torch.Tensor
     key_points: List[cv.KeyPoint]
     descriptions: object
     real_K: np.ndarray
@@ -258,6 +259,7 @@ class ImageData:
     @staticmethod
     def from_serialized_data(img, real_K, img_serialized_data):
         return ImageData(img=img,
+                         img_t=None,
                          real_K=real_K,
                          key_points=img_serialized_data.kpts,
                          descriptions=img_serialized_data.descs,

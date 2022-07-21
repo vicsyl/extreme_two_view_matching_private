@@ -58,7 +58,9 @@ class DenseAffNet(nn.Module):
         self.eval()
         print("DenseAffNet device: {}".format(device))
         if self.device == torch.device('cuda'):
+            print("dense affnet cuda")
             self.cuda()
+            self.features.cuda()
         else:
             self.cpu()
 

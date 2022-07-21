@@ -1,6 +1,6 @@
 from evaluation import ImageData
 from affnet import affnet_rectify
-from sky_filter import get_nonsky_mask_torch
+from sky_filter import get_nonsky_mask_pseudo_torch
 from affnet import winning_centers, winning_centers_old, decompose_lin_maps_lambda_psi_t_phi
 from dense_affnet import *
 from scene_info import *
@@ -10,7 +10,7 @@ import kornia as K
 import kornia.feature as KF
 from config import CartesianConfig
 from utils import timer_label_decorator
-from img_utils import create_plot_only_img
+from img_utils import create_plot_only_img, numpy_to_torch_img
 
 import sys
 
@@ -18,7 +18,7 @@ from hard_net_descriptor import HardNetDescriptor
 
 AFFNET_CLUSTERING_TAG = "affnet_clustering"
 
-
+# TODO problems with CUDA?
 def affnet_coords(dims_2d):
     """
     :param dims_2d: dimension tuple (H, W)
@@ -56,6 +56,8 @@ def affnet_upsample(data_2d):
 
 
 def show_or_save_affnet_features(aff_features, show_or_save):
+
+    aff_features = aff_features.detach().cpu()
 
     fig, axs = plt.subplots(1, 3, figsize=(10, 10))
     if show_or_save:
@@ -120,7 +122,7 @@ def filter_components(component_idxs, fraction_threshold):
             valid_component_dict[i - 3] = i - 3
 
     # NOTE compatibility with the existing code
-    component_idxs = component_idxs.numpy()
+    component_idxs = component_idxs.cpu().numpy()
     return component_idxs, valid_component_dict
 
 
@@ -221,12 +223,12 @@ def handle_upsample_late(upsample_early, components_indices, dense_affnet_filter
 
 
 @timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
-def get_non_sky_mask_ac(enable_sky_filtering, img, lafs, use_cuda):
+def get_non_sky_mask_ac(enable_sky_filtering, img, height, width, use_cuda):
     if enable_sky_filtering:
-        non_sky_mask = get_nonsky_mask_torch(img, lafs.shape[0], lafs.shape[1], use_cuda=use_cuda)
+        non_sky_mask = get_nonsky_mask_pseudo_torch(img, height, width, use_cuda=use_cuda)
         non_sky_mask_flat = non_sky_mask.reshape(-1, 1)[:, 0]
     else:
-        non_sky_mask_flat = torch.ones(lafs.shape[0] * lafs.shape[1], dtype=torch.bool)
+        non_sky_mask_flat = torch.ones(height * width, dtype=torch.bool)
     return non_sky_mask_flat
 
 
@@ -257,12 +259,13 @@ def get_win_centers_cover_idx(conf, all_data, non_sky_mask_flat, covering, h, w)
                                                      valid_px_mask=non_sky_mask_flat)
         cover_idx = cover_idx[non_sky_mask_flat]
 
+    device=parse_device(conf)
     # NOTE: index value convention
     # range(len(ts_phis)) -> all_valid
     # -3 sky
     # -2 identity equivalence class
     # -1 no valid center
-    cover_idx_to_use = torch.zeros(h * w)
+    cover_idx_to_use = torch.zeros(h * w, device=device)
     cover_idx_to_use[non_sky_mask_flat] = cover_idx
     cover_idx_to_use[~non_sky_mask_flat] = -3
 
@@ -284,9 +287,14 @@ def handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg):
 
 
 @timer_label_decorator(tags=[AFFNET_CLUSTERING_TAG])
-def bgr_to_grayscale(gs_timg, use_cuda):
-    device = torch.device('cuda') if use_cuda else torch.device('cpu')
-    return K.color.bgr_to_grayscale(gs_timg).to(device)
+def bgr_to_grayscale(gs_timg, use_cuda, to_device=True):
+    print("CONVERSIONS: K.color.bgr_to_grayscale(gs_timg)(.to(device))")
+    # TODO why here?
+    greyscale = K.color.bgr_to_grayscale(gs_timg)
+    if to_device:
+        device = torch.device('cuda') if use_cuda else torch.device('cpu')
+        greyscale = greyscale.to(device)
+    return greyscale
 
 
 @timer_label_decorator("laffs decomposition", tags=[AFFNET_CLUSTERING_TAG])
@@ -301,13 +309,21 @@ def get_sot_data(lin_features):
 def affnet_clustering(img, img_name, dense_affnet, conf, upsample_early, use_cuda=False):
     print("affnet_clustering - cuda: {}".format(use_cuda))
     label = Timer.start_check_point("image_to_tensor in affnet cl", tags=[Timer.TRANSFORMS_TAG, AFFNET_CLUSTERING_TAG])
-    gs_timg = K.image_to_tensor(img, False).float() / 255.
+    gs_timg = numpy_to_torch_img(img)
     Timer.end_check_point(label)
-    return affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=use_cuda, enable_sky_filtering=True)
+    return affnet_clustering_torch_old(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=use_cuda, enable_sky_filtering=True)
 
 
 @timer_label_decorator(tags=[Timer.NOT_NESTED_TAG])
-def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample_early, use_cuda=False, enable_sky_filtering=False):
+def affnet_clustering_torch_old(img,
+                                gs_timg,
+                                img_name,
+                                dense_affnet,
+                                conf,
+                                upsample_early,
+                                use_cuda=False,
+                                enable_sky_filtering=False,
+                                ready_mask=None):
     """
     The main function to call here.
     NOTE: especially when the orienter is on the lafs are very expensive to compute
@@ -324,8 +340,6 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
 
     # NOTE img can be None and torch -> np (handle_dense_affnet_hack) doesn't need to be done
     # i.e. img can be None in get_non_sky_mask_ac and probably in ImageData too
-
-    img = handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg)
 
     # TODO brg - really?
     # => CUDA
@@ -350,7 +364,16 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         assert lin_features.shape[0] == lafs.shape[0]
         assert lin_features.shape[1] == lafs.shape[1]
 
-        non_sky_mask_flat = get_non_sky_mask_ac(enable_sky_filtering, img, lafs, use_cuda)
+        if ready_mask is None:
+            img = handle_dense_affnet_hack(enable_sky_filtering, img, gs_timg)
+            non_sky_mask_flat = get_non_sky_mask_ac(enable_sky_filtering, img, lafs.shape[0], lafs.shape[1], use_cuda)
+        else:
+            img = None
+            assert not enable_sky_filtering
+            ready_mask = ready_mask.to(torch.uint8)
+            upsample = nn.Upsample(size=(lafs.shape[0], lafs.shape[1]), mode='nearest')
+            ready_mask = upsample(ready_mask)[0, 0].to(torch.bool)
+            non_sky_mask_flat = ready_mask.reshape(-1, 1)[:, 0]
 
         covering: CoveringParams = CoveringParams.get_effective_covering_by_cfg(conf)
         win_centers, cover_idx_to_use = get_win_centers_cover_idx(conf, all_data, non_sky_mask_flat, covering, lin_features.shape[0], lin_features.shape[1])
@@ -362,6 +385,7 @@ def affnet_clustering_torch(img, gs_timg, img_name, dense_affnet, conf, upsample
         visualize_covered_pixels_and_connected_comp(conf, win_centers, cover_idx_to_use, img_name, components_indices, valid_components_dict)
 
         return ImageData(img=img,
+                         img_t=None,
                          real_K=None,
                          key_points=None,
                          descriptions=None,
@@ -380,6 +404,72 @@ def get_default_hardnet(filter=20):
                                            filter=filter,
                                            device=torch.device("cpu"))
     return hardnet_descriptor
+
+
+@timer_label_decorator(tags=[Timer.NOT_NESTED_TAG])
+def affnet_clustering_torch(img,
+                            dense_affnet,
+                            mask=None,
+                            use_cuda=False,
+                            conf={}):
+    """
+    New CUDA ready function.
+    NOTE: when the orienter is on the lafs are very expensive to compute
+    :param img:
+    :param dense_affnet:
+    :param mask:
+    :param use_cuda:
+    :param conf:
+    :return:
+    """
+    img = bgr_to_grayscale(img, use_cuda, to_device=True)
+    img, dense_affnet_filter = apply_affnet_filter(img, conf)
+
+    with torch.no_grad():
+        lafs = dense_affnet_call(dense_affnet, img)
+        # TODO not tested with CUDA
+        lafs = possibly_apply_orienter(img, lafs, dense_affnet, conf)
+
+        # => CPU
+        #lafs = lafs.detach().cpu()
+        show_affnet_features(lafs, conf)
+
+        #print("lafs on cuda: {}".format(lafs)))
+        lin_features = lafs[:, :, :, :2]
+        lin_features = possibly_invert_lin_features(lin_features, conf)
+        #print("linf on cuda: {}".format(is_on_cuda(lin_features)))
+
+        all_data = get_sot_data(lin_features)
+        #print("all_data: {}".format(is_on_cuda(all_data)))
+
+        # TODO get rid of lin_features below
+        assert lin_features.shape[0] == lafs.shape[0]
+        assert lin_features.shape[1] == lafs.shape[1]
+
+        if mask is None:
+            mask = torch.zeros(lafs.shape[0] * lafs.shape[1], dtype=torch.uint8)
+        else:
+            mask = mask.to(torch.uint8)
+            upsample = nn.Upsample(size=(lafs.shape[0], lafs.shape[1]), mode='nearest')
+            mask = upsample(mask)[0, 0].to(torch.bool).reshape(-1, 1)[:, 0]
+
+        covering: CoveringParams = CoveringParams.get_effective_covering_by_cfg(conf)
+        win_centers, cover_idx_to_use = get_win_centers_cover_idx(conf, all_data, mask, covering, lin_features.shape[0], lin_features.shape[1])
+
+        cover_idx_to_use = handle_upsample_early(True, cover_idx_to_use, dense_affnet_filter)
+        components_indices, valid_components_dict = get_eligible_components(cover_idx_to_use, conf, len(win_centers))
+
+        visualize_covered_pixels_and_connected_comp(conf, win_centers, cover_idx_to_use, "image name missing", components_indices, valid_components_dict)
+
+        return ImageData(img=None,
+                         img_t=img,
+                         real_K=None,
+                         key_points=None,
+                         descriptions=None,
+                         normals=None,
+                         ts_phis=win_centers,
+                         components_indices=components_indices,
+                         valid_components_dict=valid_components_dict)
 
 
 def read_img(img_path):

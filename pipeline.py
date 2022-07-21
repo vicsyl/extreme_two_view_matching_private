@@ -179,6 +179,8 @@ class Pipeline:
                 v = v.strip()
 
                 if k == "device":
+                    CartesianConfig.config_parse_line(k, v, config)
+                    # TODO move 'device' property purely to config
                     if v == "cpu":
                         pipeline.device = torch.device("cpu")
                     elif v == "cuda":
@@ -357,14 +359,20 @@ class Pipeline:
 
         def format_to_read_mode(read_mode, img):
             if read_mode is None:
-                return img
-            if read_mode == "RGB":
+                color_model = "BGR"
+            elif read_mode == "RGB":
+                color_model = "RGB"
                 cv_mode = cv.COLOR_BGR2RGB
             elif read_mode == "GRAY":
+                color_model = "GRAY"
                 cv_mode = cv.COLOR_BGR2GRAY
             else:
                 raise Exception("Unexpected value for read_mode: {}".format(read_mode))
-            return cv.cvtColor(img, cv_mode)
+            print("CONVERSIONS: pipeline read image: {}".format(color_model))
+            if read_mode is None:
+                return img
+            else:
+                return cv.cvtColor(img, cv_mode)
 
         def scale_img(max_size, img):
             if max_size is None:
@@ -523,13 +531,14 @@ class Pipeline:
             # plt.show()
 
             img_data = ImageData(img=img,
-                             real_K=real_K,
-                             key_points=kps,
-                             descriptions=descs,
-                             normals=None,
-                             ts_phis=None,
-                             components_indices=None,
-                             valid_components_dict=None)
+                                 img_t=None,
+                                 real_K=real_K,
+                                 key_points=kps,
+                                 descriptions=descs,
+                                 normals=None,
+                                 ts_phis=None,
+                                 components_indices=None,
+                                 valid_components_dict=None)
 
             Pipeline.save_img_data(img_data, img_data_path, img_name)
 
@@ -547,6 +556,7 @@ class Pipeline:
             if rectify_affine_affnet and affnet_no_clustering:
                 print("no prior clustering")
                 img_data = ImageData(img=img,
+                                     img_t=None,
                                      real_K=real_K,
                                      key_points=None,
                                      descriptions=None,
@@ -603,6 +613,7 @@ class Pipeline:
                                             path=components_out_path)
 
                     img_data = ImageData(img=img,
+                                         img_t=None,
                                          real_K=real_K,
                                          key_points=None,
                                          descriptions=None,

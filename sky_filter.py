@@ -34,18 +34,19 @@ net_decoder = ModelBuilder.build_decoder(
     use_softmax=True)
 
 
-# TODO still performing numpy-torch conversion (in: np_image)
-@timer_label_decorator()
-def get_nonsky_mask_torch(np_image, height, width, use_cuda=False):
-
-    print("get_nonsky_mask_torch: use_cuda = {}".format(use_cuda))
-
+# TODO cache - introduce objects?
+def get_model(use_cuda=False):
     crit = torch.nn.NLLLoss(ignore_index=-1)
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
     segmentation_module.eval()
     semseg_model = segmentation_module
     if use_cuda:
         semseg_model = semseg_model.cuda()
+    return semseg_model
+
+
+def get_torch_image(np_image, height, width, use_cuda=False):
+    print("CONVERSIONS: sky: Image.fromarray(np.uint8(np_image)).convert('RGB'), Resize, ToTensor, Normalize")
     pil_to_tensor = tv.transforms.Compose([
         tv.transforms.Resize((height, width)),
         tv.transforms.ToTensor(),
@@ -57,6 +58,12 @@ def get_nonsky_mask_torch(np_image, height, width, use_cuda=False):
     img_data = pil_to_tensor(PIL_image)
     if use_cuda:
         img_data = img_data.cuda()
+
+    return img_data
+
+
+def get_non_sky_mask_torch(img_data, use_cuda=False, cpu=True):
+    semseg_model = get_model(use_cuda)
     singleton_batch = {'img_data': img_data[None]}
     output_size = img_data.shape[1:]
     # Run the segmentation at the highest resolution.
@@ -64,10 +71,18 @@ def get_nonsky_mask_torch(np_image, height, width, use_cuda=False):
         scores = semseg_model(singleton_batch, segSize=output_size)
         # Get the predicted scores for each pixel
         _, pred = torch.max(scores, dim=1)
-        pred = pred.detach().cpu()[0]
+        pred = pred.detach()[0]
+        if cpu:
+            pred = pred.cpu()
         nonsky_mask = pred != 2
-
     return nonsky_mask
+
+
+# TODO still performing numpy-torch conversion (in: np_image)
+@timer_label_decorator()
+def get_nonsky_mask_pseudo_torch(np_image, height, width, use_cuda=False):
+    img_torch = get_torch_image(np_image, height, width, use_cuda)
+    return get_non_sky_mask_torch(img_torch, use_cuda)
 
 
 @timer_label_decorator()
@@ -75,7 +90,7 @@ def get_nonsky_mask(np_image, height, width, use_cuda=False):
 
     sky_m = "sky masking"
     Timer.start_check_point(sky_m)
-    t = get_nonsky_mask_torch(np_image, height, width, use_cuda=use_cuda)
+    t = get_nonsky_mask_pseudo_torch(np_image, height, width, use_cuda=use_cuda)
     ret = t.numpy()
     Timer.end_check_point(sky_m)
     return ret

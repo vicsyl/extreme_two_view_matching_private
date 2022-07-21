@@ -1,10 +1,27 @@
-import imp
+import kornia as K
 import math
 import time
 
 import matplotlib.pyplot as plt
 import cv2 as cv
 import numpy as np
+
+
+def numpy_to_torch_img(img):
+    print("CONVERSIONS: K.image_to_tensor(img, False).float() / 255.")
+    return K.image_to_tensor(img, False).float() / 255.
+
+
+def numpy_to_torch_greyscale(img):
+    print("CONVERSIONS: K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.)")
+    return K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.)
+
+
+def torch_to_numpy(img_t):
+    #img = (img_t[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)
+    print("CONVERSIONS: (img_t.clone()[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)")
+    img = (img_t.clone()[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)
+    return img
 
 
 def np_rgb_mask(np_img):

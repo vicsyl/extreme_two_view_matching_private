@@ -39,7 +39,7 @@ class DenseAffnetFeature:
         sift_sigma = 1.6
         sift_detector = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
         self.hard_net = HardNetDescriptor(sift_detector, compute_laffs=True, filter=None, device=self.device)
-        self.dense_affnet = DenseAffNet(True)
+        self.dense_affnet = DenseAffNet(pretrained=True, device=self.device)
 
     def forward(self,
                 img: torch.Tensor,
@@ -47,15 +47,11 @@ class DenseAffnetFeature:
                                                               torch.Tensor,
                                                               torch.Tensor]:
 
-        assert mask is None, "non trivial mask (i.e. not None) not supported"
-
-        img_data = affnet_clustering_torch(img=None,
-                                           gs_timg=img,
-                                           img_name=None,
+        img_data = affnet_clustering_torch(img=img,
                                            dense_affnet=self.dense_affnet,
-                                           conf=self.config,
-                                           upsample_early=True,
-                                           use_cuda=self.device == torch.device("cuda"))
+                                           mask=mask,
+                                           use_cuda=self.device == torch.device("cuda"),
+                                           conf=self.config)
 
         kpts_struct: KptStruct = affnet_rectify(img_name=None,
                                                 hardnet_descriptor=self.hard_net,
@@ -66,4 +62,5 @@ class DenseAffnetFeature:
         scales = KF.get_laf_scale(kpts_struct.reprojected_laffs)
         scaled_laffs = KF.scale_laf(kpts_struct.reprojected_laffs, 1. / scales)
 
-        return scaled_laffs, scales[:, :, 0], kpts_struct.descs[None]
+        ret = scaled_laffs, scales[:, :, 0], kpts_struct.descs[None]
+        return ret

@@ -9,6 +9,7 @@ from kornia_moons.feature import *
 from affnet import show_sets_of_linear_maps
 from transforms import get_rectification_rotations
 from utils import Timer, timer_label_decorator
+from img_utils import numpy_to_torch_greyscale, torch_to_numpy
 from transforms import homographies_jacobians
 
 """
@@ -88,24 +89,23 @@ class HardNetDescriptor:
         else:
             return kps, descs
 
-    def get_local_descriptors(self, img, cv2_sift_kpts, give_laffs=False):
-        if len(cv2_sift_kpts) == 0:
-            return np.array([])
+    @timer_label_decorator("HardNet.np_to_torch", tags=[HARD_NET_LABEL])
+    def get_torch_img(self, img):
+
+        if len(img.shape) == 3:
+            pass  # OK
+        elif len(img.shape) == 2:
+            img = img.reshape(img.shape[0], img.shape[1], 1)
+            img = np.repeat(img, 3, axis=2)
+        else:
+            raise Exception("Unexpected shape of the img: {}".format(img.shape))
+        timg = numpy_to_torch_greyscale(img).to(self.device)
+        return timg
+
+    def get_local_descriptors_torch_common(self, timg, cv2_sift_kpts, give_laffs):
 
         # We will not train anything, so let's save time and memory by no_grad()
         with torch.no_grad():
-
-            np_t_label = Timer.start_check_point("HardNet.np_to_torch", tags=[HARD_NET_LABEL])
-            if len(img.shape) == 3:
-                pass # OK
-            elif len(img.shape) == 2:
-                img = img.reshape(img.shape[0], img.shape[1], 1)
-                img = np.repeat(img, 3, axis=2)
-            else:
-                raise Exception("Unexpected shape of the img: {}".format(img.shape))
-            timg = K.color.rgb_to_grayscale(K.image_to_tensor(img, False).float() / 255.).to(self.device)
-            Timer.end_check_point(np_t_label)
-
             lafs_t_label = Timer.start_check_point("HardNet.lafs_computation", tags=[HARD_NET_LABEL])
             if self.custom_normals_np is not None:
                 lafs_to_use = self.get_lafs_from_normals(cv2_sift_kpts, timg)
@@ -131,10 +131,56 @@ class HardNetDescriptor:
             # So we need to reshape a bit :)
             # descs = self.hardnet(patches).view(B * N, -1)
             descs = batched_forward(self.hardnet, patches, self.device, 128).view(B * N, -1)
+            Timer.end_check_point(desc_label)
 
+        return descs, lafs_to_use
+
+    def get_local_descriptors(self, img, cv2_sift_kpts, give_laffs=False):
+        # TODO fixme
+        if len(cv2_sift_kpts) == 0:
+            return np.array([])
+
+        timg = self.get_torch_img(img)
+        descs, lafs_to_use = self.get_local_descriptors_torch_common(timg, cv2_sift_kpts, give_laffs=give_laffs)
+
+        conv_label = Timer.start_check_point("torch(CUDA) => numpy")
         ret = descs.detach().cpu().numpy(), lafs_to_use.detach().cpu()
-        Timer.end_check_point(desc_label)
+        Timer.end_check_point(conv_label)
         return ret
+
+    def get_local_descriptors_torch(self, img, cv2_sift_kpts, give_laffs=False):
+        # TODO fixme
+        if len(cv2_sift_kpts) == 0:
+            return np.array([])
+
+        descs, lafs_to_use = self.get_local_descriptors_torch_common(img, cv2_sift_kpts, give_laffs=give_laffs)
+        return descs, lafs_to_use
+
+    @timer_label_decorator("HardNet.detect_and_compute_torch", tags=[HARD_NET_LABEL, "main"])
+    def detect_and_compute_torch(self, img, mask=None, give_laffs=False, skip_filter=False):
+
+        label_detect = Timer.start_check_point("detect in HardNet", tags=[HARD_NET_LABEL])
+
+        print("mask device: {}".format(mask.device))
+        img_np = torch_to_numpy(img.cpu())
+        mask = mask[0, 0].cpu().numpy().astype(dtype=np.uint8)
+        kps = self.sift_descriptor.detect(img_np, mask)
+        if self.filter is not None and not skip_filter:
+            kps = kps[::self.filter]
+        Timer.end_check_point(label_detect)
+
+        ret = self.get_local_descriptors_torch(img, kps, give_laffs=give_laffs)
+        if len(ret) != 2:
+            # corner case
+            descs = np.zeros(0)
+            laffs = np.zeros(0)
+        else:
+            descs, laffs = ret
+
+        if give_laffs:
+            return kps, descs, laffs
+        else:
+            return kps, descs
 
     def get_Hs_from_custom_normals(self, cv2_sift_kpts, timg):
 

@@ -10,6 +10,21 @@ import torch.nn.functional as F
 import kornia.geometry as KG
 
 
+def parse_device(config):
+    dev_s = config.get("device", "cpu")
+    if dev_s == "cpu":
+        device = torch.device("cpu")
+    elif dev_s == "cuda":
+        device = torch.device("cuda")
+    else:
+        raise Exception("Unknown param value for 'device': {}".format(dev_s))
+    return device
+
+
+def use_cuda_from_device(device):
+    return device == torch.device("cuda")
+
+
 class Timer:
 
     TRANSFORMS_TAG = "transforms_tag"

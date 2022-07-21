@@ -11,7 +11,7 @@ from matplotlib.patches import Circle
 from utils import Timer
 from img_utils import create_plot_only_img
 from connected_components import get_and_show_components
-from utils import adjust_affine_transform, timer_label_decorator
+from utils import adjust_affine_transform, timer_label_decorator, parse_device
 
 @dataclass
 class CoveringParams:
@@ -21,50 +21,59 @@ class CoveringParams:
     ts_opt: list
     phis_opt: list
     name: str
+    device: torch.device
 
     @staticmethod
-    def log_1_8_covering():
+    def log_1_8_covering(device=torch.device("cpu")):
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             ts_opt=[2.88447, 6.2197],
             phis_opt=[math.pi / 8.0, math.pi / 16.0],
-            name="log_1_8_covering")
+            name="log_1_8_covering",
+            device=device,
+        )
 
     @staticmethod
-    def log_1_8_covering_denser():
+    def log_1_8_covering_denser(device=torch.device("cpu")):
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             # NOTE just pretty randomly populated
             ts_opt=[2.2, 2.88447, 4.28, 6.2197],
             phis_opt=[math.pi / 8.0, math.pi / 10.0, math.pi / 12.0, math.pi / 16.0],
-            name="log_1_8_covering_denser")
+            name="log_1_8_covering_denser",
+            device=device,
+        )
 
     @staticmethod
-    def log_1_8_covering_densest():
+    def log_1_8_covering_densest(device=torch.device("cpu")):
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             # NOTE just pretty randomly populated
             ts_opt=[2.2, 2.5, 2.88447, 3.5, 4.28, 5.5, 6.2197],
             phis_opt=[math.pi / 16.0, math.pi / 20.0, math.pi / 24.0, math.pi / 28.0, math.pi / 32.0, math.pi / 36.0, math.pi / 40.0],
-            name="log_1_8_covering_densest")
+            name="log_1_8_covering_densest",
+            device=device,
+        )
 
     @staticmethod
-    def dense_covering_original():
+    def dense_covering_original(device=torch.device("cpu")):
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             ts_opt=[2.2, 2.5],
             phis_opt=[math.pi / 32.0, math.pi / 32.0],
-            name="narrow_covering")
+            name="narrow_covering",
+            device=device,
+        )
 
     # CNN-ASSISTED COVERINGS IN THE SPACE OF TILTS:
     # BEST AFFINE INVARIANT PERFORMANCES WITH THE SPEED OF CNNS
     # (1.7, 5.8) - BUT DENSE!
     @staticmethod
-    def dense_covering_1_7():
+    def dense_covering_1_7(device=torch.device("cpu")):
         bands = 6
         lg_sp = torch.logspace(math.log(2.0, 10), math.log(6.2197, 10), bands)
         return CoveringParams(
@@ -72,31 +81,38 @@ class CoveringParams:
             t_max=5.8,
             ts_opt=lg_sp,
             phis_opt=[math.pi / 32.0] * bands,
-            name="narrow_covering")
+            name="narrow_covering",
+            device=device,
+        )
 
     # CNN-ASSISTED COVERINGS IN THE SPACE OF TILTS:
     # BEST AFFINE INVARIANT PERFORMANCES WITH THE SPEED OF CNNS
     # (1.7, 5.8) - BUT SPARSE!
     @staticmethod
-    def sparse_covering_1_7():
+    def sparse_covering_1_7(device=torch.device("cpu")):
         return CoveringParams(
             r_max=1.7,
             t_max=5.8,
             ts_opt=[2.88447, 6.2197],
             phis_opt=[math.pi / 16.0] * 2,
-            name="narrow_covering")
+            name="narrow_covering",
+            device=device,
+        )
 
     @staticmethod
-    def sparse_covering_1_8_corrected():
+    def sparse_covering_1_8_corrected(device=torch.device("cpu")):
         return CoveringParams(
             r_max=1.8,
             t_max=6.0,
             ts_opt=[2.88447, 6.2197],
             phis_opt=[math.pi / 8.0, math.pi / 16.0],
-            name="sparse_covering_1_8_corrected")
+            name="sparse_covering_1_8_corrected",
+            device=device,
+        )
 
     @staticmethod
     def get_effective_covering_by_cfg(config):
+        device = parse_device(config)
         covering_type = config["affnet_covering_type"]
         if covering_type == "mean":
             tilt_r_exp = config.get("affnet_tilt_r_ln", 1.7)
@@ -105,18 +121,20 @@ class CoveringParams:
                                   t_max=5.8,
                                   ts_opt=None,
                                   phis_opt=None,
-                                  name="mean like covering - r_max={}, t_max={}".format(tilt_r_exp, max_tilt_r))
+                                  name="mean like covering - r_max={}, t_max={}".format(tilt_r_exp, max_tilt_r),
+                                  device=device,
+                                  )
         else:
-            return CoveringParams.get_effective_covering(covering_type)
+            return CoveringParams.get_effective_covering(covering_type, device)
 
     @staticmethod
-    def get_effective_covering(covering_type):
+    def get_effective_covering(covering_type, device=torch.device("cpu")):
         if covering_type == "dense_cover_original":
-            return CoveringParams.dense_covering_original()
+            return CoveringParams.dense_covering_original(device)
         elif covering_type == "dense_cover":
-            return CoveringParams.dense_covering_1_7()
+            return CoveringParams.dense_covering_1_7(device)
         elif covering_type == "sparse_cover":
-            return CoveringParams.sparse_covering_1_7()
+            return CoveringParams.sparse_covering_1_7(device)
         else:
             raise ValueError("Unknown covering type: {}".format(covering_type))
 
@@ -126,7 +144,7 @@ class CoveringParams:
             for phi in torch.arange(start=0.0, end=math.pi, step=self.phis_opt[index]):
                 t_phi_list.append((t_opt, phi))
 
-        return torch.tensor(t_phi_list).T
+        return torch.tensor(t_phi_list).T.to(self.device)
 
     def covering_coordinates_count(self):
         # include the identity class
@@ -256,9 +274,10 @@ def vote(covering_params, data, fraction_th, iter_th, conf, return_cover_idxs=Fa
 
     Timer.end_check_point("vote_covering_centers")
 
+    device = parse_device(conf)
     if return_cover_idxs:
         if closest_winning_center:
-            cover_idx = torch.ones(data.shape[1]) * -1
+            cover_idx = torch.ones(data.shape[1], device=device) * -1
             cover_idx[data_completely_off] = -4
             logging.debug("initial data points with t > t_max: {}".format(data_completely_off.sum()))
 
@@ -269,6 +288,7 @@ def vote(covering_params, data, fraction_th, iter_th, conf, return_cover_idxs=Fa
             else:
                 winning_centers_dist = winning_centers.t()
 
+            winning_centers_dist = winning_centers_dist.to(device)
             distances = distance_matrix_concise(winning_centers_dist, data)
 
             minimal_wc_distances_values_indices = torch.min(distances, 0)
@@ -394,6 +414,8 @@ def visualize_covered_pixels_and_connected_comp(conf, ts_phis, cover_idx, img_na
     show = conf.get(CartesianConfig.show_dense_affnet_components, False)
     if not show:
         return
+
+    cover_idx = cover_idx.cpu()
 
     valid_components_dict = valid_components_dict_arg.copy()
     components_indices = np.copy(components_indices_arg)

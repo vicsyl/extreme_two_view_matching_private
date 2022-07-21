@@ -87,7 +87,6 @@ def compose_lin_maps(ts, phis, lambdas, psis):
     return lin_maps, lambdas, R_psis, T_ts, R_phis
 
 
-# TODO handle CUDA
 @timer_label_decorator("decompose_lin_maps", tags=[Timer.NOT_NESTED_TAG])
 def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     """
@@ -100,8 +99,11 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
 
     assert len(l_maps.shape) == 4
 
-    # NOTE for now just disallow CUDA
-    assert l_maps.device == torch.device('cpu')
+    convert_from_cuda = l_maps.is_cuda
+    if convert_from_cuda:
+        print("original device:".format(l_maps.device))
+        l_maps = l_maps.to(torch.device("cpu"))
+        print("cpu (?) device:".format(l_maps.device))
 
     U, s, V = torch.svd(l_maps)
     V = torch.transpose(V, dim0=2, dim1=3)
@@ -111,6 +113,7 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     def assert_decomposition():
 
         d = torch.diag_embed(s)
+        print("lambdas[:, :, None, None]: {} U: {} d: {} V: {}".format(lambdas[:, :, None, None].device, U.device, d.device, V.device))
         product = lambdas[:, :, None, None] * U @ d @ V
         # NOTE relaxed from atol=1e-05 to atol=1e-04, maybe the matrix difference should be used here
         close_cond = torch.allclose(product, l_maps, rtol=1e-04, atol=1e-04)
@@ -187,6 +190,13 @@ def decompose_lin_maps_lambda_psi_t_phi(l_maps, asserts=True):
     ts = s[:, :, 0]
 
     assert_decomposition()
+
+    if convert_from_cuda:
+        cuda = torch.device("cuda")
+        lambdas = lambdas.to(cuda)
+        psis = psis.to(cuda)
+        ts = ts.to(cuda)
+        phis = phis.to(cuda)
 
     return lambdas, psis, ts, phis
 
@@ -300,12 +310,10 @@ def warp_affine(img_t, mask, affine_map, mode='biliner'):
     :param mode: 
     :return: warped_img, new_h, new_w
     """
-    corner_pts = get_corners_of_mask(mask)
-    #H = KR.geometry.convert_affinematrix_to_homography(affine_map)
-    #corner_pts_new = KR.geometry.transform_points(H, corner_pts)
+    corner_pts = get_corners_of_mask(mask).to(affine_map.device)
     corner_pts_new = affine_map[:, :, :2] @ corner_pts
 
-    affine_map[:, :, 2] = -torch.tensor([corner_pts_new[0, 0, :].min(), corner_pts_new[0, 1, :].min()])
+    affine_map[:, :, 2] = -torch.tensor([corner_pts_new[0, 0, :].min(), corner_pts_new[0, 1, :].min()], device=img_t.device)
 
     new_w = int((corner_pts_new[0, 0, :].max() - corner_pts_new[0, 0, :].min()).item())
     new_h = int((corner_pts_new[0, 1, :].max() - corner_pts_new[0, 1, :].min()).item())
@@ -336,7 +344,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
         blur_amplification = 1.0
         sigma_x = blur_amplification * blur_param * math.sqrt(tilt * tilt - 1)
         kernel_size = 2 * math.ceil(sigma_x * 3.0) + 1
-        kernel = KR.filters.get_gaussian_kernel1d(kernel_size, sigma_x)[None].unsqueeze(1)
+        kernel = KR.filters.get_gaussian_kernel1d(kernel_size, sigma_x)[None].unsqueeze(1).to(img_fc.device)
         # print("kernel shape: {}".format(kernel.shape))
         # will kernel be in a good shape? (#dimensions, but also the shape?)
         img_blurred_x = KR.filters.filter2d(img_fc, kernel)
@@ -351,7 +359,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
     def warp_rotate(angle, img_fc, img_mask):
         s = math.sin(angle)
         c = math.cos(angle)
-        affine_rotation = torch.tensor([[c, -s, 0.0], [s, c, 0.0]]).unsqueeze(0)
+        affine_rotation = torch.tensor([[c, -s, 0.0], [s, c, 0.0]], device=img.device).unsqueeze(0)
         rotated_img, new_h, new_w = warp_affine(img_fc, img_mask, affine_rotation, mode='bilinear')
         if warp_image_show_transformation:
             show_torch_img(rotated_img, title="rotated img")
@@ -470,33 +478,57 @@ def get_covering_transformations(data_all_ts, data_all_phis, config):
         return wcs
 
 
-def get_mask(img_warped_t, aff_maps_inv, current_component, img_data):
-    mesh = torch.where(img_warped_t[0, 0] > -500)
-    mesh_tensor = torch.vstack((mesh[1], mesh[0], torch.ones(mesh[0].shape[0]))).type(torch.float32).t()
+def get_mask(img_warped_t, aff_maps_inv, current_component, img_data, use_torch):
+    # TODO to be deleted
+    mesh_old = torch.where(img_warped_t[0, 0] > -500)
+    mesh = torch.where(img_warped_t[0, 0] == img_warped_t[0, 0])
+    assert torch.all(mesh_old[0] == mesh[0])
+    assert torch.all(mesh_old[1] == mesh[1])
+
+    mesh_tensor = torch.vstack((mesh[1], mesh[0], torch.ones(mesh[0].shape[0], device=img_warped_t.device))).type(torch.float32).t()
     inverted_pxs = aff_maps_inv.repeat(mesh_tensor.shape[0], 1, 1) @ mesh_tensor.unsqueeze(2)
     inverted_pxs = inverted_pxs.squeeze(2)
     inverted_pxs = torch.round(inverted_pxs).to(torch.long)
     # DEBUG dimensions
-    mask_inv_pxs = (inverted_pxs[:, 1] < img_data.img.shape[0]) & (inverted_pxs[:, 1] >= 0) & \
-                   (inverted_pxs[:, 0] < img_data.img.shape[1]) & (inverted_pxs[:, 0] >= 0)
+    if img_data.img is None:
+        shape0 = img_data.img_t.shape[2]
+        shape1 = img_data.img_t.shape[3]
+    else:
+        shape0 = img_data.img.shape[0]
+        shape1 = img_data.img.shape[1]
+    mask_inv_pxs = (inverted_pxs[:, 1] < shape0) & (inverted_pxs[:, 1] >= 0) & \
+                   (inverted_pxs[:, 0] < shape1) & (inverted_pxs[:, 0] >= 0)
     inverted_pxs = inverted_pxs[mask_inv_pxs]
-    mask_component = (torch.tensor(img_data.components_indices[inverted_pxs[:, 1], inverted_pxs[:, 0]]) == current_component)
+    comp_indices_t = torch.tensor(img_data.components_indices[inverted_pxs[:, 1].cpu(), inverted_pxs[:, 0].cpu()])
+    mask_component = comp_indices_t == current_component
+
+    # TODO this works, however it's cuda:0, cpu
+    print("masks1: {}, {}".format(mask_inv_pxs.device, mask_component.device))
+    print("masks1: {}".format(mesh_tensor.device))
 
     mesh_tensor = mesh_tensor[mask_inv_pxs]
     mesh_tensor = mesh_tensor[mask_component]
 
+    # TODO this is still cuda => why does it even work?
+    print("masks1: {}".format(mesh_tensor.device))
+
     final_mask = torch.zeros_like(img_warped_t[0, 0], dtype=bool)
     mesh_tensor = mesh_tensor.type(torch.long)
     final_mask[mesh_tensor[:, 1], mesh_tensor[:, 0]] = True
-    return final_mask.numpy().astype(np.uint8)
+    if use_torch:
+        assert img_warped_t.shape[0] == 1
+        ret = final_mask[None, None].repeat(img_warped_t.shape[0], img_warped_t.shape[1], 1, 1)
+    else:
+        ret = final_mask.cpu().numpy().astype(np.uint8)
+    return ret
 
 
 @timer_label_decorator(tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
-def get_effective_sift_mask(img_warped_t, aff_maps_inv, current_component, img_data, config):
+def get_effective_sift_mask(img_warped_t, aff_maps_inv, current_component, img_data, config, use_torch=False):
     sift_mask = None
     use_sift_mask = config.get(CartesianConfig.affnet_use_eager_mask, "False")
     if use_sift_mask and current_component is not None:
-        sift_mask = get_mask(img_warped_t, aff_maps_inv, current_component, img_data)
+        sift_mask = get_mask(img_warped_t, aff_maps_inv, current_component, img_data, use_torch)
         # plt.figure(figsize=(6, 8))
         # plt.title("SIFT mask")
         # plt.imshow(sift_mask)
@@ -525,11 +557,13 @@ def get_mask_kpts(cv_kpt, aff_map_back, img_data, current_component):
     return mask_cmp
 
 
-def update_kpts_mask_size(sift_mask, img_warped, params_key, img_name, stats_map):
+def update_kpts_mask_size(sift_mask, img_warped_t, params_key, img_name, stats_map):
     if sift_mask is None:
-        sift_mask_size = img_warped.shape[0] * img_warped.shape[1]
+        sift_mask_size = img_warped_t.shape[2] * img_warped_t.shape[3]
     else:
         sift_mask_size = sift_mask.sum()
+        if torch.is_tensor(input):
+            sift_mask_size = sift_mask_size.item()
     append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_effective_kpts_mask_size"], sift_mask_size, stats_map)
 
 
@@ -551,10 +585,6 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
     ts_component, phis_component = ts[mask_cmp], phis[mask_cmp]
 
     mask_in = ts_component < tilt_r_exp
-    # ts_affnet_in = ts_component[mask_in]
-    # ts_affnet_out = ts_component[~mask_in]
-    # phis_affnet_in = phis_component[mask_in]
-    # phis_affnet_out = phis_component[~mask_in]
 
     if (~mask_in).sum() == 0:
         print("Component no {} will be skipped from rectification, no features with a large tilt".format(current_component))
@@ -580,19 +610,26 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         img_warped_t, aff_map = warp_image(t_img_all, t_phi[0].item(), t_phi[1].item(), mask_img_component, invert_first=True)
         img_to_img_label = Timer.start_check_point("img torch to np", tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
-        img_warped = k_to_img_np(img_warped_t)
         Timer.end_check_point(img_to_img_label)
 
-        possibly_show_normal_component(affnet_warp_image_show_transformation, img_name, current_component, normal_index, img_warped)
+        possibly_show_normal_component(affnet_warp_image_show_transformation, img_name, current_component, normal_index, img_warped_t)
 
         aff_maps_inv = KR.geometry.transform.invert_affine_transform(aff_map)
-        sift_mask = get_effective_sift_mask(img_warped_t, aff_maps_inv, current_component, img_data, config)
+        # TODO fix this - remember it has to work with both options
+        use_torch = True
+        sift_mask = get_effective_sift_mask(img_warped_t, aff_maps_inv, current_component, img_data, config, use_torch=use_torch)
+        print("sift mask: {}, {}".format(sift_mask.shape, sift_mask.device))
+        update_kpts_mask_size(sift_mask, img_warped_t, params_key, img_name, stats_map)
 
         # not normalized by scale, which is good btw.
         hn_label = Timer.start_check_point("HardNet just in add covering kpts", tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
 
-        update_kpts_mask_size(sift_mask, img_warped, params_key, img_name, stats_map)
-        kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True)
+        if use_torch:
+            print("using torch")
+            kps_warped, descs_warped, laffs_final = hardnet_descriptor.detect_and_compute_torch(img_warped_t, mask=sift_mask, give_laffs=True)
+        else:
+            img_warped = k_to_img_np(img_warped_t)
+            kps_warped, descs_warped, laffs_final = hardnet_descriptor.detectAndCompute(img_warped, mask=sift_mask, give_laffs=True)
 
         Timer.end_check_point(hn_label)
 
@@ -603,7 +640,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
 
         fk2_label = Timer.start_check_point("affnet filtering keypoints per component 2", tags=[AFFNET_RECTIFY_TAG, ADD_COVERING_KPS_TAG])
 
-        kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped])
+        kps_t = torch.tensor([kp.pt + (1,) for kp in kps_warped], device=t_img_all.device)
         kpt_s_back = aff_maps_inv.repeat(kps_t.shape[0], 1, 1) @ kps_t.unsqueeze(2)
         kpt_s_back = kpt_s_back.squeeze(2)
 
@@ -612,6 +649,8 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         # TODO - is this OK?
         # IMHO laffs final.clone is not needed
         laffs_reprojected = laffs_final.clone()
+        # CONTINUE
+        print("laffs_reprojected[:, :, :, :2] = laffs_reprojected[:, :, :, :2] @ aff_maps_inv[:, :, :2]: {}, {}, {}".format(laffs_reprojected[:, :, :, :2].device, laffs_reprojected[:, :, :, :2].device, aff_maps_inv[:, :, :2].device))
         laffs_reprojected[:, :, :, :2] = laffs_reprojected[:, :, :, :2] @ aff_maps_inv[:, :, :2]
 
         # new, to be checked if it is OK - but probably it is..
@@ -625,15 +664,26 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
             laffs_final[:, :, :, :2] = torch.inverse(laffs_final[:, :, :, :2])
 
         kpt_s_back_int = torch.round(kpt_s_back).to(torch.long)
-        mask_cmp = (kpt_s_back_int[:, 1] < img_data.img.shape[0]) & (kpt_s_back_int[:, 1] >= 0) & (
-                    kpt_s_back_int[:, 0] < img_data.img.shape[1]) & (kpt_s_back_int[:, 0] >= 0)
+
+        # TODO FIXME another "torch check"
+        if img_data.img is None:
+            shape0 = img_data.img_t.shape[2]
+            shape1 = img_data.img_t.shape[3]
+        else:
+            shape0 = img_data.img.shape[0]
+            shape1 = img_data.img.shape[1]
+
+        mask_cmp = (kpt_s_back_int[:, 1] < shape0) & (kpt_s_back_int[:, 1] >= 0) & (
+                    kpt_s_back_int[:, 0] < shape1) & (kpt_s_back_int[:, 0] >= 0)
         # print("invalid back transformed pixels: {}/{}".format(mask_cmp.shape[0] - mask_cmp.sum(), mask_cmp.shape[0]))
 
         kpt_s_back_int[~mask_cmp, 0] = 0
         kpt_s_back_int[~mask_cmp, 1] = 0
         label = Timer.start_check_point("interest: single mask and current_component")
         if current_component is not None:
-            mask_cmp = (mask_cmp) & (torch.tensor(img_data.components_indices[kpt_s_back_int[:, 1], kpt_s_back_int[:, 0]]) == current_component)
+            tensor_cmp = torch.tensor(img_data.components_indices[kpt_s_back_int[:, 1].cpu(), kpt_s_back_int[:, 0].cpu()], device=t_img_all.device)
+            print("masks2: {}, {}".format(mask_cmp.device, tensor_cmp.device))
+            mask_cmp = (mask_cmp) & (tensor_cmp == current_component)
         Timer.end_check_point(label)
 
         mask_cmp = mask_cmp.to(torch.bool)
@@ -643,13 +693,19 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
             if mask_cmp[i]:
                 kp.pt = (kpt_s_back[i][0].item(), kpt_s_back[i][1].item())
                 kps.append(kp)
-        descs = descs_warped[mask_cmp.numpy()]
+        print("descs_warped.device: {}, mask_cmp.device: {}".format(descs_warped.device, mask_cmp.device))
+        descs = descs_warped[mask_cmp]
 
         laffs_final = laffs_final[:, mask_cmp]
         laffs_reprojected = laffs_reprojected[:, mask_cmp]
 
         kpts_struct.kps.extend(kps)
-        kpts_struct.descs = np.vstack((kpts_struct.descs, descs))
+        # TODO FIXME another "torch check"
+        if torch.is_tensor(kpts_struct.descs):
+            kpts_struct.descs = torch.vstack((kpts_struct.descs, descs))
+        else:
+            kpts_struct.descs = np.vstack((kpts_struct.descs, descs))
+
         kpts_struct.laffs = torch.cat((kpts_struct.laffs, laffs_final), 1)
         kpts_struct.reprojected_laffs = torch.cat((kpts_struct.reprojected_laffs, laffs_reprojected), 1)
 
@@ -665,7 +721,7 @@ def add_covering_kps(t_img_all, img_data, img_name, hardnet_descriptor,
         append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_added_kpts_id_close"], mask_in.sum().item(), stats_map)
         # TODO fixme this I think only keeps adding the same number for each iteration of the loop
         append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_identity_counts_per_component"], ts_component.shape[0], stats_map)
-        warp_size = img_warped.shape[0] * img_warped.shape[1]
+        warp_size = img_warped_t.shape[2] * img_warped_t.shape[3]
         append_update_stats_map_static(["per_img_stats", params_key, img_name, "affnet_warped_img_size"], warp_size, stats_map)
 
         Timer.end_check_point(fk2_label)
@@ -721,9 +777,13 @@ def visualize_lafs(unrectified_laffs, mask_no_valid_component, img_name, t_img_a
 
 
 @timer_label_decorator(tags=[AFFNET_RECTIFY_TAG])
-def hardnet_for_affnet_rectify(hardnet_descriptor, img, mask):
+def hardnet_for_affnet_rectify(hardnet_descriptor, img_data, mask):
     # CUDA is potentially used just internally
-    return hardnet_descriptor.detectAndCompute(img, give_laffs=True, mask=mask)
+    if img_data.img_t is None:
+        return hardnet_descriptor.detectAndCompute(img_data.img, give_laffs=True, mask=mask)
+    else:
+        print("going the torch path")
+        return hardnet_descriptor.detect_and_compute_torch(img_data.img_t, give_laffs=True, mask=mask)
 
 
 @timer_label_decorator(tags=[AFFNET_RECTIFY_TAG])
@@ -767,8 +827,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     affnet_no_clustering = conf_map["affnet_no_clustering"]
     show_affnet = conf_map.get("show_affnet", False)
 
-    # CUDA is potentially used just internally
-    identity_kps, identity_descs, unrectified_laffs = hardnet_for_affnet_rectify(hardnet_descriptor, img_data.img, mask)
+    identity_kps, identity_descs, unrectified_laffs = hardnet_for_affnet_rectify(hardnet_descriptor, img_data, mask)
 
     kpts_component_indices = get_kpts_component_indices(affnet_no_clustering, unrectified_laffs, img_data)
 
@@ -794,6 +853,7 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     mask_to_add = torch.ones_like(mask_in_or_no_component, dtype=torch.bool) if affnet_include_all_from_identity else mask_in_or_no_component
     all_kps = [kps for i, kps in enumerate(identity_kps) if mask_to_add[i]] # []
     all_descs = identity_descs[mask_to_add]
+    print("all_descs.device: {}".format(all_descs.device))
     all_laffs = unrectified_laffs[:, mask_to_add]
     reprojected_laffs = unrectified_laffs[:, mask_to_add]
     # probably a bug (that the next line was missing) - check that aff_laffs and affnet_lin_maps are actually
@@ -816,7 +876,11 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
 
     t_label = Timer.start_check_point("affnet_rectify numpy to torch", tags=[AFFNET_RECTIFY_TAG])
     # TODO cuda -> from now on it can IMHO be CUDA bound
-    t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
+    if img_data.img_t is None:
+        t_img_all = KR.image_to_tensor(img_data.img, False).float() / 255.
+    else:
+        t_img_all = img_data.img_t
+
     Timer.end_check_point(t_label)
 
     if show_affnet:
@@ -875,8 +939,9 @@ def affnet_rectify(img_name, hardnet_descriptor, img_data, conf_map, params_key=
     return kpts_struct
 
 
-def possibly_show_normal_component(affnet_warp_image_show_transformation, img_name, current_component, normal_index, img_warped):
+def possibly_show_normal_component(affnet_warp_image_show_transformation, img_name, current_component, normal_index, img_warped_t):
     if affnet_warp_image_show_transformation:
+        img_warped = k_to_img_np(img_warped_t)
         img_normal_component_title = "{} - warped component {}, normal {}".format(img_name,
                                                                                   current_component,
                                                                                   normal_index)

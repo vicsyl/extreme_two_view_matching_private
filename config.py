@@ -105,6 +105,8 @@ class Property:
 
 class CartesianConfig:
 
+    device = "device"
+
     config_combination = "config_combination"
     max_one_non_default = "max_one_non_default"
     just_one_non_default = "just_one_non_default"
@@ -138,6 +140,8 @@ class CartesianConfig:
     save_affnet_coverings = "save_affnet_coverings"
 
     props_handlers = {
+
+        device: Property("string", default="cpu", optional=True, cache=Property.cache_img_data, allowed_values=["cpu", "cuda"]),
 
         # dataset
         "scene_name": Property("string", default=False, cache=Property.cache_img_data),
