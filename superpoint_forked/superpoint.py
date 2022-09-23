@@ -333,6 +333,17 @@ class SuperPointDescriptor:
             pts = [cv2.KeyPoint(pt[0], pt[1], 1) for pt in pts]
             return pts, desc.T
 
+    def detectAndComputeGrey(self, img, mask):
+        # NOTE this is just how it was called before
+        assert mask is None
+        img = np.float32(img) / 255.0
+        with torch.no_grad():
+            self.sp_frontend.net.eval()
+            pts, desc, heatmap = self.sp_frontend.run(img)
+            pts = pts.T[:, :2]
+            pts = [cv2.KeyPoint(pt[0], pt[1], 1) for pt in pts]
+            return pts, desc.T
+
 
 def test():
 
