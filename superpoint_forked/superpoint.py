@@ -317,13 +317,18 @@ class SuperPointDescriptor:
             weights_path=path,
             # 1, 2, 3
             nms_dist=4,
-            # 0.015
-            conf_thresh=0.0001,
+            # 0.015, 0.0001
+            conf_thresh=0.015,
             nn_thresh=0.7,
             cuda=device == torch.device('cuda'))
 
     def detectAndCompute(self, img, mask):
-        # NOTE this is just how it was called before
+        """
+        Always convert to grayscale: backward compatibility
+        :param img:
+        :param mask:
+        :return pts, desc: OpenCV kpts and np descriptors
+        """
         assert mask is None
         img = np.float32(cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)) / 255.0
         with torch.no_grad():
@@ -334,15 +339,19 @@ class SuperPointDescriptor:
             return pts, desc.T
 
     def detectAndComputeGrey(self, img, mask):
-        # NOTE this is just how it was called before
+        """
+        Assumes grayscale
+        :param img:
+        :param mask:
+        :return pts, desc, heatmap: torch kpts locations, descriptors and heatmap
+        """
         assert mask is None
         img = np.float32(img) / 255.0
         with torch.no_grad():
             self.sp_frontend.net.eval()
             pts, desc, heatmap = self.sp_frontend.run(img)
             pts = pts.T[:, :2]
-            pts = [cv2.KeyPoint(pt[0], pt[1], 1) for pt in pts]
-            return pts, desc.T
+            return pts, desc.T, heatmap
 
 
 def test():
