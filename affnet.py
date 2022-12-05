@@ -367,7 +367,7 @@ def warp_image(img, tilt, phi, img_mask, blur_param=0.8, invert_first=True, warp
         show_torch_img(img_tilt, title="final rectification")
 
         img_warped_test = KR.geometry.warp_affine(img, affine_transform, dsize=(new_h, new_w))
-        show_torch_img(img_warped_test, title="warped by one sigle affine transform")
+        show_torch_img(img_warped_test, title="warped by one single affine transform")
 
         aff_map_inv = KR.geometry.transform.invert_affine_transform(affine_transform)
         img_warped_back = KR.geometry.warp_affine(img_warped_test, aff_map_inv, dsize=(img.shape[2], img.shape[3]))

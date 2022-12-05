@@ -148,8 +148,8 @@ class Pipeline:
         elif feature_descriptor == "HARD_NET":
             affnet_hard_net_filter = config.get("affnet_hard_net_filter", None)
             affnet_compute_laffs = config.get("affnet_compute_laffs", False)
-            feature_descriptor = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
-            feature_descriptor = HardNetDescriptor(feature_descriptor, affnet_compute_laffs, filter=affnet_hard_net_filter, device=device)
+            sift_detector = cv.SIFT_create(n_features, sift_octave_layers, sift_contrast_threshold, sift_edge_threshold, sift_sigma)
+            feature_descriptor = HardNetDescriptor(sift_detector, affnet_compute_laffs, filter=affnet_hard_net_filter, device=device)
         return feature_descriptor
 
     @staticmethod
