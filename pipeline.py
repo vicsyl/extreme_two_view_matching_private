@@ -841,7 +841,7 @@ class Pipeline:
 
                 d_h, d_w = depth_data.shape[2:4]
                 normals_lib, pred_uncertainty = self.compute_normals_from_lib(d_h, d_w, img_name, img)
-                weights = 1 - (torch.from_numpy(pred_uncertainty[0, ..., 0]) / 100)
+                weights = 1 - (torch.from_numpy(pred_uncertainty[0, ..., 0]) / 100).to(device=self.device)
                 normals = normals_lib
 
             else:
