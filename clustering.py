@@ -182,11 +182,14 @@ def cluster(normals: torch.Tensor,
     near_ones_per_cluster_center = torch.where(diff_norm < Clustering.distance_threshold, 1, 0)
     near_ones_per_cluster_center = torch.logical_and(near_ones_per_cluster_center, filter_mask)
 
+    original_weights = weights
     if weights is None:
-        sums = near_ones_per_cluster_center.sum(dim=(1, 2))
-    else:
-        sums = (near_ones_per_cluster_center * weights).sum(dim=(1, 2))
-        points_threshold *= (weights.sum() / weights.shape[0] * weights.shape[1])
+        weights = torch.ones(normals.shape[:2], dtype=torch.float, device=device)
+
+    sums = (near_ones_per_cluster_center * weights).sum(dim=(1, 2))
+    points_threshold *= (weights.sum() / weights.shape[0] * weights.shape[1])
+    if original_weights is None:
+        assert weights.sum() == weights.shape[0] * weights.shape[1]
 
     sortd = torch.sort(sums, descending=True)
 
@@ -203,6 +206,8 @@ def cluster(normals: torch.Tensor,
         if points < points_threshold:
             if return_all:
                 valid_clusters = len(cluster_centers)
+                if points == 0:
+                    break
             else:
                 break
 
@@ -236,13 +241,17 @@ def cluster(normals: torch.Tensor,
                 # near_ones_per_cluster_center needs recomputing
                 coords = torch.where(near_ones_per_cluster_center[center_index, :, :])
                 if handle_antipodal_points:
+                    # FIXME weights not incorporated
                     normals_to_mean = normals * argmin_factor[center_index].unsqueeze(2)
                     normals_to_mean = normals_to_mean[coords[0], coords[1]]
                 else:
-                    normals_to_mean = normals[coords[0], coords[1]]
+                    normals_to_mean = normals[coords[0], coords[1]] * weights[coords[0], coords[1]][..., None]
+                    norm_factor = 1 / weights[coords[0], coords[1]].sum()
+                    if original_weights is None:
+                        assert norm_factor == 1 / normals_to_mean.shape[0]
 
                 # normals_to_mean conv with kernel + normalization (to norm == 1)
-                cluster_center = normals_to_mean.sum(dim=0) / normals_to_mean.shape[0]
+                cluster_center = normals_to_mean.sum(dim=0) * norm_factor
                 cluster_center = cluster_center / torch.norm(cluster_center)
                 cluster_centers.append(cluster_center)
 
