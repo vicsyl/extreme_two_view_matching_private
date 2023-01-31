@@ -897,8 +897,10 @@ class Pipeline:
 
                             counter = counter + 1
 
-                            ms_str = "ms_{}".format(mean_shift)
-                            params_key = "{}_{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma, adaptive)
+                            #ms_str = "ms_{}".format(mean_shift)
+                            sigma_str = "use surface_normals lib" if sigma == "use_surface_normals" else f"sigma=[{sigma}]"
+
+                            params_key = f"mean_shift=[{mean_shift}],singular_value_quantil=[{singular_value_quantil}],angle_distance_threshold_degrees=[{angle_distance_threshold_degrees}],{sigma_str}"
                             if stats_key_prefix is not None:
                                 params_key = "{}_{}".format(stats_key_prefix, params_key)
 
