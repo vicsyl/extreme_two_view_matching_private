@@ -4,10 +4,6 @@ from utils import Timer, pad_normals
 import torch.nn.functional as F
 
 
-def assert_almost_equal(one, two):
-    assert math.fabs(one - two) < 0.000001
-
-
 def recompute_points_threshold_ratio(angle_distance_threshold_degrees, points_threshold_ratio_factor=1.0):
     return 0.13 * (angle_distance_threshold_degrees / 30) * points_threshold_ratio_factor
 
@@ -150,7 +146,8 @@ def cluster(normals: torch.Tensor,
             adaptive=False,
             return_all=False,
             device=torch.device("cpu"),
-            handle_antipodal_points=True
+            handle_antipodal_points=True,
+            weights=None
             ):
     """
     :param normals: Tensor(h, w, 3)
@@ -185,7 +182,11 @@ def cluster(normals: torch.Tensor,
     near_ones_per_cluster_center = torch.where(diff_norm < Clustering.distance_threshold, 1, 0)
     near_ones_per_cluster_center = torch.logical_and(near_ones_per_cluster_center, filter_mask)
 
-    sums = near_ones_per_cluster_center.sum(dim=(1, 2))
+    if weights is None:
+        sums = near_ones_per_cluster_center.sum(dim=(1, 2))
+    else:
+        sums = (near_ones_per_cluster_center * weights).sum(dim=(1, 2))
+        points_threshold *= (weights.sum() / weights.shape[0] * weights.shape[1])
 
     sortd = torch.sort(sums, descending=True)
 
@@ -366,122 +367,3 @@ def cluster(normals: torch.Tensor,
 
     valid_clusters = min(valid_clusters, len(cluster_centers))
     return cluster_centers, arg_mins, valid_clusters
-
-    # comparing the cluster_centers found by this method with the results of kmeans taking the cluster_centers as initial guesses
-
-    # def expand_centers_get_sums(centers):
-    #
-    #     centers = centers.expand(normals.shape[0], normals.shape[1], -1, -1)
-    #     centers = centers.permute(2, 0, 1, 3)
-    #
-    #     diffs = centers[:] - normals
-    #     diff_norm = torch.norm(diffs, dim=3)
-    #
-    #     near_ones_per_cluster_center_inner = torch.where(diff_norm < Clustering.distance_threshold, 1, 0)
-    #     near_ones_per_cluster_center_inner = torch.logical_and(near_ones_per_cluster_center_inner, filter_mask)
-    #
-    #     sums = near_ones_per_cluster_center_inner.sum(dim=(1, 2))
-    #     return centers, sums
-    #
-    # cluster_centers_old = cluster_centers.clone()
-    # for i in range(cluster_centers_old.shape[0] - 1):
-    #     for j in range(i + 1, cluster_centers_old.shape[0]):
-    #         angle = math.acos(cluster_centers_old[i, 0, 0] @ cluster_centers_old[j, 0, 0].T)
-    #         angle_degrees = 180 / math.pi * angle
-    #         print("angle between normal {} and {}: {} degrees".format(i, j, angle_degrees))
-    #
-    # timer_label2 = "2nd phase of clustering - kmeans"
-    # Timer.start_check_point(timer_label2)
-    # cluster_centers_new, arg_mins = kmeans(normals, filter_mask, clusters=None, max_iter=max_iter, cluster_centers=cluster_centers)
-    # Timer.end_check_point(timer_label2)
-    #
-    # angles = []
-    # for i in range(cluster_centers_new.shape[0]):
-    #     angle = math.acos(cluster_centers_new[i] @ cluster_centers_old[i, 0, 0].T)
-    #     angle_degrees = 180 / math.pi * angle
-    #     angles.append(angle_degrees)
-    # print("Angles differences: {}".format(angles))
-    #
-    # _, sums = expand_centers_get_sums(cluster_centers_new)
-    # for i in range(cluster_centers_new.shape[0]):
-    #     print("{}th cluster: from {} to {} points".format(i, points_list[i], sums[i]))
-    #
-    # return cluster_centers_new, arg_mins
-
-
-# for kmeans
-initial_cluster_centers = torch.Tensor([
-        [+math.sqrt(3) / 2,  0.00, -0.5],
-        [-math.sqrt(3) / 4, +0.75, -0.5],
-        [-math.sqrt(3) / 4, -0.75, -0.5]
-    ])
-
-
-# NOT USED
-def kmeans(normals: torch.Tensor, filter_mask, clusters=None, max_iter=20, cluster_centers=None):
-    """
-    :param normals: torch: w,h,3 (may add b)
-    :return:
-    """
-
-    if clusters is None:
-        assert cluster_centers is not None
-        clusters = cluster_centers.shape[0]
-
-    if cluster_centers is None:
-        assert clusters <= 3
-        shape = tuple([clusters]) + tuple(normals.shape)
-        cluster_centers = torch.zeros(shape)
-        for i in range(clusters):
-            cluster_centers[i] = initial_cluster_centers[i]
-
-
-    old_arg_mins = None
-    iter = 0 # so that max_iter == 0 works
-    for iter in range(max_iter):
-
-        diffs = cluster_centers[:] - normals
-
-        diff_norm = torch.norm(diffs, dim=3)
-        mins = torch.min(diff_norm, dim=0, keepdim=True)
-        arg_mins = mins[1].squeeze(0)
-        filtered_arg_mins = torch.where(filter_mask, arg_mins, 3)
-        filtered_arg_mins = torch.where(mins[0].squeeze(0) < Clustering.distance_threshold, filtered_arg_mins, 3)
-
-        if old_arg_mins is not None:
-            changes = old_arg_mins[old_arg_mins != filtered_arg_mins].shape[0]
-            if changes == 0:
-                break
-
-        old_arg_mins = filtered_arg_mins
-
-        for i in range(clusters):
-        #for i in range(1):
-            cluster_i_points = normals[filtered_arg_mins == i]
-            # TODO REALLY??!! - this is using just the euclidian distance!!!
-            new_cluster = torch.sum(cluster_i_points, 0) / cluster_i_points.shape[0]
-            new_cluster = new_cluster / torch.norm(new_cluster)
-            cluster_centers[i, :, :, :] = new_cluster
-
-    print("iter: {}".format(iter))
-
-    diffs = cluster_centers[:] - normals
-    diff_norm = torch.norm(diffs, dim=3)
-    mins = torch.min(diff_norm, dim=0, keepdim=True)
-    arg_mins = mins[1].squeeze(0)
-    filtered_arg_mins = torch.where(filter_mask == 1, arg_mins, 3)
-    mins = mins[0].squeeze(0)
-
-    arg_mins = torch.where(mins < Clustering.distance_threshold, filtered_arg_mins, 3)
-    #print_and_get_stats(arg_mins)
-
-    ret = cluster_centers[:, 0, 0, :], arg_mins
-    return ret
-
-
-def print_and_get_stats(arg_mins):
-    stats = [None] * 4
-    for i in range(4):
-        stats[i] = torch.where(arg_mins == i, 1, 0).sum().item()
-    print("stats: {}".format(stats))
-    return stats

@@ -185,7 +185,8 @@ def get_and_show_components(cluster_indices, valid_component_dict, title=None, n
 
     plt.imshow(cluster_colors)
     if save:
-        full_path = "{}/{}".format(path, file_name)
+        # FIXME
+        full_path = "{}_{}".format(path, file_name)
         print("saving to {}".format(full_path))
         plt.savefig(full_path)
 
@@ -262,10 +263,12 @@ def get_connected_components(normal_indices, valid_indices, show=False,
     for v_i in valid_indices:
         input = np.where(normal_indices == v_i, 1, 0).astype(dtype=np.uint8)
 
+        assert closing_size is None
         if closing_size is not None:
             kernel = circle_like_ones(size=closing_size) # np.ones((closing_size, closing_size) np.uint8)
             input = cv.morphologyEx(input, cv.MORPH_CLOSE, kernel)
 
+        assert not flood_filling
         if flood_filling:
             input = flood_fill(input)
 

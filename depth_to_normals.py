@@ -214,7 +214,7 @@ def show_or_save_clusters(normals, normal_indices_np, cluster_repr_normal_np, ou
         show_and_save_normal_clusters_3d(normals, cluster_repr_normal_np, normal_indices_np, show, save, out_dir, img_name)
 
 
-def cluster_normals(normals, filter_mask=None, mean_shift_type=None, adaptive=False, return_all=False, device=torch.device("cpu"), handle_antipodal_points=True):
+def cluster_normals(normals, filter_mask=None, mean_shift_type=None, adaptive=False, return_all=False, device=torch.device("cpu"), handle_antipodal_points=True, weights=None):
 
     # TODO just confirm if this happens for monodepth
     if len(normals.shape) == 5:
@@ -229,7 +229,11 @@ def cluster_normals(normals, filter_mask=None, mean_shift_type=None, adaptive=Fa
 
     Timer.start_check_point("clustering normals")
     # TODO consider to return clustered_normals.numpy()
-    cluster_repr_normal, normal_indices, valid_clusters = clustering.cluster(normals, filter_mask, mean_shift_type, adaptive, return_all, device=device, handle_antipodal_points=handle_antipodal_points)
+    cluster_repr_normal, normal_indices, valid_clusters = clustering.cluster(normals, filter_mask, mean_shift_type,
+                                                                             adaptive, return_all,
+                                                                             device=device,
+                                                                             handle_antipodal_points=handle_antipodal_points,
+                                                                             weights=weights)
 
     print("cluster_repr_normal.device: {}".format(cluster_repr_normal.device))
     print("normal_indices.device: {}".format(normal_indices.device))

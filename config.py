@@ -153,6 +153,7 @@ class CartesianConfig:
         all_unrectified: Property("bool", default=False, cache=Property.cache_img_data),
         rectify: Property("bool", default=True, cache=Property.cache_img_data),
         "svd_weighted_sigma": Property("float", default=0.8, cache=Property.cache_img_data),
+        "use_surface_normal_uncertainty_lib": Property("bool", default=False, cache=Property.cache_img_data),
 
         # fginn
         "fginn": Property("bool", False, cache=Property.cache_img_data),

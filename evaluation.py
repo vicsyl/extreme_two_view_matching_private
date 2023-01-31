@@ -1128,6 +1128,7 @@ def evaluate_normals_stats(stats_map):
     # print("extra: {},\n {}".format(stats1_extra_keys, stats2_extra_keys))
 
     for param_key in normals_degrees:
+        print(f"Key: {param_key}")
         # out = False
         # if k.startswith("ms_None_1.0_25_0.8"):
         #     out = True
@@ -1139,12 +1140,16 @@ def evaluate_normals_stats(stats_map):
         avg_l2_shared = 0.0
         avg_l1_shared = 0.0
         avg_l1_valid = 0.0
+        avg_l2_valid = 0.0
         for img in normals_degrees[param_key]:
             deg_list = normals_degrees[param_key][img]
             if valid_normals[param_key][img] > 1:
                 count_valid = count_valid + 1
                 avg_l1_valid = avg_l1_valid + math.fabs(90.0 - deg_list[0])
+                avg_l2_valid = avg_l2_valid + (90.0 - deg_list[0]) ** 2
+                assert len(deg_list) > 0
             if len(deg_list) > 0:
+                assert valid_normals[param_key][img] > 1
                 avg_l2 = avg_l2 + (90.0 - deg_list[0]) ** 2
                 avg_l1 = avg_l1 + math.fabs(90.0 - deg_list[0])
                 count = count + 1
@@ -1158,14 +1163,18 @@ def evaluate_normals_stats(stats_map):
 
         if count_valid > 0:
             avg_l1_valid = avg_l1_valid / count_valid
+            avg_l2_valid = avg_l2_valid / count_valid
         if count > 0:
             avg_l2 = avg_l2 / count
             avg_l1 = avg_l1 / count
         if count_shared > 0:
             avg_l2_shared = avg_l2_shared / count_shared
             avg_l1_shared = avg_l1_shared / count_shared
-        print("{} {:.3f} {} / {}".format(param_key, avg_l1, count, count_valid))
-        print("{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
+        print("L1")
+        print("L1: {} {:.3f} {} / {}".format(param_key, avg_l1, count, count_valid))
+        print("L2: {} {:.3f} {} / {}".format(param_key, avg_l2, count, count_valid))
+        print("L1:{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
+        print("L2:{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l2_shared, count_shared, avg_l2_valid, count_valid))
 
 
 def old_main():

@@ -23,6 +23,9 @@ from affnet import affnet_rectify
 from dense_affnet import DenseAffNet
 from affnet_clustering import affnet_clustering
 
+from PIL import Image
+from surface_normals import SurfaceNormals
+
 import matplotlib.pyplot as plt
 
 two_hundred_permutation = [164, 90, 8, 35, 50, 112, 30, 51, 120, 78, 130, 134, 171, 5, 101, 147, 192, 72, 47, 156, 105,
@@ -56,6 +59,8 @@ COMPLETE_IMAGE_PAIR_MATCHING_TAG = "complete_image_pair_matching"
 
 @dataclass
 class Pipeline:
+
+    surface_normals: SurfaceNormals = SurfaceNormals()
 
     # NOTE to be removed - just fot visualizations
     # counter = 0
@@ -413,14 +418,15 @@ class Pipeline:
         return non_sky_mask
 
     @timer_label_decorator()
-    def cluster_normals(self, normals, filter_mask):
+    def cluster_normals(self, normals, filter_mask, weights=None):
         normals_deviced = normals.to(self.device)
         print("normals_deviced.device: {}".format(normals_deviced.device))
         normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
                                                                                filter_mask=filter_mask,
                                                                                mean_shift_type=self.config["mean_shift_type"],
                                                                                device=self.device,
-                                                                               handle_antipodal_points=self.config["handle_antipodal_points"])
+                                                                               handle_antipodal_points=self.config["handle_antipodal_points"],
+                                                                               weights=weights)
         return normals_clusters_repr, normal_indices, valid_normals
 
     @timer_label_decorator()
@@ -455,6 +461,27 @@ class Pipeline:
             components_indices = possibly_upsample_normals(img, components_indices)
             components_indices = components_indices.astype(dtype=np.uint32)
         return components_indices
+
+    def compute_normals_from_lib(self, d_h, d_w, img_name, img):
+
+        orig_height = img.shape[0]
+        orig_width = img.shape[1]
+
+        img_path = self.scene_info.get_img_file_path(img_name)
+
+        # TODO check the conversion
+        img_norm = Image.open(img_path).convert("RGB").resize(size=(d_w, d_h), resample=Image.BILINEAR)
+
+        img_norm = np.array(img_norm).astype(np.float32) / 255.0
+        img_norm = torch.from_numpy(img_norm).permute(2, 0, 1)
+        from torchvision import transforms
+        norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        img_norm = norm(img_norm)[None]
+        # img_norm = img_norm.detach().cpu()[None].permute(0, 2, 3, 1).numpy()
+
+        normals_lib, pred_uncertainty = self.surface_normals.compute_normals(img=img_norm, height=orig_height, width=orig_width, device=self.device)
+        normals_lib = -normals_lib
+        return normals_lib, pred_uncertainty
 
     @timer_label_decorator(tags=[COMPLETE_IMAGE_PAIR_MATCHING_TAG])
     def process_image(self, img_name, order):
@@ -807,97 +834,115 @@ class Pipeline:
         show_sky_mask(img, sky_mask_np, img_name, show=self.show_sky_mask, save=self.save_sky_mask, path=sky_out_path)
 
         counter = 0
-        for sigma in [0.8, 1.2, 1.6]:
 
-            orig_normals, s_values = self.compute_normals_possibly_cached(img_name,
-                                                                          focal_length,
-                                                                          orig_height,
-                                                                          orig_width,
-                                                                          depth_data,
-                                                                          simple_weighing=True,
-                                                                          smaller_window=(sigma == 0.0),
-                                                                          device=torch.device('cpu'),
-                                                                          use_cache=use_normals_cache,
-                                                                          svd_weighted_sigma=sigma)
+        for sigma in ["use_surface_normals", 0.8, 1.2, 1.6]:
 
-            print("orig_normals.device: {}".format(orig_normals.device))
+            if sigma == "use_surface_normals":
 
-            for normal_sigma in [None]:
+                d_h, d_w = depth_data.shape[2:4]
+                normals_lib, pred_uncertainty = self.compute_normals_from_lib(d_h, d_w, img_name, img)
+                weights = 1 - (torch.from_numpy(pred_uncertainty[0, ..., 0]) / 100)
+                normals = normals_lib
 
-                if normal_sigma is None:
-                    normals = orig_normals
-                else:
-                    bf_key = "bilateral_filter_{}".format(normal_sigma)
-                    Timer.start_check_point(bf_key)
-                    normals = bilateral_filter(orig_normals, filter_mask=sky_mask_np, normal_sigma=normal_sigma, device=torch.device('cpu'))
-                    print("normals.device after bilateral_filter: {}".format(normals.device))
-                    Timer.end_check_point(bf_key)
+            else:
+                orig_normals, s_values = self.compute_normals_possibly_cached(img_name,
+                                                                              focal_length,
+                                                                              orig_height,
+                                                                              orig_width,
+                                                                              depth_data,
+                                                                              simple_weighing=True,
+                                                                              smaller_window=(sigma == 0.0),
+                                                                              device=torch.device('cpu'),
+                                                                              use_cache=use_normals_cache,
+                                                                              svd_weighted_sigma=sigma)
 
-                for mean_shift in ["full", "mean", None]:
+                print("orig_normals.device: {}".format(orig_normals.device))
+                normals = orig_normals
+                weights = None
 
-                    for singular_value_quantil in [0.6, 0.8, 1.0]:
+            # for normal_sigma in [None]:
 
-                        for angle_distance_threshold_degrees in [5, 10, 15, 20, 25, 30, 35]:
+                # if normal_sigma is None:
+                #     normals = orig_normals
+                # else:
+                #     bf_key = "bilateral_filter_{}".format(normal_sigma)
+                #     Timer.start_check_point(bf_key)
+                #     normals = bilateral_filter(orig_normals, filter_mask=sky_mask_np, normal_sigma=normal_sigma, device=torch.device('cpu'))
+                #     print("normals.device after bilateral_filter: {}".format(normals.device))
+                #     Timer.end_check_point(bf_key)
 
-                            for adaptive in [False]:
+            for mean_shift in ["mean"]: # ["full", "mean", None]:
 
-                                if adaptive is True and mean_shift != "full":
-                                    continue
+                for singular_value_quantil_i, singular_value_quantil in enumerate([0.6, 0.8, 1.0]):
 
-                                compute = False
-                                # if mean_shift is None and singular_value_quantil == 1.0 and angle_distance_threshold_degrees == 25 and sigma == 0.8:
-                                #     compute = True
-                                # if mean_shift in ["mean", "full"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
-                                #     compute = True
-                                if mean_shift in ["mean"] and angle_distance_threshold_degrees in [25] and sigma == 0.8 and singular_value_quantil in [0.8, 1.0]:
-                                    compute = True
-                                if not compute:
-                                    continue
+                    if sigma == "use_surface_normals" and singular_value_quantil_i != 0:
+                        continue
 
-                                counter = counter + 1
+                    for angle_distance_threshold_degrees in [5, 10, 15, 20, 25, 30, 35]:
 
-                                ms_str = "ms_{}".format(mean_shift)
-                                params_key = "{}_{}_{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma, normal_sigma, adaptive)
-                                if stats_key_prefix is not None:
-                                    params_key = "{}_{}".format(stats_key_prefix, params_key)
+                        for adaptive in [False]:
 
-                                print("params_key: {}".format(params_key))
-                                print("Params: s_value_hist_ratio: {}, "
-                                      "angle_distance_threshold_degrees: {}, "
-                                      "svd sigma: {}, "
-                                      "mean shift step: {},"
-                                      "normal sigma: {},"
-                                      "adaptive: {}"
-                                      .format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str, normal_sigma, adaptive))
+                            # if adaptive is True and mean_shift != "full":
+                            #     continue
+                            #
+                            # compute = False
+                            # if mean_shift is None and singular_value_quantil == 1.0 and angle_distance_threshold_degrees == 25 and sigma == 0.8:
+                            #     compute = True
+                            # if mean_shift in ["mean", "full"] and angle_distance_threshold_degrees == 35 and sigma == 0.8:
+                            #     compute = True
+                            # if mean_shift in ["mean"] and angle_distance_threshold_degrees in [25] and sigma == 0.8 and singular_value_quantil in [0.8, 1.0]:
+                            #     compute = True
+                            # if not compute:
+                            #     continue
 
-                                Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
-                                Clustering.recompute(math.sqrt(singular_value_quantil))
+                            counter = counter + 1
 
+                            ms_str = "ms_{}".format(mean_shift)
+                            params_key = "{}_{}_{}_{}_{}".format(ms_str, singular_value_quantil, angle_distance_threshold_degrees, sigma, adaptive)
+                            if stats_key_prefix is not None:
+                                params_key = "{}_{}".format(stats_key_prefix, params_key)
+
+                            print("params_key: {}".format(params_key))
+                            print("Params: s_value_hist_ratio: {}, "
+                                  "angle_distance_threshold_degrees: {}, "
+                                  "svd sigma: {}, "
+                                  "mean shift step: {},"
+                                  "adaptive: {}"
+                                  .format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str, adaptive))
+
+                            Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
+                            Clustering.recompute(math.sqrt(singular_value_quantil))
+
+                            if sigma == "use_surface_normals":
+                                filter_mask = sky_mask_np
+                            else:
                                 quantil_mask = self.get_quantil_mask(img, img_name, singular_value_quantil, depth_data[2:4], s_values, depth_data, sky_mask_np)
                                 filter_mask = sky_mask_np & quantil_mask
 
-                                cp_key = "clustering_{}_{}".format(mean_shift, adaptive)
-                                Timer.start_check_point(cp_key)
-                                normals_deviced = normals.to(self.device)
-                                print("normals_deviced.device: {}".format(normals_deviced.device))
-                                normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
-                                                                                                       filter_mask=filter_mask,
-                                                                                                       mean_shift_type=mean_shift,
-                                                                                                       adaptive=adaptive,
-                                                                                                       return_all=True,
-                                                                                                       device=self.device,
-                                                                                                       handle_antipodal_points=True)
+                            cp_key = "clustering_{}_{}".format(mean_shift, adaptive)
+                            Timer.start_check_point(cp_key)
+                            normals_deviced = normals.to(self.device)
+                            print("normals_deviced.device: {}".format(normals_deviced.device))
 
-                                Timer.end_check_point(cp_key)
-                                self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, params_key, img_name)
+                            normals_clusters_repr, normal_indices, valid_normals = cluster_normals(normals_deviced,
+                                                                                                   filter_mask=filter_mask,
+                                                                                                   mean_shift_type=mean_shift,
+                                                                                                   adaptive=adaptive,
+                                                                                                   return_all=True,
+                                                                                                   device=self.device,
+                                                                                                   handle_antipodal_points=False,
+                                                                                                   weights=weights)
 
-                                show_or_save_clusters(normals,
-                                                      normal_indices,
-                                                      normals_clusters_repr,
-                                                      img_processing_dir,
-                                                      "{}: {} ".format(img_name, params_key),
-                                                      show=self.show_clusters,
-                                                      save=self.save_clusters)
+                            Timer.end_check_point(cp_key)
+                            self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, params_key, img_name)
+
+                            show_or_save_clusters(normals,
+                                                  normal_indices,
+                                                  normals_clusters_repr,
+                                                  img_processing_dir,
+                                                  "{}: {} ".format(img_name, params_key),
+                                                  show=self.show_clusters,
+                                                  save=self.save_clusters)
         print("counter: {}".format(counter))
 
     def update_stats_map(self, key_list, obj):
