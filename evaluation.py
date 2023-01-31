@@ -1172,8 +1172,8 @@ def evaluate_normals_stats(stats_map):
             avg_l1_shared = avg_l1_shared / count_shared
         print("L1")
         print("L1: {} {:.3f} {} / {}".format(param_key, avg_l1, count, count_valid))
-        print("L2: {} {:.3f} {} / {}".format(param_key, avg_l2, count, count_valid))
-        # print("L1:{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
+        # print("L2: {} {:.3f} {} / {}".format(param_key, avg_l2, count, count_valid))
+        print("L1:{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
         # print("L2:{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l2_shared, count_shared, avg_l2_valid, count_valid))
 
 
