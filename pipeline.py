@@ -905,12 +905,6 @@ class Pipeline:
                                 params_key = "{}_{}".format(stats_key_prefix, params_key)
 
                             print("params_key: {}".format(params_key))
-                            print("Params: s_value_hist_ratio: {}, "
-                                  "angle_distance_threshold_degrees: {}, "
-                                  "svd sigma: {}, "
-                                  "mean shift step: {},"
-                                  "adaptive: {}"
-                                  .format(singular_value_quantil, angle_distance_threshold_degrees, sigma, ms_str, adaptive))
 
                             Clustering.angle_distance_threshold_degrees = angle_distance_threshold_degrees
                             Clustering.recompute(math.sqrt(singular_value_quantil))
