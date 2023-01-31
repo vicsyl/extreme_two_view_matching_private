@@ -473,7 +473,7 @@ class Pipeline:
         img_norm = Image.open(img_path).convert("RGB").resize(size=(d_w, d_h), resample=Image.BILINEAR)
 
         img_norm = np.array(img_norm).astype(np.float32) / 255.0
-        img_norm = torch.from_numpy(img_norm).permute(2, 0, 1)
+        img_norm = torch.from_numpy(img_norm).permute(2, 0, 1).to(device=self.device)
         from torchvision import transforms
         norm = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         img_norm = norm(img_norm)[None]
