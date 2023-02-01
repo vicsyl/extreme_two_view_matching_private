@@ -1127,6 +1127,7 @@ def evaluate_normals_stats(stats_map):
     # stats2_extra_keys = at_least_2_planes[key2] - shared_for_2
     # print("extra: {},\n {}".format(stats1_extra_keys, stats2_extra_keys))
 
+    table = " parameters.... avg_l1_shared count_shared avg_l1_valid count_valid"
     for param_key in normals_degrees:
         print(f"Key: {param_key}")
         # out = False
@@ -1174,7 +1175,9 @@ def evaluate_normals_stats(stats_map):
         print("L1: {} {:.3f} {} / {}".format(param_key, avg_l1, count, count_valid))
         # print("L2: {} {:.3f} {} / {}".format(param_key, avg_l2, count, count_valid))
         print("L1:{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l1_shared, count_shared, avg_l1_valid, count_valid))
+        table += f"{' '.join(param_key.split(','))} {avg_l1_shared} {count_shared} {avg_l1_valid} {count_valid} \n"
         # print("L2:{} - shared: {:.3f}/{} valid: {:.3f}/{}".format(param_key, avg_l2_shared, count_shared, avg_l2_valid, count_valid))
+    print(table)
 
 
 def old_main():

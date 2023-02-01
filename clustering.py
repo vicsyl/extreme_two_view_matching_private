@@ -187,7 +187,7 @@ def cluster(normals: torch.Tensor,
         weights = torch.ones(normals.shape[:2], dtype=torch.float, device=device)
 
     sums = (near_ones_per_cluster_center * weights).sum(dim=(1, 2))
-    points_threshold *= (weights.sum() / weights.shape[0] * weights.shape[1])
+    points_threshold *= (weights.sum() / (weights.shape[0] * weights.shape[1]))
     if original_weights is None:
         assert weights.sum() == weights.shape[0] * weights.shape[1]
 
