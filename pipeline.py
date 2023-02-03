@@ -590,14 +590,23 @@ class Pipeline:
                 else:
 
                     depth_data = self.depth_reader.read_depth_data(img_name)
-                    normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'),
-                                                                 svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
 
-                    non_sky_mask = self.get_potential_sky_mask(img, *normals.shape[:2])
+                    if self.config["use_surface_normal_uncertainty_lib"]:
+                        d_h, d_w = depth_data.shape[2:4]
+                        normals, pred_uncertainty = self.compute_normals_from_lib(d_h, d_w, img_name, img)
+                        filter_mask = self.get_potential_sky_mask(img, *normals.shape[:2])
+                        weights = 1 - (torch.from_numpy(pred_uncertainty[0, ..., 0]) / 100).to(device=self.device)
 
-                    filter_mask = self.apply_quantil_mask(img, img_name, depth_data, s_values, non_sky_mask)
+                    else:
 
-                    normals_clusters_repr, normal_indices, valid_normals = self.cluster_normals(normals, filter_mask)
+                        normals, s_values = compute_normals_from_svd(focal_length, orig_height, orig_width, depth_data, device=torch.device('cpu'),
+                                                                     svd_weighted=self.config["svd_weighted"], svd_weighted_sigma=self.config["svd_weighted_sigma"])
+
+                        non_sky_mask = self.get_potential_sky_mask(img, *normals.shape[:2])
+                        filter_mask = self.apply_quantil_mask(img, img_name, depth_data, s_values, non_sky_mask)
+                        weights = None
+
+                    normals_clusters_repr, normal_indices, valid_normals = self.cluster_normals(normals, filter_mask, weights)
 
                     self.update_normals_stats(normal_indices, normals_clusters_repr, valid_normals, self.cache_map[Property.all_combinations], img_name)
 
